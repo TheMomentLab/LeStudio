@@ -320,9 +320,29 @@
         </div>
 
         <div class="card">
-          <h3>Camera Port Mapper</h3>
-          <p class="muted">Assign roles to cameras based on which USB port they're plugged into.</p>
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px;">
+            <div>
+              <h3 style="margin-bottom: 4px;">Camera Port Mapper</h3>
+              <p class="muted" style="margin:0;">Assign roles to cameras based on which USB port they're plugged into.</p>
+            </div>
+            <button onclick="DeviceSetupTab.applyRules()" class="btn-primary" style="padding: 8px 16px; font-size: 14px;">⚡ Apply Assignments</button>
+          </div>
+          
           <div id="device-cameras-grid" class="device-camera-grid">Loading…</div>
+          <div id="rules-status" class="rules-status" style="margin-top: 12px; font-weight: 500;"></div>
+
+          <div style="margin-top: 24px;">
+            <button onclick="DeviceSetupTab.toggleRulesPanel()" class="btn-xs" style="background:transparent; color:var(--text2); border:1px solid var(--border); padding: 4px 8px; border-radius: 4px; cursor: pointer;">
+              <span id="rules-toggle-icon">▶</span> Advanced: View raw udev rules
+            </button>
+            <div id="rules-advanced-panel" style="display: none; margin-top: 12px; border:1px solid var(--border); padding: 12px; border-radius: 6px; background:var(--bg-card);">
+              <div class="rules-row" style="margin-bottom: 8px; display: flex; gap: 8px;">
+                <button onclick="DeviceSetupTab.previewRules()" class="btn-sm">Preview changes</button>
+                <button onclick="DeviceSetupTab.showCurrent()"  class="btn-sm">Show current file</button>
+              </div>
+              <pre id="rules-preview" class="rules-box" style="margin:0; background:var(--bg-app); border:1px solid var(--border); padding:10px; border-radius:4px; font-family:monospace; color:var(--text1); white-space:pre-wrap; font-size:12px;">Press "Preview changes" to see generated rules.</pre>
+            </div>
+          </div>
         </div>
 
         <div class="card">
@@ -360,17 +380,6 @@
             <button class="btn-primary-sm" onclick="DeviceSetupTab.applyStreamSettings()">✓ Apply</button>
             <span id="cam-settings-status" class="muted"></span>
           </div>
-        </div>
-
-        <div class="card">
-          <h3>udev Rules Preview</h3>
-          <div class="rules-row">
-            <button onclick="DeviceSetupTab.previewRules()" class="btn-sm">Generate Preview</button>
-            <button onclick="DeviceSetupTab.applyRules()"   class="btn-primary-sm">⚡ Apply (sudo)</button>
-            <button onclick="DeviceSetupTab.showCurrent()"  class="btn-sm">Show Current</button>
-          </div>
-          <pre id="rules-preview" class="rules-box">Press "Generate Preview" to see the rules that will be written.</pre>
-          <div id="rules-status" class="rules-status"></div>
         </div>
       </section>
 

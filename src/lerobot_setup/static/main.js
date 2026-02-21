@@ -665,6 +665,19 @@ const DeviceSetupTab = {
     if (kernels) this.assignments[kernels] = role;
   },
 
+  toggleRulesPanel() {
+    const panel = document.getElementById('rules-advanced-panel');
+    const icon = document.getElementById('rules-toggle-icon');
+    if (panel.style.display === 'none') {
+      panel.style.display = 'block';
+      icon.textContent = '▼';
+      this.previewRules();
+    } else {
+      panel.style.display = 'none';
+      icon.textContent = '▶';
+    }
+  },
+
   async previewRules() {
     const res = await api.post('/api/rules/preview', { assignments: this.assignments });
     document.getElementById('rules-preview').textContent = res.content;
@@ -678,12 +691,14 @@ const DeviceSetupTab = {
     el.textContent = 'Applying…';
     const res = await api.post('/api/rules/apply', { assignments: this.assignments });
     if (res.ok) {
-      el.textContent = '✓ Applied and udev reloaded.';
+      el.textContent = '✓ Assignments applied successfully (udev reloaded).';
       el.className   = 'rules-status ok';
-      setTimeout(() => this.refresh(), 1500);
+      el.style.color = 'var(--green)';
+      setTimeout(() => { el.textContent = ''; this.refresh(); }, 2500);
     } else {
-      el.textContent = `✗ ${res.error}`;
+      el.textContent = `✗ Error: ${res.error}`;
       el.className   = 'rules-status err';
+      el.style.color = 'var(--red)';
     }
   },
 
