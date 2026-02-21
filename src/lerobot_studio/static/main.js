@@ -179,6 +179,10 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     const rf = document.getElementById('record-feeds'); 
     if (rf) { rf.querySelectorAll('img').forEach(img => img.removeAttribute('src')); rf.innerHTML = ''; }
 
+    FeedManager._stopWatchers();
+    FeedManager.clearPaused();
+    FeedManager.stopStatPolling();
+
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     btn.classList.add('active');
@@ -369,7 +373,7 @@ const TeleopTab = {
       { name: 'top_1',   path: getVal('tc-top1')   },
       { name: 'top_2',   path: getVal('tc-top2')   },
     ].filter(c => c.path);
-    renderFeeds('teleop-feeds', cameras);
+    FeedManager.render('teleop-feeds', cameras);
   },
 
   clearLog() { clearProcessLog('teleop-log'); },
@@ -502,7 +506,7 @@ const RecordTab = {
       { name: 'top_1',   path: getVal('rc-top1')   || state.config.cameras?.top_1   || '' },
       { name: 'top_2',   path: getVal('rc-top2')   || state.config.cameras?.top_2   || '' },
     ].filter(c => c.path);
-    renderFeeds('record-feeds', cameras);
+    FeedManager.render('record-feeds', cameras);
   },
 
   parseEpisode(line) {
@@ -1102,17 +1106,247 @@ function appendLog(logId, text, kind = 'stdout') {
   el.scrollTop = el.scrollHeight;
 }
 
-function renderFeeds(containerId, cameras) {
-  const el = document.getElementById(containerId);
-  if (!cameras.length) { el.innerHTML = ''; return; }
-  el.innerHTML = cameras.map(c => {
-    const vidName = c.path.replace('/dev/', '');
-    return `<div class="feed-card">
-      <img src="/stream/${vidName}" alt="${c.name}" loading="lazy" />
-      <div class="feed-label">${c.name} — /dev/${vidName}</div>
-    </div>`;
-  }).join('');
-}
+/* ─── Feed Manager ───────────────────────────────────────────────────────────── */
+const FeedManager = {
+  _paused:       new Set(),
+  _watchers:     new Map(),
+  _watcherState: new Map(),
+  _statTimer:    null,
+
+  QUALITY: {
+    high:   { fps: 30, jpeg_quality: 80 },
+    medium: { fps: 15, jpeg_quality: 60 },
+    low:    { fps: 8,  jpeg_quality: 40 },
+  },
+
+  render(containerId, cameras) {
+    this.stopStatPolling();
+    this._stopWatchers();
+    const el = document.getElementById(containerId);
+    if (!el) return;
+    if (!cameras.length) { el.innerHTML = ''; return; }
+
+    el.innerHTML = cameras.map(c => {
+      const vid = c.path.replace('/dev/', '');
+      return `
+        <div class="feed-card" data-vid="${vid}">
+          <img src="/stream/${vid}"
+               alt="${c.name}"
+               style="width:100%;height:150px;object-fit:cover;display:block;"
+               onload="FeedManager._onLoad(this)"
+               onerror="FeedManager._onError(this)" />
+          <div class="feed-loading" id="fload-${vid}">
+            <div class="feed-spinner"></div>
+          </div>
+          <div class="feed-stalled" id="fstall-${vid}" style="display:none">
+            <span class="feed-stalled-text">⏸ Feed stalled</span>
+            <button class="btn-xs feed-overlay-btn" onclick="FeedManager.retry('${vid}')">↺ Retry</button>
+          </div>
+          <div class="feed-paused-ov" id="fpause-${vid}" style="display:none">
+            <span style="font-size:20px;opacity:0.4">⏸</span>
+            <span class="feed-paused-text">${c.name} — paused</span>
+            <button class="btn-xs feed-overlay-btn" onclick="FeedManager.resume('${vid}')">▶ Resume</button>
+          </div>
+          <div class="feed-live-badge" id="flive-${vid}">
+            <div class="feed-live-dot"></div>LIVE
+          </div>
+          <button class="feed-close-btn" title="Pause this feed" onclick="FeedManager.pause('${vid}')">×</button>
+          <div class="feed-label">
+            <span>${c.name} — /dev/${vid}</span>
+            <span class="feed-stat" id="fstat-${vid}"></span>
+          </div>
+        </div>`;
+    }).join('');
+
+    cameras.forEach(c => this._startWatcher(c.path.replace('/dev/', '')));
+    if (cameras.length) this.startStatPolling();
+  },
+
+  _onLoad(img) {
+    const vid = img.closest('.feed-card')?.dataset.vid;
+    if (!vid) return;
+    const el = document.getElementById(`fload-${vid}`);
+    if (el) el.style.display = 'none';
+  },
+
+  _onError(img) {
+    const card = img.closest('.feed-card');
+    if (!card) return;
+    if (card.getAttribute('data-pausing') === '1') return;
+    const vid = card.dataset.vid;
+    const el = document.getElementById(`fload-${vid}`);
+    if (el) el.innerHTML = `
+      <div style="display:flex;flex-direction:column;align-items:center;gap:8px;padding:12px;">
+        <span style="font-size:22px;opacity:0.35">📷</span>
+        <span style="font-size:11px;color:var(--red);text-align:center;">Stream unavailable</span>
+        <button class="btn-xs feed-overlay-btn" onclick="FeedManager.retry('${vid}')">↺ Retry</button>
+      </div>`;
+    document.getElementById(`flive-${vid}`)?.classList.remove('visible');
+  },
+
+  _startWatcher(vid) {
+    const STALL_MS = 5000;
+    const TICK_MS  = 2000;
+    this._watcherState.set(vid, { lastHash: null, stalledAt: null });
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 16; canvas.height = 16;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+    const id = setInterval(() => {
+      const card = document.querySelector(`.feed-card[data-vid="${vid}"]`);
+      if (!card) { clearInterval(id); this._watchers.delete(vid); return; }
+
+      const img = card.querySelector('img');
+      if (!img || !img.complete || img.naturalWidth === 0) return;
+
+      try {
+        ctx.drawImage(img, 0, 0, 16, 16);
+        const px = ctx.getImageData(0, 0, 16, 16).data;
+        let h = 0;
+        for (let i = 0; i < px.length; i += 32) h = (h * 31 + px[i] + px[i+1] + px[i+2]) >>> 0;
+
+        const ws = this._watcherState.get(vid);
+        if (!ws) return;
+        const now = Date.now();
+
+        if (h !== ws.lastHash) {
+          ws.lastHash = h;
+          ws.stalledAt = null;
+          document.getElementById(`flive-${vid}`)?.classList.add('visible');
+          const stallEl = document.getElementById(`fstall-${vid}`);
+          if (stallEl) stallEl.style.display = 'none';
+          const loadEl = document.getElementById(`fload-${vid}`);
+          if (loadEl && loadEl.style.display !== 'none') loadEl.style.display = 'none';
+        } else {
+          if (!ws.stalledAt) ws.stalledAt = now;
+          if (now - ws.stalledAt > STALL_MS) {
+            document.getElementById(`flive-${vid}`)?.classList.remove('visible');
+            const stallEl = document.getElementById(`fstall-${vid}`);
+            if (stallEl) stallEl.style.display = 'flex';
+          }
+        }
+      } catch (_) { /* canvas taint – skip */ }
+    }, TICK_MS);
+
+    this._watchers.set(vid, id);
+  },
+
+  _stopWatcher(vid) {
+    const id = this._watchers.get(vid);
+    if (id !== undefined) { clearInterval(id); this._watchers.delete(vid); }
+    this._watcherState.delete(vid);
+  },
+
+  _stopWatchers() {
+    this._watchers.forEach(id => clearInterval(id));
+    this._watchers.clear();
+    this._watcherState.clear();
+  },
+
+  pause(vid) {
+    this._paused.add(vid);
+    this._stopWatcher(vid);
+    const card = document.querySelector(`.feed-card[data-vid="${vid}"]`);
+    if (!card) return;
+    card.setAttribute('data-pausing', '1');
+    const img = card.querySelector('img');
+    if (img) img.src = '';
+    document.getElementById(`flive-${vid}`)?.classList.remove('visible');
+    const stallEl = document.getElementById(`fstall-${vid}`);
+    if (stallEl) stallEl.style.display = 'none';
+    const pEl = document.getElementById(`fpause-${vid}`);
+    if (pEl) pEl.style.display = 'flex';
+  },
+
+  resume(vid) {
+    this._paused.delete(vid);
+    const card = document.querySelector(`.feed-card[data-vid="${vid}"]`);
+    if (!card) return;
+    card.removeAttribute('data-pausing');
+    const pEl = document.getElementById(`fpause-${vid}`);
+    if (pEl) pEl.style.display = 'none';
+    const loadEl = document.getElementById(`fload-${vid}`);
+    if (loadEl) { loadEl.innerHTML = '<div class="feed-spinner"></div>'; loadEl.style.display = 'flex'; }
+    const img = card.querySelector('img');
+    if (img) img.src = `/stream/${vid}?_=${Date.now()}`;
+    this._startWatcher(vid);
+  },
+
+  retry(vid) {
+    const card = document.querySelector(`.feed-card[data-vid="${vid}"]`);
+    if (!card) return;
+    const stallEl = document.getElementById(`fstall-${vid}`);
+    if (stallEl) stallEl.style.display = 'none';
+    const loadEl = document.getElementById(`fload-${vid}`);
+    if (loadEl) { loadEl.innerHTML = '<div class="feed-spinner"></div>'; loadEl.style.display = 'flex'; }
+    const ws = this._watcherState.get(vid);
+    if (ws) { ws.lastHash = null; ws.stalledAt = null; }
+    const img = card.querySelector('img');
+    if (img) img.src = `/stream/${vid}?_=${Date.now()}`;
+  },
+
+  startStatPolling() {
+    this.stopStatPolling();
+    this._pollStats();
+    this._statTimer = setInterval(() => this._pollStats(), 2000);
+  },
+
+  stopStatPolling() {
+    if (this._statTimer !== null) { clearInterval(this._statTimer); this._statTimer = null; }
+  },
+
+  async _pollStats() {
+    let data;
+    try { data = await api.get('/api/camera/stats'); } catch (_) { return; }
+
+    for (const [vid, stats] of Object.entries(data.cameras || {})) {
+      const el = document.getElementById(`fstat-${vid}`);
+      if (el) el.textContent = `${stats.fps}fps · ${stats.mbps}MB/s`;
+    }
+
+    const busHtml = Object.entries(data.buses || {}).map(([bus, info]) => {
+      const pct = Math.min(info.pct, 100);
+      const cls = info.pct > 85 ? 'danger' : info.pct > 60 ? 'warn' : '';
+      const gen = info.max_mb_per_sec > 300 ? '3' : '2.0';
+      return `<div class="usb-bus-bar-wrap">
+        <div class="usb-bus-bar-label">
+          <span>USB Bus ${bus} (USB ${gen})</span>
+          <span>${info.used_mb_per_sec} / ${info.max_mb_per_sec} MB/s &nbsp;<b>${info.pct}%</b></span>
+        </div>
+        <div class="usb-bus-bar-track">
+          <div class="usb-bar-fill ${cls}" style="width:${pct}%"></div>
+        </div>
+      </div>`;
+    }).join('');
+
+    ['teleop-usb-bars', 'record-usb-bars'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.innerHTML = busHtml;
+    });
+  },
+
+  clearPaused() { this._paused.clear(); },
+
+  async setQuality(preset, statusId) {
+    const cfg = this.QUALITY[preset];
+    if (!cfg) return;
+    ['teleop', 'record'].forEach(tab =>
+      Object.keys(this.QUALITY).forEach(p => {
+        document.getElementById(`${tab}-qbtn-${p}`)?.classList.toggle('active', p === preset);
+      })
+    );
+    // Preserve existing codec/resolution, only change fps+quality
+    const current = await api.get('/api/camera_settings');
+    await api.post('/api/camera_settings', { ...current, ...cfg });
+    const el = document.getElementById(statusId);
+    if (el) {
+      el.textContent = '✓ Applied';
+      el.classList.add('visible');
+      setTimeout(() => el.classList.remove('visible'), 2500);
+    }
+  },
+};
 
 function renderArmList(el, arms) {
   if (!arms.length) { el.innerHTML = '<div class="device-item"><span class="dname" style="color:var(--text2)">No arm ports found</span></div>'; return; }

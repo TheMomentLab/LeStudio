@@ -145,6 +145,14 @@
                 <input id="tc-top2" type="text" value="/dev/top_cam_2" placeholder="/dev/…" />
               </div>
             </div>
+            <div id="teleop-usb-bars"></div>
+            <div class="feed-quality-bar">
+              <span class="q-label">Quality:</span>
+              <button id="teleop-qbtn-high"   class="feed-quality-btn" onclick="FeedManager.setQuality('high','teleop-quality-st')">High</button>
+              <button id="teleop-qbtn-medium" class="feed-quality-btn" onclick="FeedManager.setQuality('medium','teleop-quality-st')">Medium</button>
+              <button id="teleop-qbtn-low"    class="feed-quality-btn" onclick="FeedManager.setQuality('low','teleop-quality-st')">Low</button>
+              <span id="teleop-quality-st" class="feed-quality-status"></span>
+            </div>
             <div id="teleop-feeds" class="feed-grid"></div>
           </div>
         </div>
@@ -270,6 +278,14 @@
                <div id="record-ep-guard" style="font-size:11px; color:var(--text2); margin-left:8px; display:flex; align-items:center;">Start recording to enable controls</div>
              </div>
             <h3 style="margin-top:16px">Camera Feeds</h3>
+            <div id="record-usb-bars"></div>
+            <div class="feed-quality-bar">
+              <span class="q-label">Quality:</span>
+              <button id="record-qbtn-high"   class="feed-quality-btn" onclick="FeedManager.setQuality('high','record-quality-st')">High</button>
+              <button id="record-qbtn-medium" class="feed-quality-btn" onclick="FeedManager.setQuality('medium','record-quality-st')">Medium</button>
+              <button id="record-qbtn-low"    class="feed-quality-btn" onclick="FeedManager.setQuality('low','record-quality-st')">Low</button>
+              <span id="record-quality-st" class="feed-quality-status"></span>
+            </div>
             <div id="record-feeds" class="feed-grid"></div>
           </div>
         </div>
@@ -382,11 +398,17 @@
           <button onclick="DeviceSetupTab.refresh()" class="btn-sm">↺ Refresh</button>
         </div>
 
-        <div class="card" style="border: 2px solid var(--border); box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
-          <div style="text-align: center; margin-bottom: 24px;">
-            <h2 style="margin-bottom: 8px;">Identify Your Cameras</h2>
-            <p class="muted" style="margin:0; font-size: 15px;">1. Click <b>▶ View Stream</b> to see what the camera is looking at.<br>2. Select the camera's position. 3. Click <b>⚡ Save & Apply</b>.</p>
+        <div class="quick-guide" style="margin-bottom: 24px;">
+          <h3>Identify Your Cameras</h3>
+          <p>View streams to identify cameras, select their roles, and apply mapping rules.</p>
+          <div class="quick-steps">
+            <div class="quick-step"><b>1)</b> Click ▶ View Stream</div>
+            <div class="quick-step"><b>2)</b> Select camera's role</div>
+            <div class="quick-step"><b>3)</b> Click ⚡ Save Camera Mapping</div>
           </div>
+        </div>
+
+        <div class="card" style="border: 2px solid var(--border); box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
           
           <div id="device-cameras-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 20px;">Loading…</div>
           

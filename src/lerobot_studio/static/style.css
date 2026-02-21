@@ -335,6 +335,7 @@ button:active   { opacity: .7; }
   border-radius: 6px;
   overflow: hidden;
   position: relative;
+  min-height: 150px;
 }
 .feed-card img {
   width: 100%;
@@ -350,7 +351,12 @@ button:active   { opacity: .7; }
   font-size: 11px;
   padding: 3px 7px;
   font-family: var(--mono);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
 }
+.feed-stat { opacity: 0.75; white-space: nowrap; }
 
 .cam-row {
   display: grid;
@@ -618,3 +624,114 @@ kbd {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--text2); }
+
+/* ─── Feed Overlays ─────────────────────────────────────────────────────────── */
+.feed-loading {
+  position: absolute; inset: 0;
+  background: #000;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 6px;
+  z-index: 2;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.feed-spinner {
+  width: 22px; height: 22px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.75s linear infinite;
+}
+.feed-stalled,
+.feed-paused-ov {
+  position: absolute; inset: 0;
+  background: rgba(0,0,0,0.75);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 8px;
+  border-radius: 6px;
+  z-index: 3;
+}
+.feed-stalled-text { font-size: 11px; color: var(--yellow); }
+.feed-paused-text  { font-size: 12px; color: var(--text2); }
+.feed-overlay-btn  { color: var(--accent); padding: 3px 10px; border: 1px solid rgba(88,166,255,.35); border-radius: 4px; }
+
+.feed-live-badge {
+  position: absolute; top: 5px; left: 5px;
+  background: rgba(0,0,0,0.6);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 10px; font-weight: 600;
+  color: var(--green);
+  display: flex; align-items: center; gap: 4px;
+  z-index: 5;
+  opacity: 0; transition: opacity 0.3s;
+}
+.feed-live-badge.visible { opacity: 1; }
+.feed-live-dot {
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: var(--green);
+  animation: pulse 1.2s ease infinite;
+}
+
+.feed-close-btn {
+  position: absolute; top: 4px; right: 4px;
+  background: rgba(0,0,0,0.6);
+  border: none; color: rgba(255,255,255,0.65);
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  cursor: pointer; font-size: 13px; line-height: 1; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+  z-index: 6;
+}
+.feed-close-btn:hover { background: rgba(0,0,0,0.9); color: #fff; opacity: 1; }
+
+/* ─── Feed Quality Bar ──────────────────────────────────────────────────────── */
+.feed-quality-bar {
+  display: flex; align-items: center; gap: 6px;
+  margin-bottom: 8px;
+  font-size: 12px; color: var(--text2);
+}
+.q-label { margin-right: 2px; }
+.feed-quality-btn {
+  padding: 3px 11px;
+  font-size: 11px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg3); color: var(--text2);
+  cursor: pointer; font-family: var(--font);
+  transition: all 0.15s;
+}
+.feed-quality-btn:hover { border-color: var(--accent); color: var(--text); opacity: 1; }
+.feed-quality-btn.active {
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  border-color: var(--accent); color: var(--accent);
+}
+.feed-quality-status {
+  font-size: 11px; color: var(--green);
+  margin-left: 2px;
+  opacity: 0; transition: opacity 0.3s;
+}
+.feed-quality-status.visible { opacity: 1; }
+
+/* ─── USB Bus Utilization Bar ───────────────────────────────────────────────── */
+.usb-bus-bar-wrap { margin-bottom: 6px; }
+.usb-bus-bar-label {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 11px; color: var(--text2); margin-bottom: 3px;
+}
+.usb-bus-bar-label b { color: var(--text); }
+.usb-bus-bar-track {
+  height: 5px;
+  background: var(--bg);
+  border-radius: 3px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+.usb-bar-fill {
+  height: 100%;
+  background: var(--green);
+  border-radius: 3px;
+  transition: width 1.5s ease, background 0.4s;
+}
+.usb-bar-fill.warn   { background: var(--yellow); }
+.usb-bar-fill.danger { background: var(--red); }

@@ -151,6 +151,11 @@ class CameraStreamer:
         self.latest_frame: bytes | None = None
         self.running = True
         self.clients = 0
+        self._fps: float = 0.0
+        self._mbps: float = 0.0
+        self._stat_frames: int = 0
+        self._stat_bytes: int = 0
+        self._stat_ts: float = time.monotonic()
         self.thread = threading.Thread(target=self._capture_loop, daemon=True)
         self.thread.start()
 
@@ -184,10 +189,23 @@ class CameraStreamer:
             if ret:
                 _, jpg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, quality])
                 self.latest_frame = jpg.tobytes()
+                self._stat_frames += 1
+                self._stat_bytes += len(self.latest_frame) if self.latest_frame else 0
+                now = time.monotonic()
+                elapsed = now - self._stat_ts
+                if elapsed >= 1.0:
+                    self._fps  = self._stat_frames / elapsed
+                    self._mbps = self._stat_bytes / elapsed / (1024 * 1024)
+                    self._stat_frames = 0
+                    self._stat_bytes  = 0
+                    self._stat_ts     = now
             else:
                 time.sleep(0.1)
             time.sleep(0.01)
         cap.release()
+
+    def get_stats(self) -> dict:
+        return {"fps": round(self._fps, 1), "mbps": round(self._mbps, 2)}
 
     def stop(self):
         self.running = False
@@ -292,6 +310,20 @@ def _apply_rules(assignments: dict[str, str], rules_path: Path) -> tuple[bool, s
     return True, ""
 
 
+# ─── USB Bus Info ──────────────────────────────────────────────────────────────
+def get_usb_bus_for_camera(video_name: str) -> dict:
+    try:
+        dev = Path(f"/sys/class/video4linux/{video_name}/device").resolve()
+        parts = str(dev).split("/")
+        usb_port = next(p for p in reversed(parts) if re.match(r"^\d+-[\d.]+$", p))
+        bus = usb_port.split("-")[0]
+        speed_path = Path(f"/sys/bus/usb/devices/usb{bus}/speed")
+        max_mbps = int(speed_path.read_text().strip()) if speed_path.exists() else 480
+        return {"bus": bus, "port": usb_port, "max_mbps": max_mbps}
+    except Exception:
+        return {"bus": "?", "port": "?", "max_mbps": 480}
+
+
 # ─── App Factory ───────────────────────────────────────────────────────────────
 def create_app(
     lerobot_src: Path,
@@ -393,6 +425,29 @@ def create_app(
             mjpeg_gen(f"/dev/{video_name}", request),
             media_type="multipart/x-mixed-replace; boundary=frame",
         )
+
+    # ─── API: Camera Stats ─────────────────────────────────────────────────
+    @app.get("/api/camera/stats")
+    def api_camera_stats():
+        cameras: dict = {}
+        bus_data: dict = {}
+        with _streamers_lock:
+            for real_path, streamer in _streamers.items():
+                video_name = Path(real_path).name
+                stats    = streamer.get_stats()
+                bus_info = get_usb_bus_for_camera(video_name)
+                cameras[video_name] = {**stats, **bus_info}
+                bus = bus_info["bus"]
+                if bus not in bus_data:
+                    usable = bus_info["max_mbps"] / 8 * 0.80
+                    bus_data[bus] = {"max_mb_per_sec": round(usable, 1), "used_mbps": 0.0}
+                bus_data[bus]["used_mbps"] += stats["mbps"]
+        for info in bus_data.values():
+            info["used_mb_per_sec"] = round(info.pop("used_mbps"), 2)
+            info["pct"] = round(
+                info["used_mb_per_sec"] / info["max_mb_per_sec"] * 100, 1
+            ) if info["max_mb_per_sec"] > 0 else 0
+        return {"cameras": cameras, "buses": bus_data}
 
     # ─── API: Process Control ──────────────────────────────────────────────
     @app.get("/api/process/{name}/status")
