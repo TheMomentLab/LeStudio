@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""LeRobot Setup Tool — Web GUI server (packaged version)."""
+"""LeRobot Studio — Web GUI server (packaged version)."""
 
 import asyncio
 import datetime
@@ -20,10 +20,16 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from lerobot_studio.command_builders import (
+    build_calibrate_args,
+    build_motor_setup_args,
+    build_record_args,
+    build_teleop_args,
+    resolve_record_resume,
+)
+from lerobot_studio.process_manager import ProcessManager
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
-
-_ANSI_RE = re.compile(r'\x1b\[[0-9;]*[A-Za-z]')
 
 CAMERA_ROLES = [
     "(none)", "top_cam_1", "top_cam_2", "top_cam_3",
@@ -63,123 +69,12 @@ DEFAULT_CONFIG = {
     "record_task":     "",
     "record_episodes": 50,
     "record_repo_id":  "user/my-dataset",
+    "record_resume":   False,
 }
 
 _DEFAULT_CAM_SETTINGS = {
     "codec": "MJPG", "width": 640, "height": 480, "fps": 30, "jpeg_quality": 70,
 }
-
-
-# ─── Process Manager ───────────────────────────────────────────────────────────
-class ProcessManager:
-    def __init__(self, lerobot_src: Path):
-        self.lerobot_src = lerobot_src
-        self.procs: dict[str, subprocess.Popen] = {}
-        self.out_q: queue.Queue = queue.Queue(maxsize=1000)
-
-    def flush_queue(self, name: str):
-        items = []
-        while True:
-            try:
-                item = self.out_q.get_nowait()
-                if item["process"] != name:
-                    items.append(item)
-            except queue.Empty:
-                break
-        for item in items:
-            try:
-                self.out_q.put_nowait(item)
-            except queue.Full:
-                pass
-
-    def start(self, name: str, args: list[str]) -> bool:
-        self.stop(name)
-        self.flush_queue(name)
-        env = {
-            **os.environ,
-            "PYTHONPATH": str(self.lerobot_src) + ":" + os.environ.get("PYTHONPATH", ""),
-            "PYTHONUNBUFFERED": "1",
-        }
-        try:
-            proc = subprocess.Popen(
-                args, env=env,
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                bufsize=0,
-            )
-            self.procs[name] = proc
-            threading.Thread(target=self._reader, args=(name, proc), daemon=True).start()
-            return True
-        except Exception as e:
-            self._push(name, f"[ERROR] {e}", "error")
-            return False
-
-    def stop(self, name: str):
-        proc = self.procs.pop(name, None)
-        if proc and proc.poll() is None:
-            proc.terminate()
-            try:
-                proc.wait(timeout=3)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-
-    def send_input(self, name: str, text: str):
-        proc = self.procs.get(name)
-        if proc and proc.poll() is None and proc.stdin:
-            try:
-                proc.stdin.write((text + "\n").encode())
-                proc.stdin.flush()
-            except Exception:
-                pass
-
-    def is_running(self, name: str) -> bool:
-        proc = self.procs.get(name)
-        return proc is not None and proc.poll() is None
-
-    def status_all(self) -> dict:
-        return {n: self.is_running(n) for n in ["teleop", "record", "calibrate", "motor_setup"]}
-
-    def _reader(self, name: str, proc: subprocess.Popen):
-        import select as sel
-        if proc.stdout is None:
-            return
-        buf = b""
-        while True:
-            try:
-                r, _, _ = sel.select([proc.stdout], [], [], 0.1)
-            except Exception:
-                break
-            if r:
-                chunk = proc.stdout.read(256)
-                if not chunk:
-                    break
-                buf += chunk
-                while b"\n" in buf:
-                    line, buf = buf.split(b"\n", 1)
-                    text = _ANSI_RE.sub("", line.decode("utf-8", errors="replace").rstrip("\r"))
-                    if text:
-                        self._push(name, text, "stdout")
-            else:
-                if buf:
-                    text = _ANSI_RE.sub("", buf.decode("utf-8", errors="replace").rstrip("\r"))
-                    if text:
-                        self._push(name, text, "stdout")
-                    buf = b""
-                if proc.poll() is not None:
-                    break
-        if buf:
-            text = _ANSI_RE.sub("", buf.decode("utf-8", errors="replace").rstrip("\r"))
-            if text:
-                self._push(name, text, "stdout")
-        self._push(name, f"[{name} process ended]", "info")
-
-    def _push(self, name: str, line: str, kind: str):
-        try:
-            self.out_q.put_nowait({"process": name, "line": line, "kind": kind})
-        except queue.Full:
-            pass
-
-
 # ─── Device Detection ──────────────────────────────────────────────────────────
 def udev_props(dev_path: str) -> dict:
     try:
@@ -407,7 +302,7 @@ def create_app(
     CONFIG_PATH = config_dir / "config.json"
     PYTHON = sys.executable
 
-    app = FastAPI(title="LeRobot Setup Tool")
+    app = FastAPI(title="LeRobot Studio")
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],
@@ -519,27 +414,7 @@ def create_app(
     async def api_teleop_start(data: dict):
         if proc_mgr.is_running("teleop"):
             return {"ok": False, "error": "Already running"}
-        cfg = data
-        if cfg.get("robot_mode") == "bi":
-            args = [
-                PYTHON, "-m", "lerobot.scripts.lerobot_teleoperate",
-                "--robot.type=bi_so_follower",
-                f'--robot.left_arm_config.port={cfg["left_follower_port"]}',
-                f'--robot.right_arm_config.port={cfg["right_follower_port"]}',
-                "--teleop.type=bi_so_leader",
-                f'--teleop.left_arm_config.port={cfg["left_leader_port"]}',
-                f'--teleop.right_arm_config.port={cfg["right_leader_port"]}',
-            ]
-        else:
-            args = [
-                PYTHON, "-m", "lerobot.scripts.lerobot_teleoperate",
-                "--robot.type=so101_follower",
-                f'--robot.port={cfg["follower_port"]}',
-                f'--robot.id={cfg.get("robot_id", "my_so101_follower_1")}',
-                "--teleop.type=so101_leader",
-                f'--teleop.port={cfg["leader_port"]}',
-                f'--teleop.id={cfg.get("teleop_id", "my_so101_leader_1")}',
-            ]
+        args = build_teleop_args(PYTHON, data)
         return {"ok": proc_mgr.start("teleop", args)}
 
     # ─── API: Record ───────────────────────────────────────────────────────
@@ -548,33 +423,13 @@ def create_app(
         if proc_mgr.is_running("record"):
             return {"ok": False, "error": "Already running"}
         cfg = data
-        base = [
-            f'--dataset.repo_id={cfg.get("record_repo_id", "user/dataset")}',
-            f'--dataset.num_episodes={cfg.get("record_episodes", 50)}',
-            f'--dataset.single_task={cfg.get("record_task", "task")}',
-            "--display_data=false",
-        ]
-        if cfg.get("robot_mode") == "bi":
-            args = [
-                PYTHON, "-m", "lerobot.scripts.lerobot_record",
-                "--robot.type=bi_so_follower",
-                f'--robot.left_arm_config.port={cfg["left_follower_port"]}',
-                f'--robot.right_arm_config.port={cfg["right_follower_port"]}',
-                "--teleop.type=bi_so_leader",
-                f'--teleop.left_arm_config.port={cfg["left_leader_port"]}',
-                f'--teleop.right_arm_config.port={cfg["right_leader_port"]}',
-            ] + base
-        else:
-            args = [
-                PYTHON, "-m", "lerobot.scripts.lerobot_record",
-                "--robot.type=so101_follower",
-                f'--robot.port={cfg["follower_port"]}',
-                f'--robot.id={cfg.get("robot_id", "my_so101_follower_1")}',
-                "--teleop.type=so101_leader",
-                f'--teleop.port={cfg["leader_port"]}',
-                f'--teleop.id={cfg.get("teleop_id", "my_so101_leader_1")}',
-            ] + base
-        return {"ok": proc_mgr.start("record", args)}
+        requested_resume, resume_enabled = resolve_record_resume(cfg)
+        args = build_record_args(PYTHON, cfg, resume_enabled)
+        return {
+            "ok": proc_mgr.start("record", args),
+            "resume_requested": requested_resume,
+            "resume_enabled": resume_enabled,
+        }
 
     # ─── API: Calibrate ────────────────────────────────────────────────────
     @app.get("/api/calibrate/file")
@@ -646,23 +501,7 @@ def create_app(
     async def api_calibrate_start(data: dict):
         if proc_mgr.is_running("calibrate"):
             return {"ok": False, "error": "Already running"}
-        robot_type = data.get("robot_type", "so101_follower")
-        robot_id = data.get("robot_id", "my_so101_follower_1")
-        port = data.get("port", "/dev/follower_arm_1")
-        if "leader" in robot_type:
-            args = [
-                PYTHON, "-m", "lerobot.scripts.lerobot_calibrate",
-                f"--teleop.type={robot_type}",
-                f"--teleop.port={port}",
-                f"--teleop.id={robot_id}",
-            ]
-        else:
-            args = [
-                PYTHON, "-m", "lerobot.scripts.lerobot_calibrate",
-                f"--robot.type={robot_type}",
-                f"--robot.port={port}",
-                f"--robot.id={robot_id}",
-            ]
+        args = build_calibrate_args(PYTHON, data)
         return {"ok": proc_mgr.start("calibrate", args)}
 
     # ─── API: Motor Setup ──────────────────────────────────────────────────
@@ -670,20 +509,7 @@ def create_app(
     async def api_motor_setup_start(data: dict):
         if proc_mgr.is_running("motor_setup"):
             return {"ok": False, "error": "Already running"}
-        robot_type = data.get("robot_type", "so101_follower")
-        port = data.get("port", "/dev/follower_arm_1")
-        if "leader" in robot_type:
-            args = [
-                PYTHON, "-m", "lerobot.scripts.lerobot_setup_motors",
-                f"--teleop.type={robot_type}",
-                f"--teleop.port={port}",
-            ]
-        else:
-            args = [
-                PYTHON, "-m", "lerobot.scripts.lerobot_setup_motors",
-                f"--robot.type={robot_type}",
-                f"--robot.port={port}",
-            ]
+        args = build_motor_setup_args(PYTHON, data)
         return {"ok": proc_mgr.start("motor_setup", args)}
 
     # ─── WebSocket ─────────────────────────────────────────────────────────

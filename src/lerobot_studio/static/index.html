@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>LeRobot Setup Tool</title>
+  <title>LeRobot Studio</title>
   <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
@@ -13,7 +13,7 @@
     <header>
       <div class="header-left">
         <span class="logo">🤖</span>
-        <h1>LeRobot <span style="color:var(--text2);font-weight:400">Setup Tool</span></h1>
+        <h1>LeRobot <span style="color:var(--text2);font-weight:400">Studio</span></h1>
       </div>
       <div class="header-right">
         <span id="ws-dot" class="dot red" title="WebSocket disconnected"></span>
@@ -38,7 +38,18 @@
       <section id="tab-status" class="tab active">
         <div class="section-header">
           <h2>System Status</h2>
-          <button onclick="StatusTab.refresh()" class="btn-sm">↺ Refresh</button>
+          <span id="status-last-update" style="font-size:11px; color:var(--text2); margin-left:auto;"></span>
+          <button id="status-refresh-btn" onclick="StatusTab.refresh()" class="btn-sm">↺ Refresh</button>
+        </div>
+
+        <div class="quick-guide">
+          <h3>Quick Check (30 seconds)</h3>
+          <p>Use this page first before setup. Confirm all required devices are detected and no process is stuck.</p>
+          <div class="quick-steps">
+            <div class="quick-step"><b>1)</b> Check camera list</div>
+            <div class="quick-step"><b>2)</b> Check arm ports</div>
+            <div class="quick-step"><b>3)</b> Confirm all processes are idle</div>
+          </div>
         </div>
 
         <div class="status-grid">
@@ -62,47 +73,64 @@
         <div class="section-header">
           <h2>Teleoperation</h2>
           <div class="mode-toggle">
-            <label>Mode:</label>
+            <label>Control Mode:</label>
             <button id="teleop-mode-single" class="toggle active" onclick="TeleopTab.setMode('single')">Single Arm</button>
             <button id="teleop-mode-bi"     class="toggle"        onclick="TeleopTab.setMode('bi')">Bi-Arm</button>
+            <span id="teleop-loop-pill" class="perf-pill idle">Loop: --</span>
+          </div>
+        </div>
+
+        <div class="quick-guide">
+          <h3>Teleop Flow</h3>
+          <p>Choose arm ports, verify camera feeds, then start teleoperation. If something moves wrong, press Stop immediately.</p>
+          <div class="quick-steps">
+            <div class="quick-step"><b>1)</b> Set arm ports/IDs</div>
+            <div class="quick-step"><b>2)</b> Confirm camera feeds</div>
+            <div class="quick-step"><b>3)</b> Press Start Teleop</div>
           </div>
         </div>
 
         <div class="two-col">
           <!-- Config -->
           <div class="card">
-            <h3>Config</h3>
+            <h3>Step 1: Arm Connections</h3>
+            <div class="field-help">Single Arm controls one leader + one follower. Bi-Arm controls left/right pairs.</div>
             <div id="teleop-single-cfg">
-              <label>Follower Port</label>
-              <input id="teleop-follower-port" type="text" value="/dev/follower_arm_1" />
-              <label>Follower ID</label>
-              <input id="teleop-robot-id" type="text" value="my_so101_follower_1" />
-              <label>Leader Port</label>
-              <input id="teleop-leader-port" type="text" value="/dev/leader_arm_1" />
-              <label>Leader ID</label>
-              <input id="teleop-teleop-id" type="text" value="my_so101_leader_1" />
+              <label>Follower Arm Port</label>
+              <input id="teleop-follower-port" type="text" value="/dev/follower_arm_1" placeholder="Example: /dev/follower_arm_1" />
+              <label>Follower Arm ID</label>
+              <input id="teleop-robot-id" type="text" value="my_so101_follower_1" placeholder="Example: my_so101_follower_1" />
+              <label>Leader Arm Port</label>
+              <input id="teleop-leader-port" type="text" value="/dev/leader_arm_1" placeholder="Example: /dev/leader_arm_1" />
+              <label>Leader Arm ID</label>
+              <input id="teleop-teleop-id" type="text" value="my_so101_leader_1" placeholder="Example: my_so101_leader_1" />
             </div>
             <div id="teleop-bi-cfg" class="hidden">
-              <label>Left Follower Port</label>
-              <input id="teleop-left-follower" type="text" value="/dev/follower_arm_1" />
-              <label>Right Follower Port</label>
-              <input id="teleop-right-follower" type="text" value="/dev/follower_arm_2" />
-              <label>Left Leader Port</label>
-              <input id="teleop-left-leader" type="text" value="/dev/leader_arm_1" />
-              <label>Right Leader Port</label>
-              <input id="teleop-right-leader" type="text" value="/dev/leader_arm_2" />
+              <label>Left Follower Arm Port</label>
+              <input id="teleop-left-follower" type="text" value="/dev/follower_arm_1" placeholder="Example: /dev/follower_arm_1" />
+              <label>Right Follower Arm Port</label>
+              <input id="teleop-right-follower" type="text" value="/dev/follower_arm_2" placeholder="Example: /dev/follower_arm_2" />
+              <label>Left Leader Arm Port</label>
+              <input id="teleop-left-leader" type="text" value="/dev/leader_arm_1" placeholder="Example: /dev/leader_arm_1" />
+              <label>Right Leader Arm Port</label>
+              <input id="teleop-right-leader" type="text" value="/dev/leader_arm_2" placeholder="Example: /dev/leader_arm_2" />
             </div>
 
             <div class="spacer"></div>
+            <div class="safety-banner" style="background:rgba(248,81,73,0.12); border:1px solid rgba(248,81,73,0.35); border-radius:6px; padding:8px 12px; margin-bottom:8px; font-size:12px; color:var(--red); display:flex; align-items:center; gap:8px;">
+              <span style="font-size:16px;">⚠️</span>
+              <span>If the arm moves unexpectedly, press <b>Stop</b> immediately. Keep hands clear of the arm during operation.</span>
+            </div>
             <div class="btn-row">
-              <button id="teleop-start-btn" class="btn-primary" onclick="TeleopTab.start()">▶ Start</button>
+              <button id="teleop-start-btn" class="btn-primary" onclick="TeleopTab.start()">▶ Start Teleop</button>
               <button id="teleop-stop-btn"  class="btn-danger hidden" onclick="TeleopTab.stop()">■ Stop</button>
             </div>
           </div>
 
           <!-- Camera Feeds -->
           <div class="card">
-            <h3>Camera Feeds</h3>
+            <h3>Step 2: Camera Feeds</h3>
+            <div class="field-help">Set only cameras you need. Empty fields are ignored.</div>
             <div id="teleop-cameras" class="camera-cfg">
               <div class="cam-row">
                 <span>front_1</span>
@@ -124,10 +152,14 @@
         <!-- Terminal -->
         <div class="card terminal-card">
           <div class="terminal-header">
-            <span>Terminal — teleop</span>
+            <span>Advanced Log — teleop</span>
             <button onclick="TeleopTab.clearLog()" class="btn-xs">Clear</button>
           </div>
           <div id="teleop-log" class="terminal"></div>
+          <div class="stdin-row">
+            <input id="teleop-stdin" type="text" placeholder="Optional: type only if teleop asks for input" />
+            <button onclick="TeleopTab.sendInput()" class="btn-sm">Send ↵</button>
+          </div>
         </div>
       </section>
 
@@ -136,33 +168,52 @@
         <div class="section-header">
           <h2>Record Dataset</h2>
           <div class="mode-toggle">
-            <label>Mode:</label>
+            <label>Recording Mode:</label>
             <button id="record-mode-single" class="toggle active" onclick="RecordTab.setMode('single')">Single</button>
             <button id="record-mode-bi"     class="toggle"        onclick="RecordTab.setMode('bi')">Bi-Arm</button>
+          </div>
+        </div>
+
+        <div class="quick-guide">
+          <h3>Recording Flow</h3>
+          <p>Create a plan, connect ports/cameras, then start recording. Save or discard each episode with buttons below.</p>
+          <div class="quick-steps">
+            <div class="quick-step"><b>1)</b> Fill recording plan</div>
+            <div class="quick-step"><b>2)</b> Set arm/camera ports</div>
+            <div class="quick-step"><b>3)</b> Start and save episodes</div>
           </div>
         </div>
 
         <div class="two-col">
           <!-- Config -->
           <div class="card">
-            <h3>Dataset Config</h3>
+            <h3>Step 1: Recording Plan</h3>
             <label>Task Description</label>
-            <input id="record-task" type="text" placeholder="Grab the red ball and sort by color" />
-            <label>Num Episodes</label>
+            <input id="record-task" type="text" placeholder="Example: Pick up red block and place in left bin" />
+            <label>Number of Episodes</label>
             <input id="record-episodes" type="number" value="50" min="1" />
-            <label>Repo ID (HuggingFace)</label>
-            <input id="record-repo" type="text" value="user/my-dataset" />
+            <div class="field-help">Start with 20-50 for first test run.</div>
+            <label>Dataset Repo ID (Hugging Face)</label>
+            <input id="record-repo" type="text" value="user/my-dataset" placeholder="Example: yourname/my-dataset" oninput="RecordTab.validateRepoId()" />
+            <div id="record-repo-error" style="display:none; color:var(--red); font-size:11px; margin-top:4px; padding:4px 8px; background:rgba(248,81,73,0.1); border-radius:4px;"></div>
+            <div class="field-help" style="margin-top:8px; margin-bottom:0;">
+              <label style="display:flex; align-items:center; gap:8px; margin:0; font-size:12px; color:var(--text);">
+                <input id="record-resume" type="checkbox" style="width:auto; accent-color: var(--accent);" />
+                Resume existing dataset if it already exists
+              </label>
+              Prevents crash when the target dataset folder already exists.
+            </div>
 
-            <h3 style="margin-top:16px">Robot Ports</h3>
+            <h3 style="margin-top:16px">Step 2: Arm Ports</h3>
             <div id="record-single-cfg">
-              <label>Follower Port</label>
-              <input id="record-follower-port" type="text" value="/dev/follower_arm_1" />
-              <label>Follower ID</label>
-              <input id="record-robot-id" type="text" value="my_so101_follower_1" />
-              <label>Leader Port</label>
-              <input id="record-leader-port" type="text" value="/dev/leader_arm_1" />
-              <label>Leader ID</label>
-              <input id="record-teleop-id" type="text" value="my_so101_leader_1" />
+              <label>Follower Arm Port</label>
+              <input id="record-follower-port" type="text" value="/dev/follower_arm_1" placeholder="Example: /dev/follower_arm_1" />
+              <label>Follower Arm ID</label>
+              <input id="record-robot-id" type="text" value="my_so101_follower_1" placeholder="Example: my_so101_follower_1" />
+              <label>Leader Arm Port</label>
+              <input id="record-leader-port" type="text" value="/dev/leader_arm_1" placeholder="Example: /dev/leader_arm_1" />
+              <label>Leader Arm ID</label>
+              <input id="record-teleop-id" type="text" value="my_so101_leader_1" placeholder="Example: my_so101_leader_1" />
             </div>
             <div id="record-bi-cfg" class="hidden">
               <label>Left Follower</label>
@@ -175,7 +226,8 @@
               <input id="record-right-leader" type="text" value="/dev/leader_arm_2" />
             </div>
 
-            <h3 style="margin-top:16px">Camera Feeds</h3>
+            <h3 style="margin-top:16px">Step 3: Camera Feeds</h3>
+            <div class="field-help">Set only cameras you want to save in the dataset.</div>
             <div class="cam-row">
               <span>front_1</span>
               <input id="rc-front1" type="text" value="/dev/follower_cam_1" placeholder="/dev/…" />
@@ -191,7 +243,7 @@
 
             <div class="spacer"></div>
             <div class="btn-row">
-              <button id="record-start-btn" class="btn-primary" onclick="RecordTab.start()">▶ Start</button>
+              <button id="record-start-btn" class="btn-primary" onclick="RecordTab.start()">▶ Start Recording</button>
               <button id="record-stop-btn"  class="btn-danger hidden" onclick="RecordTab.stop()">■ Stop</button>
             </div>
           </div>
@@ -211,10 +263,11 @@
             <div class="info-box" style="margin:10px 0 8px;font-size:11px">
               ℹ️ After each episode: <kbd>→</kbd> save &nbsp;·&nbsp; <kbd>←</kbd> discard &nbsp;·&nbsp; <kbd>Esc</kbd> end session
             </div>
-            <div class="btn-row" style="margin-top:4px">
-               <button class="btn-sm" onclick="RecordTab.sendKey('right')">✓ Save →</button>
-               <button class="btn-sm btn-warn" onclick="RecordTab.sendKey('left')">✗ Discard ←</button>
-               <button class="btn-sm" onclick="RecordTab.sendKey('escape')">⏹ End</button>
+            <div class="btn-row" id="record-ep-controls" style="margin-top:4px">
+               <button class="btn-sm" onclick="RecordTab.sendKey('right')" disabled>✓ Save →</button>
+               <button class="btn-sm btn-warn" onclick="RecordTab.sendKey('left')" disabled>✗ Discard ←</button>
+               <button class="btn-sm" onclick="RecordTab.sendKey('escape')" disabled>⏹ End</button>
+               <div id="record-ep-guard" style="font-size:11px; color:var(--text2); margin-left:8px; display:flex; align-items:center;">Start recording to enable controls</div>
              </div>
             <h3 style="margin-top:16px">Camera Feeds</h3>
             <div id="record-feeds" class="feed-grid"></div>
@@ -223,7 +276,7 @@
 
         <div class="card terminal-card">
           <div class="terminal-header">
-            <span>Terminal — record</span>
+            <span>Advanced Log — record</span>
             <button onclick="RecordTab.clearLog()" class="btn-xs">Clear</button>
           </div>
           <div id="record-log" class="terminal"></div>
@@ -234,20 +287,30 @@
       <section id="tab-calibrate" class="tab">
         <div class="section-header"><h2>Calibration</h2></div>
 
+        <div class="quick-guide">
+          <h3>Calibration Flow</h3>
+          <p>Select arm info, check file status, then start calibration and follow on-screen prompts.</p>
+          <div class="quick-steps">
+            <div class="quick-step"><b>1)</b> Set type, ID, port</div>
+            <div class="quick-step"><b>2)</b> Check file status</div>
+            <div class="quick-step"><b>3)</b> Start calibration</div>
+          </div>
+        </div>
+
         <div class="two-col">
           <div class="card">
-            <h3>Device</h3>
-            <label>Robot / Teleop Type</label>
+            <h3>Step 1: Arm Selection</h3>
+            <label>Arm Role Type</label>
             <select id="cal-type" onchange="CalibrateTab.checkFile()">
-              <option value="so101_follower">so101_follower</option>
-              <option value="so100_follower">so100_follower</option>
-              <option value="so101_leader">so101_leader</option>
-              <option value="so100_leader">so100_leader</option>
+              <option value="so101_follower">Follower (SO101)</option>
+              <option value="so100_follower">Follower (SO100)</option>
+              <option value="so101_leader">Leader (SO101)</option>
+              <option value="so100_leader">Leader (SO100)</option>
             </select>
-            <label>Robot ID</label>
-            <input id="cal-id" type="text" value="my_so101_follower_1" onkeyup="CalibrateTab.checkFile()" />
-            <label>Port</label>
-            <input id="cal-port" type="text" value="/dev/follower_arm_1" />
+            <label>Arm ID</label>
+            <input id="cal-id" type="text" value="my_so101_follower_1" placeholder="Example: my_so101_follower_1" onkeyup="CalibrateTab.checkFile()" />
+            <label>Arm Port</label>
+            <input id="cal-port" type="text" value="/dev/follower_arm_1" placeholder="Example: /dev/follower_arm_1" />
 
             <div class="info-box" style="margin-top:12px; padding:8px 10px;">
               <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
@@ -259,7 +322,7 @@
 
             <div class="spacer"></div>
             <div class="btn-row">
-              <button id="cal-start-btn" class="btn-primary" onclick="CalibrateTab.start()">▶ Start</button>
+              <button id="cal-start-btn" class="btn-primary" onclick="CalibrateTab.start()">▶ Start Calibration</button>
               <button id="cal-stop-btn"  class="btn-danger hidden" onclick="CalibrateTab.stop()">■ Stop</button>
             </div>
           </div>
@@ -276,10 +339,10 @@
                 <div style="display:flex; gap:6px; align-items:center;">
                   <select id="cal-file-filter" class="btn-sm" style="padding:4px 8px; font-size:11px;" onchange="CalibrateTab.renderFiles()">
                     <option value="all">All Types</option>
-                    <option value="so101_follower">so101_follower</option>
-                    <option value="so100_follower">so100_follower</option>
-                    <option value="so101_leader">so101_leader</option>
-                    <option value="so100_leader">so100_leader</option>
+                    <option value="so101_follower">Follower (SO101)</option>
+                    <option value="so100_follower">Follower (SO100)</option>
+                    <option value="so101_leader">Leader (SO101)</option>
+                    <option value="so100_leader">Leader (SO100)</option>
                   </select>
                   <button onclick="CalibrateTab.refreshFiles()" class="btn-xs" style="padding:4px 6px;">↺</button>
                 </div>
@@ -300,12 +363,12 @@
 
           <div class="card terminal-card" style="flex: 1; margin-bottom: 0; display: flex; flex-direction: column;">
             <div class="terminal-header">
-              <span>Terminal — calibrate</span>
+              <span>Advanced Log — calibrate</span>
               <button onclick="CalibrateTab.clearLog()" class="btn-xs">Clear</button>
             </div>
             <div id="cal-log" class="terminal" style="flex: 1; height: 320px;"></div>
             <div class="stdin-row">
-              <input id="cal-stdin" type="text" placeholder="Send input to process…" />
+              <input id="cal-stdin" type="text" placeholder="Optional: type only if calibration asks for input" />
               <button onclick="CalibrateTab.sendInput()" class="btn-sm">Send ↵</button>
             </div>
           </div>
@@ -330,20 +393,27 @@
           <div style="margin-top: 32px; padding-top: 20px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;">
             <div id="rules-status" class="rules-status" style="font-weight: 500; font-size: 15px;">Waiting for assignments...</div>
             <button onclick="DeviceSetupTab.applyRules()" class="btn-primary" style="padding: 12px 24px; font-size: 16px; font-weight: bold; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.2);">
-              ⚡ Save & Apply Assignments
+              ⚡ Save Camera Mapping
             </button>
           </div>
 
           <div style="margin-top: 24px; text-align: center;">
             <button onclick="DeviceSetupTab.toggleRulesPanel()" class="btn-xs" style="background:transparent; color:var(--text2); border:none; text-decoration: underline; cursor: pointer; font-size: 13px;">
-              <span id="rules-toggle-icon">▶</span> View generated udev rules (Advanced)
+              <span id="rules-toggle-icon">▶</span> Advanced rules view
             </button>
             <div id="rules-advanced-panel" style="display: none; margin-top: 12px; border:1px solid var(--border); padding: 12px; border-radius: 6px; background:var(--bg-card); text-align: left;">
               <div class="rules-row" style="margin-bottom: 8px; display: flex; gap: 8px;">
                 <button onclick="DeviceSetupTab.previewRules()" class="btn-sm">Preview changes</button>
                 <button onclick="DeviceSetupTab.showCurrent()"  class="btn-sm">Show current file</button>
               </div>
-              <pre id="rules-preview" class="rules-box" style="margin:0; background:var(--bg-app); border:1px solid var(--border); padding:10px; border-radius:4px; font-family:monospace; color:var(--text1); white-space:pre-wrap; font-size:12px;">Press "Preview changes" to see generated rules.</pre>
+              <div class="rules-help">Readable view first. Use raw text only if needed.</div>
+              <div id="rules-readable" class="rules-readable">
+                <div class="rules-empty">Press "Preview changes" to generate readable rules.</div>
+              </div>
+              <details class="rules-raw-wrap">
+                <summary>Raw rules text</summary>
+                <pre id="rules-preview" class="rules-box" style="margin:8px 0 0 0;">Press "Preview changes" to see generated rules.</pre>
+              </details>
             </div>
           </div>
         </div>
@@ -390,27 +460,37 @@
       <section id="tab-motor-setup" class="tab">
         <div class="section-header"><h2>Motor Setup</h2></div>
 
+        <div class="quick-guide">
+          <h3>Motor Setup Flow</h3>
+          <p>Use this once per arm to set motor IDs and communication speed.</p>
+          <div class="quick-steps">
+            <div class="quick-step"><b>1)</b> Choose arm type</div>
+            <div class="quick-step"><b>2)</b> Set arm port</div>
+            <div class="quick-step"><b>3)</b> Start and follow prompts</div>
+          </div>
+        </div>
+
         <div class="two-col">
           <div class="card">
-            <h3>Device</h3>
-            <label>Robot / Teleop Type</label>
+            <h3>Step 1: Connect Arm</h3>
+            <label>Arm Role Type</label>
             <select id="ms-type">
-              <option value="so101_follower">so101_follower</option>
-              <option value="so100_follower">so100_follower</option>
-              <option value="so101_leader">so101_leader</option>
-              <option value="so100_leader">so100_leader</option>
+              <option value="so101_follower">Follower (SO101)</option>
+              <option value="so100_follower">Follower (SO100)</option>
+              <option value="so101_leader">Leader (SO101)</option>
+              <option value="so100_leader">Leader (SO100)</option>
             </select>
-            <label>Port</label>
-            <input id="ms-port" type="text" value="/dev/follower_arm_1" />
+            <label>Arm Port</label>
+            <input id="ms-port" type="text" value="/dev/follower_arm_1" placeholder="Example: /dev/follower_arm_1" />
 
             <div class="info-box" style="margin-top:12px">
-              ℹ️ Run once per arm to assign motor IDs and set baudrate.<br/>
-              Follow the prompts in the terminal below.
+              ℹ️ Run once for each arm to assign motor IDs and set baudrate.<br/>
+              If asked for keyboard input, use the field below.
             </div>
 
             <div class="spacer"></div>
             <div class="btn-row">
-              <button id="ms-start-btn" class="btn-primary" onclick="MotorSetupTab.start()">▶ Start</button>
+              <button id="ms-start-btn" class="btn-primary" onclick="MotorSetupTab.start()">▶ Start Setup</button>
               <button id="ms-stop-btn"  class="btn-danger hidden" onclick="MotorSetupTab.stop()">■ Stop</button>
             </div>
           </div>
@@ -423,12 +503,12 @@
 
         <div class="card terminal-card">
           <div class="terminal-header">
-            <span>Terminal — motor_setup</span>
+            <span>Advanced Log — motor_setup</span>
             <button onclick="MotorSetupTab.clearLog()" class="btn-xs">Clear</button>
           </div>
           <div id="ms-log" class="terminal"></div>
           <div class="stdin-row">
-            <input id="ms-stdin" type="text" placeholder="Send input to process…" />
+            <input id="ms-stdin" type="text" placeholder="Optional: type only if setup asks for input" />
             <button onclick="MotorSetupTab.sendInput()" class="btn-sm">Send ↵</button>
           </div>
         </div>

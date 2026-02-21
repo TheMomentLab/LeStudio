@@ -3,16 +3,16 @@ requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "lerobot-setup-tool"
+name = "lerobot-studio"
 version = "0.1.0"
-description = "Web-based setup tool for LeRobot robots"
+description = "LeRobot Studio: Web-based GUI for LeRobot robot arm operations"
 readme = "README.md"
 license = {text = "Apache-2.0"}
 requires-python = ">=3.10"
 authors = [
     {name = "jinhyuk2me"},
 ]
-keywords = ["lerobot", "robotics", "setup", "calibration", "teleop"]
+keywords = ["lerobot", "robotics", "gui", "calibration", "teleop"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -31,15 +31,15 @@ dependencies = [
 ]
 
 [project.scripts]
-lerobot-setup = "lerobot_setup.cli:main"
+lerobot-studio = "lerobot_studio.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/jinhyuk2me/lerobot-setup-tool"
-Repository = "https://github.com/jinhyuk2me/lerobot-setup-tool"
-Issues = "https://github.com/jinhyuk2me/lerobot-setup-tool/issues"
+Homepage = "https://github.com/jinhyuk2me/lerobot-studio"
+Repository = "https://github.com/jinhyuk2me/lerobot-studio"
+Issues = "https://github.com/jinhyuk2me/lerobot-studio/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-lerobot_setup = ["static/**"]
+lerobot_studio = ["static/**"]

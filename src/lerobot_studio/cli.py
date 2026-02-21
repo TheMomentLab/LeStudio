@@ -6,8 +6,9 @@ from pathlib import Path
 def find_lerobot_src() -> Path | None:
     try:
         import lerobot
-        if hasattr(lerobot, "__file__") and lerobot.__file__ is not None:
-            return Path(lerobot.__file__).parent
+        module_file = getattr(lerobot, "__file__", None)
+        if isinstance(module_file, str) and module_file:
+            return Path(module_file).parent
     except ImportError:
         pass
 
@@ -23,8 +24,8 @@ def find_lerobot_src() -> Path | None:
 
 def main():
     parser = argparse.ArgumentParser(
-        prog="lerobot-setup",
-        description="Web-based setup tool for LeRobot robots",
+        prog="lerobot-studio",
+        description="LeRobot Studio",
     )
     parser.add_argument(
         "--port", type=int, default=7860,
@@ -40,7 +41,7 @@ def main():
     )
     parser.add_argument(
         "--config-dir", type=Path, default=None,
-        help="Config directory (default: ~/.config/lerobot-setup)",
+        help="Config directory (default: ~/.config/lerobot-studio)",
     )
     parser.add_argument(
         "--rules-path", type=Path, default=Path("/etc/udev/rules.d/99-lerobot.rules"),
@@ -61,10 +62,23 @@ def main():
         print(f"ERROR: --lerobot-path does not exist: {lerobot_src}", file=sys.stderr)
         sys.exit(1)
 
-    config_dir = args.config_dir or Path.home() / ".config" / "lerobot-setup"
+    if args.config_dir is not None:
+        config_dir = args.config_dir
+    else:
+        new_default = Path.home() / ".config" / "lerobot-studio"
+        moment_default = Path.home() / ".config" / "moment-lerobot-studio"
+        legacy_default = Path.home() / ".config" / "lerobot-setup"
+        if new_default.exists():
+            config_dir = new_default
+        elif moment_default.exists():
+            config_dir = moment_default
+        elif legacy_default.exists():
+            config_dir = legacy_default
+        else:
+            config_dir = new_default
     config_dir.mkdir(parents=True, exist_ok=True)
 
-    from lerobot_setup.server import create_app
+    from lerobot_studio.server import create_app
     import uvicorn
 
     app = create_app(
@@ -73,7 +87,7 @@ def main():
         rules_path=args.rules_path,
     )
 
-    print(f"🤖  LeRobot Setup Tool v{_version()}")
+    print(f"🤖  LeRobot Studio v{_version()}")
     print(f"    lerobot: {lerobot_src}")
     print(f"    config:  {config_dir}")
     print(f"    Open:    http://localhost:{args.port}\n")
@@ -82,5 +96,5 @@ def main():
 
 
 def _version() -> str:
-    from lerobot_setup import __version__
+    from lerobot_studio import __version__
     return __version__

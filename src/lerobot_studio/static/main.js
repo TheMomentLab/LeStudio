@@ -114,6 +114,14 @@ const WS = {
   },
 
   onOutput(msg) {
+    if (msg.process === 'teleop') {
+      const perfMatch = msg.line.match(/^Teleop loop time:\s*([0-9.]+)ms\s*\((\d+) Hz\)/);
+      if (perfMatch) {
+        updateTeleopLoopPerf(parseFloat(perfMatch[1]), parseInt(perfMatch[2], 10));
+        return;
+      }
+    }
+
     const rowMatch = msg.line.match(/^([a-zA-Z0-9_]+)\s+\|\s+(-?\d+)\s+\|\s+(-?\d+)\s+\|\s+(-?\d+)\s*$/);
     const isHeader = /^NAME\s+\|\s+MIN\s+\|\s+POS/.test(msg.line);
     const isSeparator = /^-{10,}\s*$/.test(msg.line);
@@ -202,10 +210,18 @@ function saveConfig() {
 ══════════════════════════════════════════════════════════════════════════════ */
 const StatusTab = {
   async refresh() {
+    const btn = document.getElementById('status-refresh-btn');
+    if (btn) { btn.disabled = true; btn.textContent = '↺ Refreshing…'; }
+
     const data = await api.get('/api/devices');
     state.devices = data;
     this.renderCameras(data.cameras);
     this.renderArms(data.arms);
+
+    const ts = new Date().toLocaleTimeString();
+    const updateEl = document.getElementById('status-last-update');
+    if (updateEl) updateEl.textContent = `Last updated: ${ts}`;
+    if (btn) { btn.disabled = false; btn.textContent = '↺ Refresh'; }
   },
 
   renderCameras(cameras) {
@@ -305,6 +321,34 @@ const TeleopTab = {
 
   async start() {
     const cfg = this.buildConfig();
+    const errors = [];
+
+    if (this.mode === 'single') {
+      if (!cfg.follower_port || !cfg.follower_port.startsWith('/dev/'))
+        errors.push('Follower arm port is missing or invalid');
+      if (!cfg.robot_id)
+        errors.push('Follower arm ID is required');
+      if (!cfg.leader_port || !cfg.leader_port.startsWith('/dev/'))
+        errors.push('Leader arm port is missing or invalid');
+      if (!cfg.teleop_id)
+        errors.push('Leader arm ID is required');
+    } else {
+      if (!cfg.left_follower_port || !cfg.left_follower_port.startsWith('/dev/'))
+        errors.push('Left follower port is missing or invalid');
+      if (!cfg.right_follower_port || !cfg.right_follower_port.startsWith('/dev/'))
+        errors.push('Right follower port is missing or invalid');
+      if (!cfg.left_leader_port || !cfg.left_leader_port.startsWith('/dev/'))
+        errors.push('Left leader port is missing or invalid');
+      if (!cfg.right_leader_port || !cfg.right_leader_port.startsWith('/dev/'))
+        errors.push('Right leader port is missing or invalid');
+    }
+
+    if (errors.length) {
+      this.clearLog();
+      errors.forEach(e => appendLog('teleop-log', `[ERROR] ${e}`, 'error'));
+      return;
+    }
+
     this.clearLog();
     const res = await api.post('/api/teleop/start', cfg);
     if (!res.ok) { appendLog('teleop-log', `[ERROR] ${res.error}`, 'error'); return; }
@@ -313,6 +357,10 @@ const TeleopTab = {
 
   async stop() {
     await api.post('/api/process/teleop/stop');
+  },
+
+  async sendInput() {
+    await sendProcessInput('teleop', 'teleop-stdin', 'teleop-log', { allowEmpty: true });
   },
 
   showFeeds() {
@@ -324,14 +372,18 @@ const TeleopTab = {
     renderFeeds('teleop-feeds', cameras);
   },
 
-  clearLog() { document.getElementById('teleop-log').innerHTML = ''; },
+  clearLog() { clearProcessLog('teleop-log'); },
 
   syncBtn() {
-    const running = state.procStatus.teleop;
-    document.getElementById('teleop-start-btn').classList.toggle('hidden', running);
-    document.getElementById('teleop-stop-btn').classList.toggle('hidden',  !running);
+    syncProcessButtons('teleop', 'teleop-start-btn', 'teleop-stop-btn', () => {
+      updateTeleopLoopPerf(null, null);
+    });
   },
 };
+
+document.getElementById('teleop-stdin').addEventListener('keydown', e => {
+  if (e.key === 'Enter') TeleopTab.sendInput();
+});
 
 /* ═══════════════════════════════════════════════════════════════════════════════
    RECORD TAB
@@ -361,6 +413,8 @@ const RecordTab = {
     setVal('record-task',     cfg.record_task     || '');
     setVal('record-episodes', cfg.record_episodes || 50);
     setVal('record-repo',     cfg.record_repo_id  || 'user/my-dataset');
+    const resumeEl = document.getElementById('record-resume');
+    if (resumeEl) resumeEl.checked = !!cfg.record_resume;
     document.getElementById('record-ep-total').textContent = cfg.record_episodes || '—';
     if (cfg.cameras) {
       setVal('rc-front1', cfg.cameras.front_1 || '');
@@ -384,6 +438,7 @@ const RecordTab = {
       record_task:         getVal('record-task'),
       record_episodes:     ep,
       record_repo_id:      getVal('record-repo'),
+      record_resume:       !!document.getElementById('record-resume')?.checked,
       cameras: {
         front_1: getVal('rc-front1'),
         top_1:   getVal('rc-top1'),
@@ -397,10 +452,17 @@ const RecordTab = {
   },
 
   async start() {
+    if (!this.validateRepoId()) {
+      appendLog('record-log', '[ERROR] Repo ID must be in "user/dataset" format (e.g. yourname/my-dataset)', 'error');
+      return;
+    }
     const cfg = this.buildConfig();
     this.clearLog();
     const res = await api.post('/api/record/start', cfg);
     if (!res.ok) { appendLog('record-log', `[ERROR] ${res.error}`, 'error'); return; }
+    if (res.resume_requested && !res.resume_enabled) {
+      appendLog('record-log', '[INFO] Resume was disabled because target dataset does not exist yet. Starting a fresh dataset.', 'info');
+    }
     this.showFeeds();
   },
 
@@ -408,9 +470,30 @@ const RecordTab = {
     await api.post('/api/process/record/stop');
   },
 
-  // Send keyboard shortcut as stdin key name
   async sendKey(key) {
     await api.post('/api/process/record/input', { text: key });
+  },
+
+  validateRepoId() {
+    const repo = getVal('record-repo').trim();
+    const input = document.getElementById('record-repo');
+    const errorEl = document.getElementById('record-repo-error');
+    const valid = /^[a-zA-Z0-9_-]+\/[a-zA-Z0-9_.-]+$/.test(repo);
+
+    if (!repo) {
+      input.style.borderColor = 'var(--red)';
+      if (errorEl) { errorEl.style.display = 'block'; errorEl.textContent = 'Repo ID is required'; }
+      return false;
+    }
+    if (!valid) {
+      input.style.borderColor = 'var(--red)';
+      if (errorEl) { errorEl.style.display = 'block'; errorEl.textContent = 'Must be "user/dataset" format (e.g. yourname/my-dataset)'; }
+      return false;
+    }
+
+    input.style.borderColor = 'var(--border)';
+    if (errorEl) errorEl.style.display = 'none';
+    return true;
   },
 
   showFeeds() {
@@ -437,12 +520,17 @@ const RecordTab = {
     }
   },
 
-  clearLog() { document.getElementById('record-log').innerHTML = ''; },
+  clearLog() { clearProcessLog('record-log'); },
 
   syncBtn() {
-    const running = state.procStatus.record;
-    document.getElementById('record-start-btn').classList.toggle('hidden', running);
-    document.getElementById('record-stop-btn').classList.toggle('hidden',  !running);
+    const running = !!state.procStatus['record'];
+    syncProcessButtons('record', 'record-start-btn', 'record-stop-btn');
+    const controls = document.getElementById('record-ep-controls');
+    const guard = document.getElementById('record-ep-guard');
+    if (controls) {
+      controls.querySelectorAll('button').forEach(btn => { btn.disabled = !running; });
+      if (guard) guard.style.display = running ? 'none' : 'flex';
+    }
   },
 };
 
@@ -496,21 +584,15 @@ const CalibrateTab = {
   },
 
   async sendInput() {
-    const el  = document.getElementById('cal-stdin');
-    await api.post('/api/process/calibrate/input', { text: el.value });
-    appendLog('cal-log', `> ${el.value}`, 'info');
-    el.value = '';
+    await sendProcessInput('calibrate', 'cal-stdin', 'cal-log');
   },
 
   clearLog() { 
-    document.getElementById('cal-log').innerHTML = ''; 
-    MotorTable.clear();
+    clearProcessLog('cal-log', () => MotorTable.clear());
   },
 
   syncBtn() {
-    const running = state.procStatus.calibrate;
-    document.getElementById('cal-start-btn').classList.toggle('hidden', running);
-    document.getElementById('cal-stop-btn').classList.toggle('hidden',  !running);
+    syncProcessButtons('calibrate', 'cal-start-btn', 'cal-stop-btn');
   },
 
   async refreshArms() {
@@ -566,14 +648,14 @@ const CalibrateTab = {
 
   _fileCard(f) {
     return `
-      <div class="device-item" style="cursor:pointer; flex-wrap:wrap; position:relative; margin-bottom:4px; padding-right:50px;" onclick="CalibrateTab.selectFile('${f.id}', '${f.guessed_type}')">
+      <div class="device-item" style="cursor:pointer; flex-wrap:wrap; position:relative; margin-bottom:4px; padding-right:70px;" onclick="CalibrateTab.selectFile('${f.id}', '${f.guessed_type}')">
         <span class="dot green"></span>
         <div style="flex:1;">
           <div class="dname">${f.id}</div>
           <div class="dsub">${f.modified}</div>
         </div>
         <div style="position:absolute; right:12px; top:12px; display:flex; gap:4px;">
-          <button class="btn-xs" style="color:var(--red); border:1px solid rgba(248,81,73,0.3);" onclick="event.stopPropagation(); CalibrateTab.deleteFile('${f.id}', '${f.guessed_type}')">Del</button>
+          <button class="btn-xs" style="color:var(--red); border:1px solid rgba(248,81,73,0.3);" onclick="event.stopPropagation(); CalibrateTab.deleteFile('${f.id}', '${f.guessed_type}', '${f.modified}')">Delete…</button>
         </div>
       </div>
     `;
@@ -585,8 +667,9 @@ const CalibrateTab = {
     this.checkFile();
   },
 
-  async deleteFile(id, guessedType) {
-    if (!confirm(`Are you sure you want to delete calibration file for '${id}'?`)) return;
+  async deleteFile(id, guessedType, modified) {
+    const msg = `Delete calibration file?\n\nFile: ${id}\nType: ${guessedType}\nLast modified: ${modified || 'unknown'}\n\nThis cannot be undone. You will need to recalibrate.`;
+    if (!confirm(msg)) return;
     
     const res = await fetch(`/api/calibrate/file?robot_type=${guessedType}&robot_id=${id}`, {
       method: 'DELETE'
@@ -633,12 +716,12 @@ const DeviceSetupTab = {
     }
     el.innerHTML = this.cameras.map((cam, i) => {
       const roles = {
-        '(none)': '— Select camera position —',
-        'top_cam_1': 'Top Camera 1 (Left)',
-        'top_cam_2': 'Top Camera 2 (Right)',
-        'top_cam_3': 'Top Camera 3 (Extra)',
-        'follower_cam_1': 'Follower Camera 1 (Wrist)',
-        'follower_cam_2': 'Follower Camera 2 (Wrist)'
+        '(none)': 'Not used (skip this camera)',
+        'top_cam_1': 'Top Camera 1',
+        'top_cam_2': 'Top Camera 2',
+        'top_cam_3': 'Top Camera 3',
+        'follower_cam_1': 'Follower Camera 1',
+        'follower_cam_2': 'Follower Camera 2'
       };
       const curRole = this.assignments[cam.kernels] || '(none)';
       
@@ -653,7 +736,8 @@ const DeviceSetupTab = {
           <button class="btn-primary" style="opacity: 0.9; padding: 10px 20px; font-size: 14px; border-radius: 20px; pointer-events: none;">▶ View Stream</button>
         </div>
         <div class="cam-info" style="padding: 16px; background: var(--bg-card); flex: 1; display: flex; flex-direction: column;">
-          <div style="font-weight: 600; font-size: 15px; margin-bottom: 12px; color: var(--text1);">Where is this camera?</div>
+          <div style="font-weight: 600; font-size: 15px; margin-bottom: 6px; color: var(--text1);">Where is this camera?</div>
+          <div style="font-size: 12px; color: var(--text2); margin-bottom: 10px;">If this camera is not needed, choose "Not used".</div>
           <select style="width: 100%; font-size: 15px; padding: 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-app); color: var(--text1); cursor: pointer;" onchange="DeviceSetupTab.assign('${cam.kernels}', this.value)">
             ${opts}
           </select>
@@ -680,6 +764,57 @@ const DeviceSetupTab = {
 
   assign(kernels, role) {
     if (kernels) this.assignments[kernels] = role;
+    this.validateAssignments();
+  },
+
+  validateAssignments() {
+    const roleCounts = {};
+    const duplicates = new Set();
+    
+    for (const [kernels, role] of Object.entries(this.assignments)) {
+      if (role && role !== '(none)') {
+        if (roleCounts[role]) {
+          roleCounts[role].push(kernels);
+          duplicates.add(role);
+        } else {
+          roleCounts[role] = [kernels];
+        }
+      }
+    }
+    
+    const cards = document.querySelectorAll('.cam-card');
+    cards.forEach((card, idx) => {
+      const cam = this.cameras[idx];
+      if (!cam) return;
+      
+      const select = card.querySelector('select');
+      const existingError = card.querySelector('.dup-error');
+      const role = this.assignments[cam.kernels];
+      
+      if (role && role !== '(none)' && duplicates.has(role)) {
+        select.style.borderColor = 'var(--red)';
+        select.style.background = 'rgba(248,81,73,0.1)';
+        
+        if (!existingError) {
+          const errorDiv = document.createElement('div');
+          errorDiv.className = 'dup-error';
+          errorDiv.style.cssText = 'color:var(--red); font-size:11px; margin-top:6px; padding:4px 8px; background:rgba(248,81,73,0.1); border-radius:4px;';
+          errorDiv.textContent = `⚠️ "${role}" is assigned to multiple cameras`;
+          select.parentNode.appendChild(errorDiv);
+        }
+      } else {
+        select.style.borderColor = 'var(--border)';
+        select.style.background = 'var(--bg-app)';
+        if (existingError) existingError.remove();
+      }
+    });
+    
+    return duplicates.size === 0;
+  },
+
+  hasDuplicateAssignments() {
+    const roles = Object.values(this.assignments).filter(r => r && r !== '(none)');
+    return new Set(roles).size !== roles.length;
   },
 
   toggleRulesPanel() {
@@ -698,11 +833,19 @@ const DeviceSetupTab = {
   async previewRules() {
     const res = await api.post('/api/rules/preview', { assignments: this.assignments });
     document.getElementById('rules-preview').textContent = res.content;
+    this.renderReadableRules(res.content);
     document.getElementById('rules-status').textContent  = '';
     document.getElementById('rules-status').className    = 'rules-status';
   },
 
   async applyRules() {
+    if (this.hasDuplicateAssignments()) {
+      const el = document.getElementById('rules-status');
+      el.textContent = '✗ Fix duplicate role assignments before saving.';
+      el.className = 'rules-status err';
+      el.style.color = 'var(--red)';
+      return;
+    }
     await this.previewRules();
     const el  = document.getElementById('rules-status');
     el.textContent = 'Applying…';
@@ -722,8 +865,71 @@ const DeviceSetupTab = {
   async showCurrent() {
     const res = await api.get('/api/rules/current');
     document.getElementById('rules-preview').textContent = res.content;
+    this.renderReadableRules(res.content);
     document.getElementById('rules-status').textContent  = '';
     document.getElementById('rules-status').className    = 'rules-status';
+  },
+
+  renderReadableRules(content) {
+    const readable = document.getElementById('rules-readable');
+    if (!readable) return;
+
+    const lines = (content || '')
+      .split('\n')
+      .map((l) => l.trim())
+      .filter((l) => l && !l.startsWith('#'));
+
+    const cameraRules = [];
+    const armRules = [];
+
+    for (const line of lines) {
+      if (line.includes('SUBSYSTEM=="video4linux"')) {
+        const kernel = (line.match(/KERNELS=="([^"]+)"/) || [null, '?'])[1];
+        const link = (line.match(/SYMLINK\+="([^"]+)"/) || [null, '?'])[1];
+        const mode = (line.match(/MODE="([^"]+)"/) || [null, '?'])[1];
+        cameraRules.push({ kernel, link, mode });
+      } else if (line.includes('SUBSYSTEM=="tty"')) {
+        const serial = (line.match(/ATTRS\{serial\}=="([^"]+)"/) || [null, '?'])[1];
+        const link = (line.match(/SYMLINK\+="([^"]+)"/) || [null, '?'])[1];
+        const mode = (line.match(/MODE="([^"]+)"/) || [null, '?'])[1];
+        armRules.push({ serial, link, mode });
+      }
+    }
+
+    const section = (title, items, keyLabel, keyField) => {
+      if (!items.length) {
+        return `
+          <div class="rules-section">
+            <div class="rules-section-title">${title}</div>
+            <div class="rules-empty">No ${title.toLowerCase()} found.</div>
+          </div>
+        `;
+      }
+      return `
+        <div class="rules-section">
+          <div class="rules-section-title">${title}</div>
+          ${items.map((r) => `
+            <div class="rules-item">
+              <div class="rules-item-key">${keyLabel}</div>
+              <div class="rules-item-value">${r[keyField]}</div>
+              <div class="rules-item-key">SYMLINK</div>
+              <div class="rules-item-value">${r.link}</div>
+              <div class="rules-item-key">MODE</div>
+              <div class="rules-item-value">${r.mode}</div>
+            </div>
+          `).join('')}
+        </div>
+      `;
+    };
+
+    if (!cameraRules.length && !armRules.length) {
+      readable.innerHTML = '<div class="rules-empty">Could not parse readable rules. Use raw view below.</div>';
+      return;
+    }
+
+    readable.innerHTML =
+      section('Camera Rules', cameraRules, 'USB PORT (KERNELS)', 'kernel') +
+      section('Arm Rules', armRules, 'SERIAL', 'serial');
   },
 
   async loadStreamSettings() {
@@ -762,9 +968,19 @@ const DeviceSetupTab = {
 ══════════════════════════════════════════════════════════════════════════════ */
 const MotorSetupTab = {
   async start() {
+    const port = getVal('ms-port').trim();
+    if (!port) {
+      appendLog('ms-log', '[ERROR] Arm port is required.', 'error');
+      return;
+    }
+    if (!port.startsWith('/dev/')) {
+      appendLog('ms-log', '[ERROR] Port must start with /dev/ (e.g. /dev/ttyUSB0)', 'error');
+      return;
+    }
+
     const body = {
       robot_type: getVal('ms-type'),
-      port:       getVal('ms-port'),
+      port:       port,
     };
     this.clearLog();
     const res = await api.post('/api/motor_setup/start', body);
@@ -776,18 +992,13 @@ const MotorSetupTab = {
   },
 
   async sendInput() {
-    const el = document.getElementById('ms-stdin');
-    await api.post('/api/process/motor_setup/input', { text: el.value });
-    appendLog('ms-log', `> ${el.value}`, 'info');
-    el.value = '';
+    await sendProcessInput('motor_setup', 'ms-stdin', 'ms-log');
   },
 
-  clearLog() { document.getElementById('ms-log').innerHTML = ''; },
+  clearLog() { clearProcessLog('ms-log'); },
 
   syncBtn() {
-    const running = state.procStatus.motor_setup;
-    document.getElementById('ms-start-btn').classList.toggle('hidden', running);
-    document.getElementById('ms-stop-btn').classList.toggle('hidden',  !running);
+    syncProcessButtons('motor_setup', 'ms-start-btn', 'ms-stop-btn');
   },
 
   async refreshArms() {
@@ -836,6 +1047,49 @@ function getVal(id) {
 function setVal(id, val) {
   const el = document.getElementById(id);
   if (el && val !== undefined && val !== null) el.value = val;
+}
+
+function clearProcessLog(logId, afterClear) {
+  const el = document.getElementById(logId);
+  if (el) el.innerHTML = '';
+  if (afterClear) afterClear();
+}
+
+function syncProcessButtons(processName, startBtnId, stopBtnId, onStopped) {
+  const running = !!state.procStatus[processName];
+  document.getElementById(startBtnId).classList.toggle('hidden', running);
+  document.getElementById(stopBtnId).classList.toggle('hidden', !running);
+  if (!running && onStopped) onStopped();
+}
+
+async function sendProcessInput(processName, inputId, logId, options = {}) {
+  const { allowEmpty = false } = options;
+  const input = document.getElementById(inputId);
+  if (!input) return;
+  const text = input.value ?? '';
+  if (!allowEmpty && text.trim() === '') return;
+  await api.post(`/api/process/${processName}/input`, { text });
+  appendLog(logId, text === '' ? '> [ENTER]' : `> ${text}`, 'info');
+  input.value = '';
+}
+
+function updateTeleopLoopPerf(ms, hz) {
+  const el = document.getElementById('teleop-loop-pill');
+  if (!el) return;
+  if (ms === null || hz === null || Number.isNaN(ms) || Number.isNaN(hz)) {
+    el.className = 'perf-pill idle';
+    el.textContent = 'Loop: --';
+    return;
+  }
+
+  el.textContent = `Loop: ${ms.toFixed(2)}ms (${hz}Hz)`;
+  if (hz >= 58) {
+    el.className = 'perf-pill good';
+  } else if (hz >= 54) {
+    el.className = 'perf-pill warn';
+  } else {
+    el.className = 'perf-pill bad';
+  }
 }
 
 function appendLog(logId, text, kind = 'stdout') {

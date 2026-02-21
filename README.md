@@ -1,6 +1,6 @@
-# LeRobot Setup Tool
+# LeRobot Studio
 
-A comprehensive web-based GUI for setting up and configuring [Hugging Face LeRobot](https://github.com/huggingface/lerobot) robot arms. This tool provides an interactive interface to replace the traditional CLI setup process, making it much easier to configure cameras, calibrate motors, and verify teleoperation.
+A comprehensive web-based GUI for setting up and operating [Hugging Face LeRobot](https://github.com/huggingface/lerobot) robot arms. This tool provides an interactive interface to replace the traditional CLI setup process, making it easier to configure cameras, calibrate motors, run teleoperation, and record datasets.
 
 ## Features
 
@@ -22,14 +22,14 @@ A comprehensive web-based GUI for setting up and configuring [Hugging Face LeRob
 You can install this tool directly via pip:
 
 ```bash
-pip install lerobot-setup-tool
+pip install lerobot-studio
 ```
 
 Or from source:
 
 ```bash
-git clone https://github.com/jinhyuk2me/lerobot-setup-tool.git
-cd lerobot-setup-tool
+git clone https://github.com/jinhyuk2me/lerobot-studio.git
+cd lerobot-studio
 pip install -e .
 ```
 
@@ -38,7 +38,7 @@ pip install -e .
 Once installed, simply run the setup command from your terminal. Make sure your `lerobot` conda environment (or equivalent) is activated so the tool can detect the `lerobot` package.
 
 ```bash
-lerobot-setup
+lerobot-studio
 ```
 
 By default, the server will start at `http://localhost:7860`. Open this URL in your web browser.
@@ -46,9 +46,9 @@ By default, the server will start at `http://localhost:7860`. Open this URL in y
 ### Command Line Options
 
 ```text
-usage: lerobot-setup [-h] [--port PORT] [--host HOST] [--lerobot-path LEROBOT_PATH] [--config-dir CONFIG_DIR] [--rules-path RULES_PATH]
+usage: lerobot-studio [-h] [--port PORT] [--host HOST] [--lerobot-path LEROBOT_PATH] [--config-dir CONFIG_DIR] [--rules-path RULES_PATH]
 
-Web-based setup tool for LeRobot robots
+LeRobot Studio
 
 options:
   -h, --help            show this help message and exit
@@ -57,7 +57,7 @@ options:
   --lerobot-path LEROBOT_PATH
                         Path to lerobot source (auto-detected if installed)
   --config-dir CONFIG_DIR
-                        Config directory (default: ~/.config/lerobot-setup)
+                        Config directory (default: ~/.config/lerobot-studio)
   --rules-path RULES_PATH
                         Path to udev rules file (default: /etc/udev/rules.d/99-lerobot.rules)
 ```

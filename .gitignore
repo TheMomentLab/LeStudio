@@ -38,3 +38,4 @@ venv.bak/
 # Project specific
 config.json
 *.log
+src/lerobot/
