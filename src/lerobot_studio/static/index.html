@@ -16,6 +16,11 @@
         <h1>LeRobot <span style="color:var(--text2);font-weight:400">Studio</span></h1>
       </div>
       <div class="header-right">
+        <a href="https://github.com/TheMomentLab/lerobot-studio" target="_blank" rel="noopener noreferrer" class="github-link" title="View on GitHub">
+          <svg height="24" viewBox="0 0 16 16" version="1.1" width="24" aria-hidden="true">
+            <path fill="currentColor" fill-rule="evenodd" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path>
+          </svg>
+        </a>
         <span id="ws-dot" class="dot red" title="WebSocket disconnected"></span>
         <span id="ws-label">Disconnected</span>
       </div>
@@ -29,6 +34,8 @@
       <button class="tab-btn" data-tab="calibrate">⚖ Calibration</button>
       <button class="tab-btn" data-tab="teleop">🕹 Teleop</button>
       <button class="tab-btn" data-tab="record">⏺ Record</button>
+      <button class="tab-btn" data-tab="train">🧠 Train</button>
+      <button class="tab-btn" data-tab="dataset">📂 Dataset</button>
     </nav>
 
     <!-- ── Tab Contents ── -->
@@ -460,11 +467,9 @@
               </select>
             </div>
             <div class="setting-item">
-              <label>FPS</label>
-              <select id="cam-fps">
-                <option value="15">15</option>
-                <option value="30">30</option>
-              </select>
+              <label>FPS <span id="cam-fps-val" class="muted">30</span></label>
+              <input type="range" id="cam-fps" min="1" max="60" step="1" value="30"
+                     oninput="document.getElementById('cam-fps-val').textContent=this.value" />
             </div>
             <div class="setting-item">
               <label>JPEG Quality <span id="cam-quality-val" class="muted">70</span></label>
@@ -533,6 +538,132 @@
           <div class="stdin-row">
             <input id="ms-stdin" type="text" placeholder="Optional: type only if setup asks for input" />
             <button onclick="MotorSetupTab.sendInput()" class="btn-sm">Send ↵</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ━━━━ TRAIN ━━━━ -->
+      <section id="tab-train" class="tab">
+        <div class="section-header">
+          <h2>Train Policy</h2>
+        </div>
+
+        <div class="quick-guide">
+          <h3>Training Flow</h3>
+          <p>Configure your training policy, select dataset, and start training. Uses local GPU if available.</p>
+          <div class="quick-steps">
+            <div class="quick-step"><b>1)</b> Select policy and dataset</div>
+            <div class="quick-step"><b>2)</b> Configure steps & device</div>
+            <div class="quick-step"><b>3)</b> Start training</div>
+          </div>
+        </div>
+
+        <div class="two-col">
+          <div class="card">
+            <h3>Configuration</h3>
+            <label>Policy Type</label>
+            <select id="train-policy">
+              <option value="act">ACT (Action Chunking with Transformers)</option>
+              <option value="diffusion">Diffusion Policy</option>
+              <option value="tdmpc2">TD-MPC2</option>
+            </select>
+            
+            <label>Dataset Repo ID</label>
+            <input id="train-repo" type="text" value="user/my-dataset" placeholder="Example: yourname/my-dataset" list="train-dataset-list" oninput="TrainTab.validateRepoId()" />
+            <datalist id="train-dataset-list"></datalist>
+            <div id="train-repo-error" style="display:none; color:var(--red); font-size:11px; margin-top:4px; padding:4px 8px; background:rgba(248,81,73,0.1); border-radius:4px;"></div>
+            <div class="field-help" style="margin-top:4px;">Select a local dataset from the dropdown, or type a Hugging Face Hub ID.</div>
+            
+            <label>Training Steps</label>
+            <input id="train-steps" type="number" value="100000" min="1000" step="1000" />
+            
+            <label>Compute Device</label>
+            <select id="train-device">
+              <option value="cuda">CUDA (GPU)</option>
+              <option value="cpu">CPU</option>
+              <option value="mps">MPS (Apple Silicon)</option>
+            </select>
+
+            <div class="spacer"></div>
+            <div class="btn-row">
+              <button id="train-start-btn" class="btn-primary" onclick="TrainTab.start()">▶ Start Training</button>
+              <button id="train-stop-btn"  class="btn-danger hidden" onclick="TrainTab.stop()">■ Stop</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+              <h3 style="margin:0;">GPU Status</h3>
+              <button onclick="TrainTab.refreshGpu()" class="btn-xs">↺ Refresh</button>
+            </div>
+            <div id="train-gpu-status" class="device-list">
+              <div class="muted">Loading GPU info...</div>
+            </div>
+            
+            <h3 style="margin-top:20px;">Important Notes</h3>
+            <ul style="font-size:13px; color:var(--text2); padding-left:20px; margin-top:8px; line-height:1.5;">
+              <li>Training can take hours to days depending on your hardware and dataset size.</li>
+              <li>Closing this GUI or restarting the server will terminate the training process.</li>
+              <li>Check the terminal log below for real-time progress and loss values.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="card terminal-card">
+          <div class="terminal-header">
+            <span>Advanced Log — train</span>
+            <button onclick="TrainTab.clearLog()" class="btn-xs">Clear</button>
+          </div>
+          <div id="train-log" class="terminal"></div>
+        </div>
+      </section>
+
+      <!-- ━━━━ DATASET VIEWER ━━━━ -->
+      <section id="tab-dataset" class="tab">
+        <div class="section-header">
+          <h2>Dataset Viewer</h2>
+          <button onclick="DatasetTab.refreshList()" class="btn-sm">↺ Refresh List</button>
+        </div>
+
+        <div class="two-col">
+          <!-- Dataset List -->
+          <div class="card" style="max-height: 800px; display: flex; flex-direction: column;">
+            <h3>Local Datasets</h3>
+            <div id="dataset-list" class="device-list" style="overflow-y: auto; flex: 1;">
+              Loading...
+            </div>
+          </div>
+
+          <!-- Dataset Detail & Replay -->
+          <div class="card" style="display: flex; flex-direction: column; gap: 16px;">
+            <div id="dataset-detail-empty" style="text-align:center; padding: 40px; color: var(--text2);">
+              Select a dataset to view details
+            </div>
+            
+            <div id="dataset-detail-view" style="display:none; flex-direction: column; gap: 16px;">
+              <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                <div>
+                  <h3 id="ds-title" style="margin-bottom: 4px;">Dataset ID</h3>
+                  <div id="ds-stats" class="muted" style="font-size: 13px;">...</div>
+                </div>
+              </div>
+
+              <div style="display: flex; gap: 12px; align-items: center;">
+                <label>Episode:</label>
+                <select id="ds-ep-select" onchange="DatasetTab.selectEpisode(this.value)" style="flex: 1;"></select>
+              </div>
+
+              <div class="video-preview-grid" id="ds-video-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;">
+                <!-- Videos will be injected here -->
+              </div>
+              
+              <div id="ds-video-controls" style="display:none; flex-direction: column; gap: 8px;">
+                <div style="display:flex; justify-content:center; gap: 8px;">
+                  <button class="btn-sm" onclick="DatasetTab.playAll()">▶ Play</button>
+                  <button class="btn-sm" onclick="DatasetTab.pauseAll()">⏸ Pause</button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </section>

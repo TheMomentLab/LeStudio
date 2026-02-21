@@ -768,7 +768,7 @@ const DeviceSetupTab = {
      } else {
        const vid = device.replace('/dev/', '');
        wrap.dataset.vid = vid;
-       wrap.innerHTML = `<img src="/stream/${vid}" alt="stream" style="width:100%;height:100%;object-fit:cover;position:absolute;inset:0;" onload="FeedManager._onLoad(this)" onerror="FeedManager._onError(this)" /><div class="feed-loading" id="fload-${vid}"><div class="feed-spinner"></div></div><div class="feed-live-badge" id="flive-${vid}"><div class="feed-live-dot"></div>LIVE</div><div class="feed-stalled" id="fstall-${vid}" style="display:none"><span class="feed-stalled-text">⏸ Feed stalled</span><button class="btn-xs feed-overlay-btn" onclick="FeedManager.retry('${vid}')">↺ Retry</button></div>`;
+        wrap.innerHTML = `<img src="/stream/${vid}" alt="stream" style="width:100%;height:100%;object-fit:cover;position:absolute;inset:0;" onload="FeedManager._onLoad(this)" onerror="FeedManager._onError(this)" /><div class="feed-loading" id="fload-${vid}"><div class="feed-spinner"></div></div><div class="feed-live-badge" id="flive-${vid}"><div class="feed-live-dot"></div>LIVE</div><div class="feed-fps-badge" id="ffps-${vid}"></div><div class="feed-stalled" id="fstall-${vid}" style="display:none"><span class="feed-stalled-text">⏸ Feed stalled</span><button class="btn-xs feed-overlay-btn" onclick="FeedManager.retry('${vid}')">↺ Retry</button></div>`;
        FeedManager._startWatcher(vid);
      }
    },
@@ -947,7 +947,9 @@ const DeviceSetupTab = {
     const s = await api.get('/api/camera_settings');
     document.getElementById('cam-codec').value = s.codec || 'MJPG';
     document.getElementById('cam-resolution').value = `${s.width}x${s.height}`;
-    document.getElementById('cam-fps').value = String(s.fps || 30);
+    const fps = s.fps || 30;
+    document.getElementById('cam-fps').value = String(fps);
+    document.getElementById('cam-fps-val').textContent = fps;
     const q = s.jpeg_quality || 70;
     document.getElementById('cam-jpeg-quality').value = q;
     document.getElementById('cam-quality-val').textContent = q;
@@ -1180,12 +1182,15 @@ const DatasetTab = {
       return;
     }
     el.innerHTML = this.datasets.map(ds => `
-      <div class="device-item" style="cursor:pointer; flex-direction:column; align-items:flex-start;" onclick="DatasetTab.loadDataset('${ds.id}')">
-        <div style="font-weight:600; font-size:14px; margin-bottom:4px; color:var(--text1)">${ds.id}</div>
-        <div style="font-size:11px; color:var(--text2)">
-          ${ds.total_episodes} episodes · ${ds.total_frames} frames · ${ds.size_mb} MB
+      <div class="device-item" style="cursor:pointer; position:relative; align-items:flex-start;" onclick="DatasetTab.loadDataset('${ds.id}')">
+        <div style="flex:1;">
+          <div style="font-weight:600; font-size:14px; margin-bottom:4px; color:var(--text1)">${ds.id}</div>
+          <div style="font-size:11px; color:var(--text2)">
+            ${ds.total_episodes} episodes · ${ds.total_frames} frames · ${ds.size_mb} MB
+          </div>
+          <div style="font-size:11px; color:var(--text2)">Modified: ${ds.modified}</div>
         </div>
-        <div style="font-size:11px; color:var(--text2)">Modified: ${ds.modified}</div>
+        <button class="btn-xs" style="color:var(--red); border:1px solid rgba(248,81,73,0.3); margin-top:2px;" onclick="event.stopPropagation(); DatasetTab.deleteDataset('${ds.id}')">Delete…</button>
       </div>
     `).join('');
   },
@@ -1219,6 +1224,31 @@ const DatasetTab = {
     } catch (e) {
       document.getElementById('ds-title').textContent = 'Error';
       document.getElementById('ds-stats').textContent = String(e);
+    }
+  },
+
+  async deleteDataset(id) {
+    if (!confirm(`Are you sure you want to delete dataset "${id}"?\nThis cannot be undone.`)) return;
+
+    try {
+      const parts = id.split('/');
+      const user = parts[0];
+      const repo = parts[1];
+      const res = await fetch(`/api/datasets/${user}/${repo}`, { method: 'DELETE' });
+      
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.detail || 'Failed to delete');
+      }
+      
+      if (this.currentDataset && this.currentDataset.dataset_id === id) {
+        document.getElementById('dataset-detail-empty').style.display = 'block';
+        document.getElementById('dataset-detail-view').style.display = 'none';
+        this.currentDataset = null;
+      }
+      this.refreshList();
+    } catch (e) {
+      alert(e);
     }
   },
 
@@ -1374,6 +1404,7 @@ const FeedManager = {
           <div class="feed-live-badge" id="flive-${vid}">
             <div class="feed-live-dot"></div>LIVE
           </div>
+          <div class="feed-fps-badge" id="ffps-${vid}"></div>
           <button class="feed-close-btn" title="Pause this feed" onclick="FeedManager.pause('${vid}')">×</button>
           <div class="feed-label">
             <span>${c.name} — /dev/${vid}</span>
@@ -1540,6 +1571,11 @@ const FeedManager = {
     for (const [vid, stats] of Object.entries(data.cameras || {})) {
       const el = document.getElementById(`fstat-${vid}`);
       if (el) el.textContent = `${stats.fps}fps · ${stats.mbps}MB/s`;
+      const fpsBadge = document.getElementById(`ffps-${vid}`);
+      if (fpsBadge) {
+        fpsBadge.textContent = `${stats.fps} fps`;
+        fpsBadge.classList.toggle('visible', stats.fps > 0);
+      }
     }
 
     const busHtml = Object.entries(data.buses || {}).map(([bus, info]) => {
