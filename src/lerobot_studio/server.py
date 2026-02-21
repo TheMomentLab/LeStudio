@@ -25,6 +25,7 @@ from lerobot_studio.command_builders import (
     build_motor_setup_args,
     build_record_args,
     build_teleop_args,
+    build_train_args,
     resolve_record_resume,
 )
 from lerobot_studio.process_manager import ProcessManager
@@ -150,6 +151,7 @@ class CameraStreamer:
         self.settings = settings
         self.latest_frame: bytes | None = None
         self.running = True
+        self.failed = False
         self.clients = 0
         self._fps: float = 0.0
         self._mbps: float = 0.0
@@ -171,16 +173,19 @@ class CameraStreamer:
                 cap.set(cv2.CAP_PROP_FRAME_HEIGHT, s["height"])
                 cap.set(cv2.CAP_PROP_FPS, s["fps"])
                 cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-                # Let USB subsystem settle before next camera opens
                 if cap.isOpened():
-                    time.sleep(1.0)
-            if cap.isOpened():
+                    ret, _ = cap.read()
+                    if ret:
+                        time.sleep(0.5)
+                    else:
+                        cap.release()
+                        cap = None
+            if cap is not None:
                 break
-            cap.release()
-            cap = None
-            time.sleep(1.0)
+            time.sleep(2.0)
 
         if not cap or not cap.isOpened():
+            self.failed = True
             return
 
         quality = s["jpeg_quality"]
@@ -408,13 +413,19 @@ def create_app(
     # ─── API: MJPEG Streaming ──────────────────────────────────────────────
     async def mjpeg_gen(video_path: str, request: Request):
         streamer = get_streamer(video_path, CONFIG_PATH)
+        deadline = time.monotonic() + 12
         try:
             while True:
                 if await request.is_disconnected():
                     break
+                if streamer.failed:
+                    break
                 frame = streamer.latest_frame
                 if frame:
+                    deadline = time.monotonic() + 12
                     yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + frame + b"\r\n"
+                elif time.monotonic() > deadline:
+                    break
                 await asyncio.sleep(1 / 30)
         finally:
             release_streamer(video_path)
@@ -448,6 +459,31 @@ def create_app(
                 info["used_mb_per_sec"] / info["max_mb_per_sec"] * 100, 1
             ) if info["max_mb_per_sec"] > 0 else 0
         return {"cameras": cameras, "buses": bus_data}
+
+    # ─── API: GPU Stats ────────────────────────────────────────────────────
+    @app.get("/api/gpu/status")
+    def api_gpu_status():
+        try:
+            r = subprocess.run(
+                ["nvidia-smi", "--query-gpu=utilization.gpu,memory.used,memory.total", "--format=csv,noheader,nounits"],
+                capture_output=True, text=True, timeout=2,
+            )
+            if r.returncode != 0:
+                return {"exists": False, "error": "nvidia-smi failed"}
+            lines = r.stdout.strip().splitlines()
+            if not lines:
+                return {"exists": False, "error": "no output"}
+            # Return first GPU stats
+            util, mem_used, mem_total = [int(x.strip()) for x in lines[0].split(",")]
+            return {
+                "exists": True,
+                "utilization": util,
+                "memory_used": mem_used,
+                "memory_total": mem_total,
+                "memory_percent": round(mem_used / mem_total * 100, 1) if mem_total > 0 else 0
+            }
+        except Exception as e:
+            return {"exists": False, "error": str(e)}
 
     # ─── API: Process Control ──────────────────────────────────────────────
     @app.get("/api/process/{name}/status")
@@ -485,6 +521,14 @@ def create_app(
             "resume_requested": requested_resume,
             "resume_enabled": resume_enabled,
         }
+
+    # ─── API: Train ────────────────────────────────────────────────────────
+    @app.post("/api/train/start")
+    async def api_train_start(data: dict):
+        if proc_mgr.is_running("train"):
+            return {"ok": False, "error": "Already running"}
+        args = build_train_args(PYTHON, data)
+        return {"ok": proc_mgr.start("train", args)}
 
     # ─── API: Calibrate ────────────────────────────────────────────────────
     @app.get("/api/calibrate/file")
@@ -558,6 +602,92 @@ def create_app(
             return {"ok": False, "error": "Already running"}
         args = build_calibrate_args(PYTHON, data)
         return {"ok": proc_mgr.start("calibrate", args)}
+
+    # ─── API: Dataset Viewer ───────────────────────────────────────────────
+    @app.get("/api/datasets")
+    def api_datasets_list():
+        base = Path.home() / ".cache" / "huggingface" / "lerobot"
+        datasets = []
+        if base.exists():
+            for user_dir in base.iterdir():
+                if not user_dir.is_dir():
+                    continue
+                for ds_dir in user_dir.iterdir():
+                    if not ds_dir.is_dir():
+                        continue
+                    info_path = ds_dir / "meta" / "info.json"
+                    if info_path.exists():
+                        try:
+                            info = json.loads(info_path.read_text())
+                            mtime = info_path.stat().st_mtime
+                            mdate = datetime.datetime.fromtimestamp(mtime).strftime('%Y-%m-%d %H:%M:%S')
+                            datasets.append({
+                                "id": f"{user_dir.name}/{ds_dir.name}",
+                                "total_episodes": info.get("total_episodes", 0),
+                                "total_frames": info.get("total_frames", 0),
+                                "fps": info.get("fps", 30),
+                                "modified": mdate,
+                                "timestamp": mtime,
+                                "size_mb": info.get("data_files_size_in_mb", 0) + info.get("video_files_size_in_mb", 0)
+                            })
+                        except Exception:
+                            pass
+        datasets.sort(key=lambda x: x["timestamp"], reverse=True)
+        return {"datasets": datasets}
+
+    @app.get("/api/datasets/{user}/{repo}")
+    def api_dataset_info(user: str, repo: str):
+        repo_id = f"{user}/{repo}"
+        base = Path.home() / ".cache" / "huggingface" / "lerobot" / user / repo
+        info_path = base / "meta" / "info.json"
+        if not info_path.exists():
+            return Response(status_code=404, content="Dataset not found")
+        
+        try:
+            from lerobot.common.datasets.lerobot_dataset import LeRobotDataset
+        except ImportError:
+            return Response(status_code=500, content="lerobot is not installed")
+
+        try:
+            ds = LeRobotDataset(repo_id, local_files_only=True)
+            info = json.loads(info_path.read_text())
+            cameras = [k for k, v in info.get("features", {}).items() if v.get("dtype") == "video"]
+            
+            episodes = []
+            if hasattr(ds, "meta") and hasattr(ds.meta, "episodes"):
+                for ep_idx, ep_data in ds.meta.episodes.items():
+                    episodes.append({
+                        "episode_index": ep_idx,
+                        "length": ep_data.get("length", 0),
+                        "tasks": ep_data.get("tasks", [])
+                    })
+            else:
+                for ep_idx in range(info.get("total_episodes", 0)):
+                    episodes.append({
+                        "episode_index": ep_idx,
+                        "length": 0,
+                        "tasks": []
+                    })
+            
+            return {
+                "dataset_id": repo_id,
+                "total_episodes": info.get("total_episodes", 0),
+                "total_frames": info.get("total_frames", 0),
+                "fps": info.get("fps", 30),
+                "cameras": cameras,
+                "episodes": episodes
+            }
+        except Exception as e:
+            return Response(status_code=500, content=f"Failed to load dataset: {str(e)}")
+
+    @app.get("/api/datasets/{user}/{repo}/videos/{camera}/{chunk}/{file}")
+    def api_dataset_video(user: str, repo: str, camera: str, chunk: str, file: str):
+        # Serve the MP4 file directly for the browser to play
+        video_path = Path.home() / ".cache" / "huggingface" / "lerobot" / user / repo / "videos" / camera / chunk / file
+        if not video_path.exists():
+            return Response(status_code=404, content="Video not found")
+        from fastapi.responses import FileResponse
+        return FileResponse(video_path, media_type="video/mp4")
 
     # ─── API: Motor Setup ──────────────────────────────────────────────────
     @app.post("/api/motor_setup/start")
