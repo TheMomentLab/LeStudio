@@ -195,6 +195,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     if (btn.dataset.tab === 'motor-setup')  MotorSetupTab.refreshArms();
     if (btn.dataset.tab === 'teleop')       TeleopTab.showFeeds();
     if (btn.dataset.tab === 'record')       RecordTab.showFeeds();
+    if (btn.dataset.tab === 'dataset')      DatasetTab.refreshList();
   });
 });
 
@@ -754,17 +755,21 @@ const DeviceSetupTab = {
     }).join('');
   },
 
-  togglePreview(idx, device) {
-    const wrap = document.getElementById(`cam-wrap-${idx}`);
-    const existing = wrap.querySelector('img');
-    if (existing) {
-      // Stop stream
-      existing.src = '';
-      wrap.innerHTML = '<button class="btn-primary" style="opacity: 0.9; padding: 10px 20px; font-size: 14px; border-radius: 20px; pointer-events: none;">▶ View Stream</button>';
-    } else {
-      wrap.innerHTML = `<img src="/stream/${device}" alt="stream" style="width: 100%; height: 100%; object-fit: cover; position: absolute; inset: 0;" />`;
-    }
-  },
+   togglePreview(idx, device) {
+     const wrap = document.getElementById(`cam-wrap-${idx}`);
+     const existing = wrap.querySelector('img');
+     if (existing) {
+       const vid = device.replace('/dev/', '');
+       FeedManager._stopWatcher(vid);
+       wrap.removeAttribute('data-vid');
+       wrap.innerHTML = '<button class="btn-primary" style="opacity: 0.9; padding: 10px 20px; font-size: 14px; border-radius: 20px; pointer-events: none;">▶ View Stream</button>';
+     } else {
+       const vid = device.replace('/dev/', '');
+       wrap.dataset.vid = vid;
+       wrap.innerHTML = `<img src="/stream/${vid}" alt="stream" style="width:100%;height:100%;object-fit:cover;position:absolute;inset:0;" onload="FeedManager._onLoad(this)" onerror="FeedManager._onError(this)" /><div class="feed-loading" id="fload-${vid}"><div class="feed-spinner"></div></div><div class="feed-live-badge" id="flive-${vid}"><div class="feed-live-dot"></div>LIVE</div><div class="feed-stalled" id="fstall-${vid}" style="display:none"><span class="feed-stalled-text">⏸ Feed stalled</span><button class="btn-xs feed-overlay-btn" onclick="FeedManager.retry('${vid}')">↺ Retry</button></div>`;
+       FeedManager._startWatcher(vid);
+     }
+   },
 
   assign(kernels, role) {
     if (kernels) this.assignments[kernels] = role;
@@ -1045,6 +1050,121 @@ document.getElementById('ms-stdin').addEventListener('keydown', e => {
   if (e.key === 'Enter') MotorSetupTab.sendInput();
 });
 
+/* ═══════════════════════════════════════════════════════════════════════════════
+   DATASET VIEWER TAB
+══════════════════════════════════════════════════════════════════════════════ */
+const DatasetTab = {
+  datasets: [],
+  currentDataset: null,
+  currentEpisode: 0,
+  
+  async refreshList() {
+    const el = document.getElementById('dataset-list');
+    el.innerHTML = '<div class="device-item">Loading datasets...</div>';
+    try {
+      const res = await api.get('/api/datasets');
+      this.datasets = res.datasets || [];
+      this.renderList();
+    } catch (e) {
+      el.innerHTML = `<div class="device-item"><span style="color:var(--red)">Failed to load datasets: ${e}</span></div>`;
+    }
+  },
+
+  renderList() {
+    const el = document.getElementById('dataset-list');
+    if (!this.datasets.length) {
+      el.innerHTML = '<div class="device-item"><span class="dname muted">No datasets found in cache</span></div>';
+      return;
+    }
+    el.innerHTML = this.datasets.map(ds => `
+      <div class="device-item" style="cursor:pointer; flex-direction:column; align-items:flex-start;" onclick="DatasetTab.loadDataset('${ds.id}')">
+        <div style="font-weight:600; font-size:14px; margin-bottom:4px; color:var(--text1)">${ds.id}</div>
+        <div style="font-size:11px; color:var(--text2)">
+          ${ds.total_episodes} episodes · ${ds.total_frames} frames · ${ds.size_mb} MB
+        </div>
+        <div style="font-size:11px; color:var(--text2)">Modified: ${ds.modified}</div>
+      </div>
+    `).join('');
+  },
+
+  async loadDataset(id) {
+    document.getElementById('dataset-detail-empty').style.display = 'none';
+    const view = document.getElementById('dataset-detail-view');
+    view.style.display = 'flex';
+    document.getElementById('ds-title').textContent = 'Loading...';
+    document.getElementById('ds-stats').textContent = '';
+    document.getElementById('ds-video-grid').innerHTML = '';
+    
+    try {
+      const parts = id.split('/');
+      const user = parts[0];
+      const repo = parts[1];
+      const ds = await api.get(`/api/datasets/${user}/${repo}`);
+      if (!ds.dataset_id) throw new Error(ds.detail || 'Failed to load dataset');
+      
+      this.currentDataset = ds;
+      document.getElementById('ds-title').textContent = ds.dataset_id;
+      document.getElementById('ds-stats').textContent = 
+        `${ds.total_episodes} episodes · ${ds.total_frames} frames · ${ds.fps} FPS · Cameras: ${ds.cameras.join(', ') || 'None'}`;
+        
+      const sel = document.getElementById('ds-ep-select');
+      sel.innerHTML = ds.episodes.map(e => `<option value="${e.episode_index}">Episode ${e.episode_index} (${e.length} frames)</option>`).join('');
+      
+      if (ds.episodes.length > 0) {
+        this.selectEpisode(ds.episodes[0].episode_index);
+      }
+    } catch (e) {
+      document.getElementById('ds-title').textContent = 'Error';
+      document.getElementById('ds-stats').textContent = String(e);
+    }
+  },
+
+  selectEpisode(epIdx) {
+    this.currentEpisode = parseInt(epIdx, 10);
+    const ds = this.currentDataset;
+    if (!ds) return;
+    
+    const parts = ds.dataset_id.split('/');
+    const user = parts[0];
+    const repo = parts[1];
+    
+    const grid = document.getElementById('ds-video-grid');
+    const controls = document.getElementById('ds-video-controls');
+    
+    if (!ds.cameras || ds.cameras.length === 0) {
+      grid.innerHTML = '<div class="muted" style="grid-column: 1/-1;">No video data in this dataset.</div>';
+      controls.style.display = 'none';
+      return;
+    }
+    
+    // For LeRobot v3, episodes might be mapped to different chunks.
+    // As a simplification for the viewer, we will just play the video chunk corresponding to the episode.
+    // In a real scenario, an episode might span chunks, or a chunk might contain multiple episodes.
+    // We'll assume chunk-000 and file-000 for simplicity of MVP, but a robust player needs to parse Parquet to seek.
+    const chunk = "chunk-000";
+    const file = "file-000.mp4";
+    
+    grid.innerHTML = ds.cameras.map(cam => `
+      <div style="background:var(--bg-app); border:1px solid var(--border); border-radius:6px; overflow:hidden;">
+        <div style="padding:6px 10px; font-size:11px; font-family:var(--mono); border-bottom:1px solid var(--border); background:rgba(0,0,0,0.2);">
+          ${cam}
+        </div>
+        <video class="ds-video" src="/api/datasets/${user}/${repo}/videos/${cam}/${chunk}/${file}" controls preload="metadata" style="width:100%; display:block;"></video>
+      </div>
+    `).join('');
+    
+    controls.style.display = 'flex';
+  },
+  
+  playAll() {
+    document.querySelectorAll('.ds-video').forEach(v => v.play());
+  },
+  
+  pauseAll() {
+    document.querySelectorAll('.ds-video').forEach(v => v.pause());
+  }
+};
+
 /* ─── Shared helpers ─────────────────────────────────────────────────────────── */
 function getVal(id) {
   return document.getElementById(id)?.value ?? '';
@@ -1164,14 +1284,14 @@ const FeedManager = {
   },
 
   _onLoad(img) {
-    const vid = img.closest('.feed-card')?.dataset.vid;
+    const vid = img.closest('[data-vid]')?.dataset.vid;
     if (!vid) return;
     const el = document.getElementById(`fload-${vid}`);
     if (el) el.style.display = 'none';
   },
 
   _onError(img) {
-    const card = img.closest('.feed-card');
+    const card = img.closest('[data-vid]');
     if (!card) return;
     if (card.getAttribute('data-pausing') === '1') return;
     const vid = card.dataset.vid;
@@ -1195,7 +1315,7 @@ const FeedManager = {
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
 
     const id = setInterval(() => {
-      const card = document.querySelector(`.feed-card[data-vid="${vid}"]`);
+      const card = document.querySelector(`[data-vid="${vid}"]`);
       if (!card) { clearInterval(id); this._watchers.delete(vid); return; }
 
       const img = card.querySelector('img');
@@ -1275,7 +1395,7 @@ const FeedManager = {
   },
 
   retry(vid) {
-    const card = document.querySelector(`.feed-card[data-vid="${vid}"]`);
+    const card = document.querySelector(`[data-vid="${vid}"]`);
     if (!card) return;
     const stallEl = document.getElementById(`fstall-${vid}`);
     if (stallEl) stallEl.style.display = 'none';
