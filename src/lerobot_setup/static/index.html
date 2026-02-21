@@ -319,23 +319,26 @@
           <button onclick="DeviceSetupTab.refresh()" class="btn-sm">↺ Refresh</button>
         </div>
 
-        <div class="card">
-          <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px;">
-            <div>
-              <h3 style="margin-bottom: 4px;">Camera Port Mapper</h3>
-              <p class="muted" style="margin:0;">Assign roles to cameras based on which USB port they're plugged into.</p>
-            </div>
-            <button onclick="DeviceSetupTab.applyRules()" class="btn-primary" style="padding: 8px 16px; font-size: 14px;">⚡ Apply Assignments</button>
+        <div class="card" style="border: 2px solid var(--border); box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+          <div style="text-align: center; margin-bottom: 24px;">
+            <h2 style="margin-bottom: 8px;">Identify Your Cameras</h2>
+            <p class="muted" style="margin:0; font-size: 15px;">1. Click <b>▶ View Stream</b> to see what the camera is looking at.<br>2. Select the camera's position. 3. Click <b>⚡ Save & Apply</b>.</p>
           </div>
           
-          <div id="device-cameras-grid" class="device-camera-grid">Loading…</div>
-          <div id="rules-status" class="rules-status" style="margin-top: 12px; font-weight: 500;"></div>
-
-          <div style="margin-top: 24px;">
-            <button onclick="DeviceSetupTab.toggleRulesPanel()" class="btn-xs" style="background:transparent; color:var(--text2); border:1px solid var(--border); padding: 4px 8px; border-radius: 4px; cursor: pointer;">
-              <span id="rules-toggle-icon">▶</span> Advanced: View raw udev rules
+          <div id="device-cameras-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 20px;">Loading…</div>
+          
+          <div style="margin-top: 32px; padding-top: 20px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;">
+            <div id="rules-status" class="rules-status" style="font-weight: 500; font-size: 15px;">Waiting for assignments...</div>
+            <button onclick="DeviceSetupTab.applyRules()" class="btn-primary" style="padding: 12px 24px; font-size: 16px; font-weight: bold; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.2);">
+              ⚡ Save & Apply Assignments
             </button>
-            <div id="rules-advanced-panel" style="display: none; margin-top: 12px; border:1px solid var(--border); padding: 12px; border-radius: 6px; background:var(--bg-card);">
+          </div>
+
+          <div style="margin-top: 24px; text-align: center;">
+            <button onclick="DeviceSetupTab.toggleRulesPanel()" class="btn-xs" style="background:transparent; color:var(--text2); border:none; text-decoration: underline; cursor: pointer; font-size: 13px;">
+              <span id="rules-toggle-icon">▶</span> View generated udev rules (Advanced)
+            </button>
+            <div id="rules-advanced-panel" style="display: none; margin-top: 12px; border:1px solid var(--border); padding: 12px; border-radius: 6px; background:var(--bg-card); text-align: left;">
               <div class="rules-row" style="margin-bottom: 8px; display: flex; gap: 8px;">
                 <button onclick="DeviceSetupTab.previewRules()" class="btn-sm">Preview changes</button>
                 <button onclick="DeviceSetupTab.showCurrent()"  class="btn-sm">Show current file</button>

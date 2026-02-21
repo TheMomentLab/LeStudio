@@ -628,22 +628,39 @@ const DeviceSetupTab = {
   renderGrid() {
     const el = document.getElementById('device-cameras-grid');
     if (!this.cameras.length) {
-      el.innerHTML = '<p class="muted">No cameras detected.</p>';
+      el.innerHTML = '<div style="grid-column: 1/-1; padding: 32px; text-align: center; border: 1px dashed var(--border); border-radius: 8px; color: var(--text2);">No cameras detected. Please connect them and refresh.</div>';
       return;
     }
     el.innerHTML = this.cameras.map((cam, i) => {
-      const roles  = ['(none)', 'top_cam_1', 'top_cam_2', 'top_cam_3', 'follower_cam_1', 'follower_cam_2'];
+      const roles = {
+        '(none)': '— Select camera position —',
+        'top_cam_1': 'Top Camera 1 (Left)',
+        'top_cam_2': 'Top Camera 2 (Right)',
+        'top_cam_3': 'Top Camera 3 (Extra)',
+        'follower_cam_1': 'Follower Camera 1 (Wrist)',
+        'follower_cam_2': 'Follower Camera 2 (Wrist)'
+      };
       const curRole = this.assignments[cam.kernels] || '(none)';
-      const opts    = roles.map(r => `<option value="${r}" ${r === curRole ? 'selected' : ''}>${r}</option>`).join('');
-      return `<div class="cam-card">
-        <div class="cam-preview-wrap" id="cam-wrap-${i}" onclick="DeviceSetupTab.togglePreview(${i}, '${cam.device}')">
-          <span class="play-hint">▶ Click to preview</span>
+      
+      let opts = '';
+      for (const [val, label] of Object.entries(roles)) {
+        const sel = (val === curRole) ? 'selected' : '';
+        opts += `<option value="${val}" ${sel}>${label}</option>`;
+      }
+
+      return `<div class="cam-card" style="box-shadow: 0 2px 8px rgba(0,0,0,0.2); border: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; border-radius: 8px;">
+        <div class="cam-preview-wrap" id="cam-wrap-${i}" onclick="DeviceSetupTab.togglePreview(${i}, '${cam.device}')" style="background: #111; height: 220px; display: flex; align-items: center; justify-content: center; cursor: pointer; position: relative;">
+          <button class="btn-primary" style="opacity: 0.9; padding: 10px 20px; font-size: 14px; border-radius: 20px; pointer-events: none;">▶ View Stream</button>
         </div>
-        <div class="cam-info">
-          <div class="cam-name">/dev/${cam.device}</div>
-          <div class="cam-meta">port: ${cam.kernels || '?'} · ${cam.model}</div>
-          <label>Assign role</label>
-          <select onchange="DeviceSetupTab.assign('${cam.kernels}', this.value)">${opts}</select>
+        <div class="cam-info" style="padding: 16px; background: var(--bg-card); flex: 1; display: flex; flex-direction: column;">
+          <div style="font-weight: 600; font-size: 15px; margin-bottom: 12px; color: var(--text1);">Where is this camera?</div>
+          <select style="width: 100%; font-size: 15px; padding: 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-app); color: var(--text1); cursor: pointer;" onchange="DeviceSetupTab.assign('${cam.kernels}', this.value)">
+            ${opts}
+          </select>
+          <div style="margin-top: 16px; display: flex; justify-content: space-between; font-size: 12px; color: var(--text2); background: var(--bg-app); padding: 8px; border-radius: 4px; border: 1px solid var(--border);">
+            <span title="USB Port ID">🔌 Port: <strong style="color:var(--text1)">${cam.kernels || '?'}</strong></span>
+            <span>/dev/${cam.device}</span>
+          </div>
         </div>
       </div>`;
     }).join('');
@@ -655,9 +672,9 @@ const DeviceSetupTab = {
     if (existing) {
       // Stop stream
       existing.src = '';
-      wrap.innerHTML = '<span class="play-hint">▶ Click to preview</span>';
+      wrap.innerHTML = '<button class="btn-primary" style="opacity: 0.9; padding: 10px 20px; font-size: 14px; border-radius: 20px; pointer-events: none;">▶ View Stream</button>';
     } else {
-      wrap.innerHTML = `<img src="/stream/${device}" alt="stream" />`;
+      wrap.innerHTML = `<img src="/stream/${device}" alt="stream" style="width: 100%; height: 100%; object-fit: cover; position: absolute; inset: 0;" />`;
     }
   },
 
