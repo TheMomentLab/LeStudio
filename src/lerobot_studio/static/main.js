@@ -190,7 +190,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 
     // Lazy-load on tab open
     if (btn.dataset.tab === 'status')       StatusTab.refresh();
-    if (btn.dataset.tab === 'device-setup') { DeviceSetupTab.refresh(); DeviceSetupTab.loadStreamSettings(); }
+    if (btn.dataset.tab === 'device-setup') { DeviceSetupTab.refresh(); DeviceSetupTab.loadStreamSettings(); FeedManager.startStatPolling(); }
     if (btn.dataset.tab === 'calibrate')    { CalibrateTab.refreshArms(); CalibrateTab.checkFile(); CalibrateTab.refreshFiles(); }
     if (btn.dataset.tab === 'motor-setup')  MotorSetupTab.refreshArms();
     if (btn.dataset.tab === 'teleop')       TeleopTab.showFeeds();
@@ -961,6 +961,7 @@ const DeviceSetupTab = {
     if (res.ok) {
       el.textContent = '✓ Applied — streams restarting';
       setTimeout(() => { el.textContent = ''; }, 3000);
+      FeedManager.syncQualityButtons(body.fps, body.jpeg_quality);
     } else {
       el.textContent = '✗ Failed';
     }
@@ -1320,7 +1321,7 @@ const FeedManager = {
       </div>`;
     }).join('');
 
-    ['teleop-usb-bars', 'record-usb-bars'].forEach(id => {
+    ['device-setup-usb-bars', 'teleop-usb-bars', 'record-usb-bars'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.innerHTML = busHtml;
     });
@@ -1328,17 +1329,24 @@ const FeedManager = {
 
   clearPaused() { this._paused.clear(); },
 
+  syncQualityButtons(fps, jpeg_quality) {
+    const match = Object.entries(this.QUALITY)
+      .find(([, cfg]) => cfg.fps === fps && cfg.jpeg_quality === jpeg_quality)?.[0] ?? null;
+    ['teleop', 'record'].forEach(tab =>
+      Object.keys(this.QUALITY).forEach(p => {
+        document.getElementById(`${tab}-qbtn-${p}`)?.classList.toggle('active', p === match);
+      })
+    );
+  },
+
   async setQuality(preset, statusId) {
     const cfg = this.QUALITY[preset];
     if (!cfg) return;
-    ['teleop', 'record'].forEach(tab =>
-      Object.keys(this.QUALITY).forEach(p => {
-        document.getElementById(`${tab}-qbtn-${p}`)?.classList.toggle('active', p === preset);
-      })
-    );
+    this.syncQualityButtons(cfg.fps, cfg.jpeg_quality);
     // Preserve existing codec/resolution, only change fps+quality
     const current = await api.get('/api/camera_settings');
     await api.post('/api/camera_settings', { ...current, ...cfg });
+    await DeviceSetupTab.loadStreamSettings();
     const el = document.getElementById(statusId);
     if (el) {
       el.textContent = '✓ Applied';
