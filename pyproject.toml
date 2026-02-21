@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lerobot-setup-tool"
+version = "0.1.0"
+description = "Web-based setup tool for LeRobot robots"
+readme = "README.md"
+license = {text = "Apache-2.0"}
+requires-python = ">=3.10"
+authors = [
+    {name = "jinhyuk2me"},
+]
+keywords = ["lerobot", "robotics", "setup", "calibration", "teleop"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering",
+]
+dependencies = [
+    "fastapi>=0.100.0",
+    "uvicorn[standard]>=0.20.0",
+    "opencv-python-headless>=4.8.0",
+]
+
+[project.scripts]
+lerobot-setup = "lerobot_setup.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/jinhyuk2me/lerobot-setup-tool"
+Repository = "https://github.com/jinhyuk2me/lerobot-setup-tool"
+Issues = "https://github.com/jinhyuk2me/lerobot-setup-tool/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+lerobot_setup = ["static/**"]
