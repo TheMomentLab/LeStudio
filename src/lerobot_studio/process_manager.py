@@ -6,7 +6,7 @@ import subprocess
 import threading
 from pathlib import Path
 
-PROCESS_NAMES = ["teleop", "record", "calibrate", "motor_setup"]
+PROCESS_NAMES = ["teleop", "record", "calibrate", "motor_setup", "train"]
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 
 
@@ -60,16 +60,38 @@ class ProcessManager:
         proc = self.procs.pop(name, None)
         if proc and proc.poll() is None:
             try:
-                proc.send_signal(signal.SIGINT)
+                pgid = os.getpgid(proc.pid)
+            except Exception:
+                pgid = None
+
+            try:
+                if pgid is not None:
+                    os.killpg(pgid, signal.SIGINT)
+                else:
+                    proc.send_signal(signal.SIGINT)
                 proc.wait(timeout=5)
                 return
             except subprocess.TimeoutExpired:
                 pass
-            proc.terminate()
+
+            if pgid is not None:
+                try:
+                    os.killpg(pgid, signal.SIGTERM)
+                except ProcessLookupError:
+                    return
+            else:
+                proc.terminate()
+
             try:
                 proc.wait(timeout=3)
             except subprocess.TimeoutExpired:
-                proc.kill()
+                if pgid is not None:
+                    try:
+                        os.killpg(pgid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        return
+                else:
+                    proc.kill()
 
     def send_input(self, name: str, text: str):
         proc = self.procs.get(name)

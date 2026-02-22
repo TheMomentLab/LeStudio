@@ -6,6 +6,23 @@ const state = {
   wsReady: false,
 };
 
+/* ─── Camera FPS capability map (per codec + resolution) ─────────────────── */
+const CAMERA_FPS_MAP = {
+  MJPG: { '1280x720': [30], '800x600': [30], '640x480': [30], '320x240': [30] },
+  YUYV: { '1280x720': [10], '800x600': [20], '640x480': [30], '320x240': [30] },
+};
+
+function updateFpsOptions() {
+  const codec = document.querySelector('.cam-codec-sync')?.value || 'MJPG';
+  const res = document.querySelector('.cam-resolution-sync')?.value || '640x480';
+  const fpsOptions = (CAMERA_FPS_MAP[codec] && CAMERA_FPS_MAP[codec][res]) || [30];
+  document.querySelectorAll('.cam-fps-sync').forEach(sel => {
+    const prev = sel.value;
+    sel.innerHTML = fpsOptions.map(f => `<option value="${f}">${f}</option>`).join('');
+    sel.value = fpsOptions.includes(parseInt(prev)) ? prev : String(fpsOptions[0]);
+  });
+}
+
 /* ─── API helpers ────────────────────────────────────────────────────────────── */
 const MotorTable = {
   data: {},
@@ -144,6 +161,7 @@ const WS = {
       record:      'record-log',
       calibrate:   'cal-log',
       motor_setup: 'ms-log',
+      train:       'train-log',
     };
     const el = document.getElementById(logMap[msg.process]);
     if (!el) return;
@@ -191,11 +209,11 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 
     // Lazy-load on tab open
     if (btn.dataset.tab === 'status')       StatusTab.refresh();
-    if (btn.dataset.tab === 'device-setup') { DeviceSetupTab.refresh(); DeviceSetupTab.loadStreamSettings(); FeedManager.startStatPolling(); }
+    if (btn.dataset.tab === 'device-setup') { DeviceSetupTab.refresh(); FeedManager.startStatPolling(); }
     if (btn.dataset.tab === 'calibrate')    { CalibrateTab.refreshArms(); CalibrateTab.checkFile(); CalibrateTab.refreshFiles(); }
     if (btn.dataset.tab === 'motor-setup')  MotorSetupTab.refreshArms();
-    if (btn.dataset.tab === 'teleop')       TeleopTab.showFeeds();
-    if (btn.dataset.tab === 'record')       RecordTab.showFeeds();
+    if (btn.dataset.tab === 'teleop')       { TeleopTab.showFeeds(); DeviceSetupTab.loadStreamSettings(); }
+    if (btn.dataset.tab === 'record')       { RecordTab.showFeeds(); DeviceSetupTab.loadStreamSettings(); }
     if (btn.dataset.tab === 'train')        { TrainTab.refreshGpu(); TrainTab.refreshDatasets(); }
     if (btn.dataset.tab === 'dataset')      DatasetTab.refreshList();
   });
@@ -206,6 +224,7 @@ async function loadConfig() {
   state.config = await api.get('/api/config');
   TeleopTab.applyConfig(state.config);
   RecordTab.applyConfig(state.config);
+  TrainTab.applyConfig(state.config);
 }
 
 function saveConfig() {
@@ -363,6 +382,7 @@ const TeleopTab = {
   },
 
   async stop() {
+    FeedManager.suppressStall(8000);
     await api.post('/api/process/teleop/stop');
   },
 
@@ -398,6 +418,15 @@ document.getElementById('teleop-stdin').addEventListener('keydown', e => {
 const RecordTab = {
   mode: 'single',
 
+  resetProgress() {
+    const currentEl = document.getElementById('record-ep-current');
+    if (currentEl) currentEl.textContent = '—';
+    const totalEl = document.getElementById('record-ep-total');
+    if (totalEl) totalEl.textContent = '—';
+    const bar = document.getElementById('record-ep-bar');
+    if (bar) bar.style.width = '0%';
+  },
+
   setMode(m) {
     this.mode = m;
     document.getElementById('record-mode-single').classList.toggle('active', m === 'single');
@@ -422,7 +451,7 @@ const RecordTab = {
     setVal('record-repo',     cfg.record_repo_id  || 'user/my-dataset');
     const resumeEl = document.getElementById('record-resume');
     if (resumeEl) resumeEl.checked = !!cfg.record_resume;
-    document.getElementById('record-ep-total').textContent = cfg.record_episodes || '—';
+    document.getElementById('record-ep-total').textContent = '—';
     if (cfg.cameras) {
       setVal('rc-front1', cfg.cameras.front_1 || '');
       setVal('rc-top1',   cfg.cameras.top_1   || '');
@@ -465,8 +494,16 @@ const RecordTab = {
     }
     const cfg = this.buildConfig();
     this.clearLog();
+    const currentEl = document.getElementById('record-ep-current');
+    if (currentEl) currentEl.textContent = '0';
+    const bar = document.getElementById('record-ep-bar');
+    if (bar) bar.style.width = '0%';
     const res = await api.post('/api/record/start', cfg);
-    if (!res.ok) { appendLog('record-log', `[ERROR] ${res.error}`, 'error'); return; }
+    if (!res.ok) {
+      this.resetProgress();
+      appendLog('record-log', `[ERROR] ${res.error}`, 'error');
+      return;
+    }
     if (res.resume_requested && !res.resume_enabled) {
       appendLog('record-log', '[INFO] Resume was disabled because target dataset does not exist yet. Starting a fresh dataset.', 'info');
     }
@@ -474,6 +511,7 @@ const RecordTab = {
   },
 
   async stop() {
+    FeedManager.suppressStall(8000);
     await api.post('/api/process/record/stop');
   },
 
@@ -531,12 +569,35 @@ const RecordTab = {
 
   syncBtn() {
     const running = !!state.procStatus['record'];
-    syncProcessButtons('record', 'record-start-btn', 'record-stop-btn');
+    const progressCard = document.querySelector('.episode-progress-card');
+    const startBtn = document.getElementById('record-start-btn');
+    const stopBtn = document.getElementById('record-stop-btn');
+    const statePill = document.getElementById('record-state-pill');
+    if (startBtn) {
+      startBtn.disabled = running;
+      startBtn.textContent = running ? '● Recording' : '▶ Start Recording';
+      startBtn.classList.toggle('recording', running);
+    }
+    if (statePill) {
+      statePill.textContent = running ? 'Recording' : 'Idle';
+      statePill.classList.toggle('running', running);
+      statePill.classList.toggle('idle', !running);
+    }
+    if (progressCard) {
+      progressCard.classList.toggle('running', running);
+    }
+    if (stopBtn) {
+      stopBtn.classList.toggle('hidden', !running);
+      stopBtn.disabled = !running;
+    }
     const controls = document.getElementById('record-ep-controls');
     const guard = document.getElementById('record-ep-guard');
     if (controls) {
-      controls.querySelectorAll('button').forEach(btn => { btn.disabled = !running; });
-      if (guard) guard.style.display = running ? 'none' : 'flex';
+      controls.querySelectorAll('.record-ep-action').forEach(btn => { btn.disabled = !running; });
+      if (guard) guard.style.display = running ? 'none' : 'block';
+    }
+    if (!running) {
+      this.resetProgress();
     }
   },
 };
@@ -702,6 +763,8 @@ document.getElementById('cal-stdin').addEventListener('keydown', e => {
 const DeviceSetupTab = {
   cameras:     [],
   assignments: {},   // kernels → role
+  streamApplyTimer: null,
+  rulesApplyTimer: null,
 
   async refresh() {
     const data = await api.get('/api/devices');
@@ -713,6 +776,8 @@ const DeviceSetupTab = {
       this.assignments[cam.kernels] = cam.symlink || '(none)';
     }
     this.renderGrid();
+    this.validateAssignments();
+    this.showCurrent();
   },
 
   renderGrid() {
@@ -740,7 +805,8 @@ const DeviceSetupTab = {
 
       return `<div class="cam-card" style="box-shadow: 0 2px 8px rgba(0,0,0,0.2); border: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; border-radius: 8px;">
         <div class="cam-preview-wrap" id="cam-wrap-${i}" onclick="DeviceSetupTab.togglePreview(${i}, '${cam.device}')" style="background: #111; height: 220px; display: flex; align-items: center; justify-content: center; cursor: pointer; position: relative;">
-          <button class="btn-primary" style="opacity: 0.9; padding: 10px 20px; font-size: 14px; border-radius: 20px; pointer-events: none;">▶ View Stream</button>
+          <div style="position:absolute;top:8px;left:8px;padding:3px 8px;border-radius:999px;background:rgba(0,0,0,0.55);color:#fff;font-size:11px;font-weight:600;letter-spacing:0.2px;">Preview 144p · 5fps</div>
+          <button class="btn-primary" style="opacity: 0.9; padding: 10px 20px; font-size: 14px; border-radius: 20px; pointer-events: none;">▶ View Preview</button>
         </div>
         <div class="cam-info" style="padding: 16px; background: var(--bg-card); flex: 1; display: flex; flex-direction: column;">
           <div style="font-weight: 600; font-size: 15px; margin-bottom: 6px; color: var(--text1);">Where is this camera?</div>
@@ -764,11 +830,11 @@ const DeviceSetupTab = {
        const vid = device.replace('/dev/', '');
        FeedManager._stopWatcher(vid);
        wrap.removeAttribute('data-vid');
-       wrap.innerHTML = '<button class="btn-primary" style="opacity: 0.9; padding: 10px 20px; font-size: 14px; border-radius: 20px; pointer-events: none;">▶ View Stream</button>';
+        wrap.innerHTML = '<div style="position:absolute;top:8px;left:8px;padding:3px 8px;border-radius:999px;background:rgba(0,0,0,0.55);color:#fff;font-size:11px;font-weight:600;letter-spacing:0.2px;">Preview 144p · 5fps</div><button class="btn-primary" style="opacity: 0.9; padding: 10px 20px; font-size: 14px; border-radius: 20px; pointer-events: none;">▶ View Preview</button>';
      } else {
        const vid = device.replace('/dev/', '');
        wrap.dataset.vid = vid;
-        wrap.innerHTML = `<img src="/stream/${vid}" alt="stream" style="width:100%;height:100%;object-fit:cover;position:absolute;inset:0;" onload="FeedManager._onLoad(this)" onerror="FeedManager._onError(this)" /><div class="feed-loading" id="fload-${vid}"><div class="feed-spinner"></div></div><div class="feed-live-badge" id="flive-${vid}"><div class="feed-live-dot"></div>LIVE</div><div class="feed-fps-badge" id="ffps-${vid}"></div><div class="feed-stalled" id="fstall-${vid}" style="display:none"><span class="feed-stalled-text">⏸ Feed stalled</span><button class="btn-xs feed-overlay-btn" onclick="FeedManager.retry('${vid}')">↺ Retry</button></div>`;
+        wrap.innerHTML = `<img src="/stream/${vid}?preview=1" alt="stream" style="width:100%;height:100%;object-fit:cover;position:absolute;inset:0;" onload="FeedManager._onLoad(this)" onerror="FeedManager._onError(this)" /><div class="feed-loading" id="fload-${vid}"><div class="feed-spinner"></div></div><div class="feed-live-badge" id="flive-${vid}"><div class="feed-live-dot"></div>LIVE</div><div class="feed-fps-badge" id="ffps-${vid}"></div><div class="feed-stalled" id="fstall-${vid}" style="display:none"><span class="feed-stalled-text">⏸ Feed stalled</span><button class="btn-xs feed-overlay-btn" onclick="FeedManager.retry('${vid}')">↺ Retry</button></div>`;
        FeedManager._startWatcher(vid);
      }
    },
@@ -776,6 +842,7 @@ const DeviceSetupTab = {
   assign(kernels, role) {
     if (kernels) this.assignments[kernels] = role;
     this.validateAssignments();
+    this.scheduleRulesApply();
   },
 
   validateAssignments() {
@@ -828,13 +895,22 @@ const DeviceSetupTab = {
     return new Set(roles).size !== roles.length;
   },
 
+  scheduleRulesApply(delay = 250) {
+    if (this.hasDuplicateAssignments()) return;
+    if (this.rulesApplyTimer !== null) clearTimeout(this.rulesApplyTimer);
+    this.rulesApplyTimer = setTimeout(() => {
+      this.rulesApplyTimer = null;
+      this.applyRules({ silent: true });
+    }, delay);
+  },
+
   toggleRulesPanel() {
     const panel = document.getElementById('rules-advanced-panel');
     const icon = document.getElementById('rules-toggle-icon');
     if (panel.style.display === 'none') {
       panel.style.display = 'block';
       icon.textContent = '▼';
-      this.previewRules();
+      this.showCurrent();
     } else {
       panel.style.display = 'none';
       icon.textContent = '▶';
@@ -843,42 +919,28 @@ const DeviceSetupTab = {
 
   async previewRules() {
     const res = await api.post('/api/rules/preview', { assignments: this.assignments });
-    document.getElementById('rules-preview').textContent = res.content;
     this.renderReadableRules(res.content);
-    document.getElementById('rules-status').textContent  = '';
-    document.getElementById('rules-status').className    = 'rules-status';
   },
 
-  async applyRules() {
+  async applyRules({ silent = false } = {}) {
     if (this.hasDuplicateAssignments()) {
-      const el = document.getElementById('rules-status');
-      el.textContent = '✗ Fix duplicate role assignments before saving.';
-      el.className = 'rules-status err';
-      el.style.color = 'var(--red)';
+      if (!silent) {
+        alert('Fix duplicate role assignments before applying mapping.');
+      }
       return;
     }
-    await this.previewRules();
-    const el  = document.getElementById('rules-status');
-    el.textContent = 'Applying…';
+
     const res = await api.post('/api/rules/apply', { assignments: this.assignments });
-    if (res.ok) {
-      el.textContent = '✓ Assignments applied successfully (udev reloaded).';
-      el.className   = 'rules-status ok';
-      el.style.color = 'var(--green)';
-      setTimeout(() => { el.textContent = ''; this.refresh(); }, 2500);
-    } else {
-      el.textContent = `✗ Error: ${res.error}`;
-      el.className   = 'rules-status err';
-      el.style.color = 'var(--red)';
+    if (!res.ok && !silent) {
+      alert(`Failed to apply camera mapping: ${res.error}`);
+    } else if (res.ok) {
+      this.showCurrent();
     }
   },
 
   async showCurrent() {
     const res = await api.get('/api/rules/current');
-    document.getElementById('rules-preview').textContent = res.content;
     this.renderReadableRules(res.content);
-    document.getElementById('rules-status').textContent  = '';
-    document.getElementById('rules-status').className    = 'rules-status';
   },
 
   renderReadableRules(content) {
@@ -919,60 +981,142 @@ const DeviceSetupTab = {
       return `
         <div class="rules-section">
           <div class="rules-section-title">${title}</div>
-          ${items.map((r) => `
-            <div class="rules-item">
-              <div class="rules-item-key">${keyLabel}</div>
-              <div class="rules-item-value">${r[keyField]}</div>
-              <div class="rules-item-key">SYMLINK</div>
-              <div class="rules-item-value">${r.link}</div>
-              <div class="rules-item-key">MODE</div>
-              <div class="rules-item-value">${r.mode}</div>
-            </div>
-          `).join('')}
+          <div class="rules-table-wrap" style="overflow-x:auto; border:1px solid var(--border); border-radius:6px; background:var(--bg2);">
+            <table style="width:100%; border-collapse:collapse; text-align:left; font-size:12px;">
+              <thead>
+                <tr style="border-bottom:1px solid var(--border); background:var(--bg3);">
+                  <th style="padding:8px 12px; color:var(--text2); font-weight:600;">${keyLabel}</th>
+                  <th style="padding:8px 12px; color:var(--text2); font-weight:600;">SYMLINK</th>
+                  <th style="padding:8px 12px; color:var(--text2); font-weight:600;">MODE</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${items.map((r, i) => `
+                  <tr style="\${i !== items.length - 1 ? 'border-bottom:1px solid var(--border);' : ''}">
+                    <td style="padding:8px 12px; font-family:var(--mono);">${r[keyField]}</td>
+                    <td style="padding:8px 12px; font-family:var(--mono); color:var(--text); font-weight:600;">${r.link}</td>
+                    <td style="padding:8px 12px; font-family:var(--mono); color:var(--text2);">${r.mode}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
         </div>
       `;
     };
 
     if (!cameraRules.length && !armRules.length) {
-      readable.innerHTML = '<div class="rules-empty">Could not parse readable rules. Use raw view below.</div>';
+      readable.innerHTML = '<div class="rules-empty" style="color:var(--text2); text-align:center; padding:24px;">No rules found or rules could not be parsed.</div>';
       return;
     }
 
-    readable.innerHTML =
-      section('Camera Rules', cameraRules, 'USB PORT (KERNELS)', 'kernel') +
-      section('Arm Rules', armRules, 'SERIAL', 'serial');
+    readable.innerHTML = `
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: start;">
+        ${section('Camera Rules', cameraRules, 'USB PORT (KERNELS)', 'kernel')}
+        ${section('Arm Rules', armRules, 'SERIAL', 'serial')}
+      </div>
+    `;
   },
 
   async loadStreamSettings() {
     const s = await api.get('/api/camera_settings');
-    document.getElementById('cam-codec').value = s.codec || 'MJPG';
-    document.getElementById('cam-resolution').value = `${s.width}x${s.height}`;
+    const codecStr = s.codec || 'MJPG';
+    const resStr = `${s.width}x${s.height}`;
     const fps = s.fps || 30;
-    document.getElementById('cam-fps').value = String(fps);
-    document.getElementById('cam-fps-val').textContent = fps;
     const q = s.jpeg_quality || 70;
-    document.getElementById('cam-jpeg-quality').value = q;
-    document.getElementById('cam-quality-val').textContent = q;
+
+    document.querySelectorAll('.cam-codec-sync').forEach(el => el.value = codecStr);
+    document.querySelectorAll('.cam-resolution-sync').forEach(el => el.value = resStr);
+    updateFpsOptions();
+    document.querySelectorAll('.cam-fps-sync').forEach(el => el.value = String(fps));
+    document.querySelectorAll('.cam-jpeg-quality-sync').forEach(el => el.value = q);
+    document.querySelectorAll('.cam-quality-val-sync').forEach(el => el.textContent = q);
+    document.querySelectorAll('.feed-fps-badge').forEach(el => {
+      el.textContent = `${fps} fps`;
+      el.classList.add('visible');
+    });
+  },
+
+  scheduleStreamApply(delay = 250) {
+    if (this.streamApplyTimer !== null) clearTimeout(this.streamApplyTimer);
+    this.streamApplyTimer = setTimeout(() => {
+      this.streamApplyTimer = null;
+      this.applyStreamSettings();
+    }, delay);
+  },
+
+  initStreamControls() {
+    const codecEls = document.querySelectorAll('.cam-codec-sync');
+    const resEls = document.querySelectorAll('.cam-resolution-sync');
+    const fpsEls = document.querySelectorAll('.cam-fps-sync');
+    const qEls = document.querySelectorAll('.cam-jpeg-quality-sync');
+
+    codecEls.forEach(el => {
+      el.addEventListener('change', () => {
+        codecEls.forEach(x => x.value = el.value);
+        updateFpsOptions();
+        this.scheduleStreamApply(0);
+      });
+    });
+
+    resEls.forEach(el => {
+      el.addEventListener('change', () => {
+        resEls.forEach(x => x.value = el.value);
+        updateFpsOptions();
+        this.scheduleStreamApply(0);
+      });
+    });
+
+    fpsEls.forEach(el => {
+      el.addEventListener('change', () => {
+        fpsEls.forEach(x => x.value = el.value);
+        this.scheduleStreamApply(200);
+      });
+    });
+
+    qEls.forEach(el => {
+      el.addEventListener('input', () => {
+        qEls.forEach(x => x.value = el.value);
+        document.querySelectorAll('.cam-quality-val-sync').forEach(x => x.textContent = el.value);
+      });
+      el.addEventListener('change', () => this.scheduleStreamApply(200));
+    });
   },
 
   async applyStreamSettings() {
-    const [w, h] = document.getElementById('cam-resolution').value.split('x').map(Number);
+    const codecEl = document.querySelector('.cam-codec-sync');
+    const resEl = document.querySelector('.cam-resolution-sync');
+    const fpsEl = document.querySelector('.cam-fps-sync');
+    const qEl = document.querySelector('.cam-jpeg-quality-sync');
+
+    if (!codecEl || !resEl || !fpsEl || !qEl) return;
+
+    const [w, h] = resEl.value.split('x').map(Number);
     const body = {
-      codec:        document.getElementById('cam-codec').value,
+      codec:        codecEl.value,
       width:        w,
       height:       h,
-      fps:          parseInt(document.getElementById('cam-fps').value, 10),
-      jpeg_quality: parseInt(document.getElementById('cam-jpeg-quality').value, 10),
+      fps:          parseInt(fpsEl.value, 10),
+      jpeg_quality: parseInt(qEl.value, 10),
     };
-    const el = document.getElementById('cam-settings-status');
-    el.textContent = 'Applying…';
+
+    FeedManager.suppressStall(8000);
     const res = await api.post('/api/camera_settings', body);
+
     if (res.ok) {
-      el.textContent = '✓ Applied — streams restarting';
-      setTimeout(() => { el.textContent = ''; }, 3000);
-      FeedManager.syncQualityButtons(body.fps, body.jpeg_quality);
-    } else {
-      el.textContent = '✗ Failed';
+      document.querySelectorAll('.feed-card').forEach(card => {
+        const vid = card.dataset.vid;
+        if (!vid || FeedManager._paused.has(vid)) return;
+        const loadEl = document.getElementById(`fload-${vid}`);
+        if (loadEl) {
+           loadEl.innerHTML = '<div class="feed-spinner"></div>';
+           loadEl.style.display = 'flex';
+        }
+        const img = card.querySelector('img');
+        if (img) img.src = `/stream/${vid}?_=${Date.now()}`;
+      });
+      
+      await this.loadStreamSettings();
     }
   },
 };
@@ -1058,10 +1202,75 @@ document.getElementById('ms-stdin').addEventListener('keydown', e => {
    TRAIN TAB
 ══════════════════════════════════════════════════════════════════════════════ */
 const TrainTab = {
+  datasetSource: 'local',
+
+  applyConfig(cfg) {
+    const savedSource = cfg && cfg.train_dataset_source === 'hf' ? 'hf' : 'local';
+    this.setDatasetSource(savedSource, false);
+  },
+
+  getDatasetSource() {
+    return this.datasetSource;
+  },
+
+  setDatasetSource(source, persist = true) {
+    const next = source === 'hf' ? 'hf' : 'local';
+    this.datasetSource = next;
+
+    const localBtn = document.getElementById('train-source-local');
+    const hfBtn = document.getElementById('train-source-hf');
+    const localWrap = document.getElementById('train-local-wrap');
+    const hfWrap = document.getElementById('train-hf-wrap');
+    const err = document.getElementById('train-repo-error');
+
+    if (localBtn) localBtn.classList.toggle('active', next === 'local');
+    if (hfBtn) hfBtn.classList.toggle('active', next === 'hf');
+    if (localWrap) localWrap.classList.toggle('hidden', next !== 'local');
+    if (hfWrap) hfWrap.classList.toggle('hidden', next !== 'hf');
+    if (err) err.style.display = 'none';
+
+    if (persist && state.config) {
+      state.config.train_dataset_source = next;
+      saveConfig();
+    }
+
+    this.syncRepoFromSource();
+  },
+
+  syncRepoFromSource() {
+    if (this.getDatasetSource() !== 'local') return;
+    const select = document.getElementById('train-local-repo');
+    const input = document.getElementById('train-repo');
+    if (!select || !input) return;
+    const value = select.value.trim();
+    if (value && value !== '__none__') {
+      input.value = value;
+    }
+  },
+
   validateRepoId() {
+    const source = this.getDatasetSource();
     const val = getVal('train-repo').trim();
     const input = document.getElementById('train-repo');
+    const localSelect = document.getElementById('train-local-repo');
     const err = document.getElementById('train-repo-error');
+
+    if (source === 'local') {
+      const localRepoId = localSelect ? localSelect.value.trim() : '';
+      if (!localRepoId || localRepoId === '__none__') {
+        if (localSelect) localSelect.style.borderColor = 'var(--red)';
+        if (err) {
+          err.textContent = 'No local dataset found. Switch to Hugging Face or create a local dataset first.';
+          err.style.display = 'block';
+        }
+        return false;
+      }
+      if (localSelect) localSelect.style.borderColor = 'var(--border)';
+      if (input) input.style.borderColor = 'var(--border)';
+      if (err) err.style.display = 'none';
+      return true;
+    }
+
     if (!val) {
       input.style.borderColor = 'var(--red)';
       if (err) { err.textContent = 'Repo ID cannot be empty'; err.style.display = 'block'; }
@@ -1080,32 +1289,67 @@ const TrainTab = {
   async refreshDatasets() {
     try {
       const res = await api.get('/api/datasets');
-      const dl = document.getElementById('train-dataset-list');
-      if (dl && res.datasets) {
-        dl.innerHTML = res.datasets.map(ds => `<option value="${ds.id}"></option>`).join('');
+      const select = document.getElementById('train-local-repo');
+      const datasets = Array.isArray(res.datasets) ? res.datasets : [];
+      if (select) {
+        if (datasets.length) {
+          select.innerHTML = datasets.map(ds => `<option value="${ds.id}">${ds.id}</option>`).join('');
+          select.disabled = false;
+          if (!datasets.some(ds => ds.id === select.value)) {
+            select.value = datasets[0].id;
+          }
+        } else {
+          select.innerHTML = '<option value="__none__">No local datasets found</option>';
+          select.value = '__none__';
+          select.disabled = true;
+        }
       }
+
+      if (datasets.length === 0 && this.getDatasetSource() === 'local') {
+        this.setDatasetSource('hf');
+      } else {
+        this.syncRepoFromSource();
+      }
+      this.validateRepoId();
     } catch (e) {
       console.warn("Failed to load datasets for train tab", e);
     }
   },
 
   async start() {
-    if (!this.validateRepoId()) {
-      appendLog('train-log', '[ERROR] Invalid Dataset Repo ID format.', 'error');
-      return;
-    }
-    const repoId = getVal('train-repo').trim();
-
-    const body = {
-      train_policy: getVal('train-policy'),
-      train_repo_id: repoId,
-      train_steps: parseInt(getVal('train-steps'), 10) || 100000,
-      train_device: getVal('train-device'),
-    };
-    
     this.clearLog();
-    const res = await api.post('/api/train/start', body);
-    if (!res.ok) appendLog('train-log', `[ERROR] ${res.error}`, 'error');
+
+    try {
+      if (!this.validateRepoId()) {
+        appendLog('train-log', '[ERROR] Invalid dataset selection. Check Dataset Source and Repo ID.', 'error');
+        return;
+      }
+
+      const repoId = this.getDatasetSource() === 'local'
+        ? (document.getElementById('train-local-repo')?.value || '').trim()
+        : getVal('train-repo').trim();
+
+      const body = {
+        train_policy: getVal('train-policy'),
+        train_repo_id: repoId,
+        train_steps: parseInt(getVal('train-steps'), 10) || 100000,
+        train_device: getVal('train-device'),
+      };
+
+      appendLog('train-log', `[INFO] Starting training: ${body.train_policy} · ${body.train_repo_id} · ${body.train_device}`, 'info');
+      const res = await api.post('/api/train/start', body);
+
+      if (!res || !res.ok) {
+        appendLog('train-log', `[ERROR] ${res?.error || 'Failed to start training process.'}`, 'error');
+        return;
+      }
+
+      appendLog('train-log', '[INFO] Train process started. Waiting for logs...', 'info');
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      appendLog('train-log', `[ERROR] Start request failed: ${msg}`, 'error');
+      console.error('Train start failed', e);
+    }
   },
 
   async stop() {
@@ -1190,7 +1434,7 @@ const DatasetTab = {
           </div>
           <div style="font-size:11px; color:var(--text2)">Modified: ${ds.modified}</div>
         </div>
-        <button class="btn-xs" style="color:var(--red); border:1px solid rgba(248,81,73,0.3); margin-top:2px;" onclick="event.stopPropagation(); DatasetTab.deleteDataset('${ds.id}')">Delete…</button>
+        <button class="btn-xs" style="color:var(--red); border:1px solid rgba(248,81,73,0.3); margin-top:2px;" onclick="event.stopPropagation(); DatasetTab.deleteDataset('${ds.id}')">Delete</button>
       </div>
     `).join('');
   },
@@ -1269,22 +1513,44 @@ const DatasetTab = {
       controls.style.display = 'none';
       return;
     }
-    
-    // For LeRobot v3, episodes might be mapped to different chunks.
-    // As a simplification for the viewer, we will just play the video chunk corresponding to the episode.
-    // In a real scenario, an episode might span chunks, or a chunk might contain multiple episodes.
-    // We'll assume chunk-000 and file-000 for simplicity of MVP, but a robust player needs to parse Parquet to seek.
-    const chunk = "chunk-000";
-    const file = "file-000.mp4";
-    
-    grid.innerHTML = ds.cameras.map(cam => `
+
+    const episode = (ds.episodes || []).find(e => Number(e.episode_index) === this.currentEpisode) || null;
+    const to3 = (v) => String(Math.max(0, parseInt(v, 10) || 0)).padStart(3, '0');
+
+    grid.innerHTML = ds.cameras.map(cam => {
+      const vf = episode?.video_files?.[cam] || {};
+      const chunk = `chunk-${to3(vf.chunk_index)}`;
+      const file = `file-${to3(vf.file_index)}.mp4`;
+      const startTs = Number.isFinite(Number(vf.from_timestamp)) ? Number(vf.from_timestamp) : 0;
+      const endTs = Number.isFinite(Number(vf.to_timestamp)) ? Number(vf.to_timestamp) : null;
+      return `
       <div style="background:var(--bg-app); border:1px solid var(--border); border-radius:6px; overflow:hidden;">
         <div style="padding:6px 10px; font-size:11px; font-family:var(--mono); border-bottom:1px solid var(--border); background:rgba(0,0,0,0.2);">
           ${cam}
         </div>
-        <video class="ds-video" src="/api/datasets/${user}/${repo}/videos/${cam}/${chunk}/${file}" controls preload="metadata" style="width:100%; display:block;"></video>
+        <video class="ds-video" data-ep-start="${startTs}" data-ep-end="${endTs === null ? '' : endTs}" src="/api/datasets/${user}/${repo}/videos/${cam}/${chunk}/${file}" controls preload="metadata" style="width:100%; display:block;"></video>
       </div>
-    `).join('');
+    `;
+    }).join('');
+
+    grid.querySelectorAll('.ds-video').forEach(v => {
+      const start = Number(v.dataset.epStart || '0');
+      const endRaw = v.dataset.epEnd;
+      const end = endRaw ? Number(endRaw) : NaN;
+
+      v.addEventListener('loadedmetadata', () => {
+        if (Number.isFinite(start) && start >= 0) {
+          const maxStart = Math.max(0, (v.duration || 0) - 0.05);
+          v.currentTime = Math.min(start, maxStart);
+        }
+      }, { once: true });
+
+      v.addEventListener('timeupdate', () => {
+        if (Number.isFinite(end) && end > 0 && v.currentTime >= end) {
+          v.pause();
+        }
+      });
+    });
     
     controls.style.display = 'flex';
   },
@@ -1366,11 +1632,17 @@ const FeedManager = {
   _watchers:     new Map(),
   _watcherState: new Map(),
   _statTimer:    null,
+  _lastFps:      new Map(),
+  _lastFpsTs:    new Map(),
+  _stallSuppressedUntil: 0,
 
-  QUALITY: {
-    high:   { fps: 30, jpeg_quality: 80 },
-    medium: { fps: 15, jpeg_quality: 60 },
-    low:    { fps: 8,  jpeg_quality: 40 },
+  suppressStall(ms = 8000) {
+    this._stallSuppressedUntil = Math.max(this._stallSuppressedUntil, Date.now() + ms);
+    document.querySelectorAll('.feed-stalled').forEach(el => { el.style.display = 'none'; });
+  },
+
+  isStallSuppressed() {
+    return Date.now() < this._stallSuppressedUntil;
   },
 
   render(containerId, cameras) {
@@ -1380,6 +1652,7 @@ const FeedManager = {
     if (!el) return;
     if (!cameras.length) { el.innerHTML = ''; return; }
 
+    const configuredFps = parseInt(document.querySelector('.cam-fps-sync')?.value || '30', 10);
     el.innerHTML = cameras.map(c => {
       const vid = c.path.replace('/dev/', '');
       return `
@@ -1404,7 +1677,7 @@ const FeedManager = {
           <div class="feed-live-badge" id="flive-${vid}">
             <div class="feed-live-dot"></div>LIVE
           </div>
-          <div class="feed-fps-badge" id="ffps-${vid}"></div>
+          <div class="feed-fps-badge visible" id="ffps-${vid}">${configuredFps} fps</div>
           <button class="feed-close-btn" title="Pause this feed" onclick="FeedManager.pause('${vid}')">×</button>
           <div class="feed-label">
             <span>${c.name} — /dev/${vid}</span>
@@ -1440,7 +1713,7 @@ const FeedManager = {
   },
 
   _startWatcher(vid) {
-    const STALL_MS       = 5000;
+    const STALL_MS       = 12000;
     const TICK_MS        = 2000;
     const NO_FRAME_TICKS = 8;
     this._watcherState.set(vid, { lastHash: null, stalledAt: null, noFrameTicks: 0 });
@@ -1489,9 +1762,22 @@ const FeedManager = {
         } else {
           if (!ws.stalledAt) ws.stalledAt = now;
           if (now - ws.stalledAt > STALL_MS) {
-            document.getElementById(`flive-${vid}`)?.classList.remove('visible');
-            const stallEl = document.getElementById(`fstall-${vid}`);
-            if (stallEl) stallEl.style.display = 'flex';
+            if (this.isStallSuppressed()) {
+              const stallEl = document.getElementById(`fstall-${vid}`);
+              if (stallEl) stallEl.style.display = 'none';
+              return;
+            }
+
+            const fps = this._lastFps.get(vid) ?? 0;
+            const fpsTs = this._lastFpsTs.get(vid) ?? 0;
+            const statsFresh = now - fpsTs < 8000;
+            const probablyAlive = statsFresh && fps > 0.2;
+
+            if (!probablyAlive) {
+              document.getElementById(`flive-${vid}`)?.classList.remove('visible');
+              const stallEl = document.getElementById(`fstall-${vid}`);
+              if (stallEl) stallEl.style.display = 'flex';
+            }
           }
         }
       } catch (_) { /* canvas taint – skip */ }
@@ -1510,6 +1796,8 @@ const FeedManager = {
     this._watchers.forEach(id => clearInterval(id));
     this._watchers.clear();
     this._watcherState.clear();
+    this._lastFps.clear();
+    this._lastFpsTs.clear();
   },
 
   pause(vid) {
@@ -1569,12 +1857,21 @@ const FeedManager = {
     try { data = await api.get('/api/camera/stats'); } catch (_) { return; }
 
     for (const [vid, stats] of Object.entries(data.cameras || {})) {
+      const fpsNum = Number(stats.fps || 0);
+      this._lastFps.set(vid, fpsNum);
+      this._lastFpsTs.set(vid, Date.now());
+
       const el = document.getElementById(`fstat-${vid}`);
       if (el) el.textContent = `${stats.fps}fps · ${stats.mbps}MB/s`;
       const fpsBadge = document.getElementById(`ffps-${vid}`);
       if (fpsBadge) {
         fpsBadge.textContent = `${stats.fps} fps`;
-        fpsBadge.classList.toggle('visible', stats.fps > 0);
+        fpsBadge.classList.add('visible');
+      }
+
+      if (fpsNum > 0.2) {
+        const stallEl = document.getElementById(`fstall-${vid}`);
+        if (stallEl) stallEl.style.display = 'none';
       }
     }
 
@@ -1593,39 +1890,13 @@ const FeedManager = {
       </div>`;
     }).join('');
 
-    ['device-setup-usb-bars', 'teleop-usb-bars', 'record-usb-bars'].forEach(id => {
+    ['device-setup-usb-bars'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.innerHTML = busHtml;
     });
   },
 
-  clearPaused() { this._paused.clear(); },
-
-  syncQualityButtons(fps, jpeg_quality) {
-    const match = Object.entries(this.QUALITY)
-      .find(([, cfg]) => cfg.fps === fps && cfg.jpeg_quality === jpeg_quality)?.[0] ?? null;
-    ['teleop', 'record'].forEach(tab =>
-      Object.keys(this.QUALITY).forEach(p => {
-        document.getElementById(`${tab}-qbtn-${p}`)?.classList.toggle('active', p === match);
-      })
-    );
-  },
-
-  async setQuality(preset, statusId) {
-    const cfg = this.QUALITY[preset];
-    if (!cfg) return;
-    this.syncQualityButtons(cfg.fps, cfg.jpeg_quality);
-    // Preserve existing codec/resolution, only change fps+quality
-    const current = await api.get('/api/camera_settings');
-    await api.post('/api/camera_settings', { ...current, ...cfg });
-    await DeviceSetupTab.loadStreamSettings();
-    const el = document.getElementById(statusId);
-    if (el) {
-      el.textContent = '✓ Applied';
-      el.classList.add('visible');
-      setTimeout(() => el.classList.remove('visible'), 2500);
-    }
-  },
+  clearPaused() { this._paused.clear(); }
 };
 
 function renderArmList(el, arms) {
@@ -1643,6 +1914,7 @@ function renderArmList(el, arms) {
 
 /* ─── Init ───────────────────────────────────────────────────────────────────── */
 (async () => {
+  DeviceSetupTab.initStreamControls();
   WS.connect();
   await loadConfig();
   StatusTab.refresh();

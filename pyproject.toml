@@ -43,3 +43,6 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 lerobot_studio = ["static/**"]
+
+[tool.pytest.ini_options]
+addopts = "--ignore=src/lerobot"

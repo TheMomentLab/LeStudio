@@ -1,5 +1,6 @@
 from pathlib import Path
-
+import shutil
+import json
 
 def dataset_cache_path(repo_id: str) -> Path:
     return Path.home() / ".cache" / "huggingface" / "lerobot" / repo_id
@@ -7,10 +8,20 @@ def dataset_cache_path(repo_id: str) -> Path:
 
 def resolve_record_resume(cfg: dict) -> tuple[bool, bool]:
     requested_resume = bool(cfg.get("record_resume"))
-    if not requested_resume:
-        return False, False
     repo_id = str(cfg.get("record_repo_id", "user/dataset"))
-    enabled = dataset_cache_path(repo_id).exists()
+    cache_dir = dataset_cache_path(repo_id)
+    
+    if not requested_resume:
+        if cache_dir.exists():
+            shutil.rmtree(cache_dir, ignore_errors=True)
+        return False, False
+
+    meta_path = cache_dir / "meta" / "tasks.parquet"
+    enabled = meta_path.exists()
+    
+    if cache_dir.exists() and not enabled:
+        shutil.rmtree(cache_dir, ignore_errors=True)
+        
     return True, enabled
 
 
@@ -19,24 +30,26 @@ def build_teleop_args(python_exe: str, cfg: dict) -> list[str]:
         return [
             python_exe,
             "-m",
-            "lerobot.scripts.lerobot_teleoperate",
+            "lerobot_studio.teleop_bridge",
             "--robot.type=bi_so_follower",
             f'--robot.left_arm_config.port={cfg["left_follower_port"]}',
             f'--robot.right_arm_config.port={cfg["right_follower_port"]}',
             "--teleop.type=bi_so_leader",
             f'--teleop.left_arm_config.port={cfg["left_leader_port"]}',
             f'--teleop.right_arm_config.port={cfg["right_leader_port"]}',
+            "--display_data=false",
         ]
     return [
         python_exe,
         "-m",
-        "lerobot.scripts.lerobot_teleoperate",
+        "lerobot_studio.teleop_bridge",
         "--robot.type=so101_follower",
         f'--robot.port={cfg["follower_port"]}',
         f'--robot.id={cfg.get("robot_id", "my_so101_follower_1")}',
         "--teleop.type=so101_leader",
         f'--teleop.port={cfg["leader_port"]}',
         f'--teleop.id={cfg.get("teleop_id", "my_so101_leader_1")}',
+        "--display_data=false",
     ]
 
 
@@ -46,11 +59,33 @@ def build_record_args(python_exe: str, cfg: dict, resume_enabled: bool) -> list[
         f'--dataset.num_episodes={cfg.get("record_episodes", 50)}',
         f'--dataset.single_task={cfg.get("record_task", "task")}',
         "--display_data=false",
+        "--dataset.vcodec=h264",
     ]
     if resume_enabled:
         base.append("--resume=true")
 
-    if cfg.get("robot_mode") == "bi":
+    rec_w = cfg.get("record_cam_width", 640)
+    rec_h = cfg.get("record_cam_height", 480)
+    rec_fps = cfg.get("record_cam_fps", 30)
+    
+    cameras = cfg.get("cameras", {})
+    cam_dict = {}
+    for name, path in cameras.items():
+        if path:
+            if not path.startswith("/dev/"):
+                path = f"/dev/{path}"
+            cam_dict[name] = {"type": "opencv", "index_or_path": path, "width": rec_w, "height": rec_h, "fps": rec_fps, "fourcc": "MJPG"}
+    
+    is_bi = cfg.get("robot_mode") == "bi"
+    if cam_dict:
+        cam_str = json.dumps(cam_dict)
+        if is_bi:
+            base.append(f"--robot.cameras={{}}")
+            base.append(f"--robot.left_arm_config.cameras={cam_str}")
+        else:
+            base.append(f"--robot.cameras={cam_str}")
+
+    if is_bi:
         return [
             python_exe,
             "-m",
@@ -119,18 +154,19 @@ def build_motor_setup_args(python_exe: str, data: dict) -> list[str]:
 
 
 def build_train_args(python_exe: str, cfg: dict) -> list[str]:
-    # LeRobot uses Hydra configuration
-    policy = cfg.get("train_policy", "act")
+    policy_raw = str(cfg.get("train_policy", "act"))
+    policy = "tdmpc" if policy_raw == "tdmpc2" else policy_raw
     repo_id = cfg.get("train_repo_id", "user/dataset")
     steps = cfg.get("train_steps", 100000)
     device = cfg.get("train_device", "cuda")
-    
+
     return [
         python_exe,
         "-m",
-        "lerobot.scripts.train",
-        f"policy={policy}",
-        f"dataset_repo_id={repo_id}",
-        f"training.offline_steps={steps}",
-        f"device={device}",
+        "lerobot.scripts.lerobot_train",
+        f"--policy.type={policy}",
+        f"--dataset.repo_id={repo_id}",
+        f"--steps={steps}",
+        f"--policy.device={device}",
+        "--policy.push_to_hub=false",
     ]

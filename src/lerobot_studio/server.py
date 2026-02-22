@@ -71,10 +71,15 @@ DEFAULT_CONFIG = {
     "record_episodes": 50,
     "record_repo_id":  "user/my-dataset",
     "record_resume":   False,
+    "train_dataset_source": "local",
+    "process_view_url": "",
 }
 
 _DEFAULT_CAM_SETTINGS = {
     "codec": "MJPG", "width": 640, "height": 480, "fps": 30, "jpeg_quality": 70,
+}
+_PREVIEW_SETTINGS = {
+    "codec": "MJPG", "width": 192, "height": 144, "fps": 5, "jpeg_quality": 50,
 }
 # ─── Device Detection ──────────────────────────────────────────────────────────
 def udev_props(dev_path: str) -> dict:
@@ -165,6 +170,7 @@ class CameraStreamer:
         s = self.settings
         cap = None
         for attempt in range(5):
+            opened = False
             with _cam_open_lock:
                 cap = cv2.VideoCapture(self.real_path)
                 fourcc = cv2.VideoWriter_fourcc(*s["codec"])
@@ -177,12 +183,19 @@ class CameraStreamer:
                     ret, _ = cap.read()
                     if ret:
                         cap.set(cv2.CAP_PROP_FPS, s["fps"])
-                        time.sleep(0.5)
+                        opened = True
                     else:
                         cap.release()
                         cap = None
-            if cap is not None:
+                else:
+                    cap.release()
+                    cap = None
+            if opened:
+                time.sleep(0.5)
                 break
+            if cap is not None:
+                cap.release()
+                cap = None
             time.sleep(2.0)
 
         if not cap or not cap.isOpened():
@@ -190,14 +203,21 @@ class CameraStreamer:
             return
 
         quality = s["jpeg_quality"]
+        target_fps = max(s["fps"], 1)
+        frame_interval = 1.0 / target_fps
+        last_encode_ts = 0.0
+
         while self.running:
             ret, frame = cap.read()
             if ret:
+                now = time.monotonic()
+                if now - last_encode_ts < frame_interval:
+                    continue
+                last_encode_ts = now
                 _, jpg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, quality])
                 self.latest_frame = jpg.tobytes()
                 self._stat_frames += 1
                 self._stat_bytes += len(self.latest_frame) if self.latest_frame else 0
-                now = time.monotonic()
                 elapsed = now - self._stat_ts
                 if elapsed >= 1.0:
                     self._fps  = self._stat_frames / elapsed
@@ -207,7 +227,6 @@ class CameraStreamer:
                     self._stat_ts     = now
             else:
                 time.sleep(0.1)
-            time.sleep(0.01)
         cap.release()
 
     def get_stats(self) -> dict:
@@ -220,13 +239,21 @@ class CameraStreamer:
 _streamers: dict[str, CameraStreamer] = {}
 _streamers_lock = threading.Lock()
 
+_preview_streamers: dict[str, CameraStreamer] = {}
+_cameras_locked = False  # When True, no new streamers will be created (cameras reserved for subprocess)
+_preview_lock = threading.Lock()
+_rerun_server_proc: Optional[subprocess.Popen] = None
+_rerun_server_lock = threading.Lock()
+
 
 def _get_cam_settings(config_path: Path) -> dict:
     cfg = _load_config(config_path)
     return {**_DEFAULT_CAM_SETTINGS, **cfg.get("camera_settings", {})}
 
 
-def get_streamer(video_path: str, config_path: Path) -> CameraStreamer:
+def get_streamer(video_path: str, config_path: Path) -> CameraStreamer | None:
+    if _cameras_locked:
+        return None
     real_path = os.path.realpath(video_path)
     with _streamers_lock:
         if real_path not in _streamers:
@@ -245,12 +272,87 @@ def release_streamer(video_path: str):
                 del _streamers[real_path]
 
 
+def get_preview_streamer(video_path: str) -> CameraStreamer | None:
+    if _cameras_locked:
+        return None
+    real_path = os.path.realpath(video_path)
+    with _preview_lock:
+        if real_path not in _preview_streamers:
+            _preview_streamers[real_path] = CameraStreamer(real_path, _PREVIEW_SETTINGS)
+        _preview_streamers[real_path].clients += 1
+        return _preview_streamers[real_path]
+
+
+def release_preview_streamer(video_path: str):
+    real_path = os.path.realpath(video_path)
+    with _preview_lock:
+        if real_path in _preview_streamers:
+            _preview_streamers[real_path].clients -= 1
+            if _preview_streamers[real_path].clients <= 0:
+                _preview_streamers[real_path].stop()
+                del _preview_streamers[real_path]
+
+
+def stop_all_streamers_for_process():
+    global _cameras_locked
+    _cameras_locked = True  # Block any new streamer creation from browser requests
+    threads = []
+    with _streamers_lock:
+        for streamer in _streamers.values():
+            streamer.stop()
+            threads.append(streamer.thread)
+        _streamers.clear()
+    with _preview_lock:
+        for streamer in _preview_streamers.values():
+            streamer.stop()
+            threads.append(streamer.thread)
+        _preview_streamers.clear()
+    # Wait for ALL capture threads to fully exit and release their cameras
+    for t in threads:
+        t.join(timeout=5.0)
+    time.sleep(1.5)  # Extra buffer for V4L2 device node release
+
+
+def unlock_cameras():
+    global _cameras_locked
+    _cameras_locked = False
+
+
+def ensure_rerun_web_server(python_exe: str, web_port: int = 9090, grpc_port: int = 9876):
+    global _rerun_server_proc
+    with _rerun_server_lock:
+        if _rerun_server_proc is not None and _rerun_server_proc.poll() is None:
+            return
+        cmd = [
+            python_exe,
+            "-c",
+            (
+                "import time;"
+                "import rerun as rr;"
+                "rr.init('lerobot_studio_view', spawn=False);"
+                f"rr.serve_grpc(grpc_port={grpc_port});"
+                f"rr.serve_web_viewer(web_port={web_port}, open_browser=False, connect_to='rerun+http://127.0.0.1:{grpc_port}/proxy');"
+                "\nwhile True:\n    time.sleep(3600)"
+            ),
+        ]
+        _rerun_server_proc = subprocess.Popen(
+            cmd,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            close_fds=True,
+        )
+
 def restart_all_streamers(config_path: Path):
     with _streamers_lock:
         for streamer in _streamers.values():
             streamer.stop()
         paths = list(_streamers.keys())
         _streamers.clear()
+    with _preview_lock:
+        for streamer in _preview_streamers.values():
+            streamer.stop()
+        _preview_streamers.clear()
     time.sleep(1.5)
     settings = _get_cam_settings(config_path)
     for p in paths:
@@ -412,11 +514,41 @@ def create_app(
         return {"ok": ok, "error": err}
 
     # ─── API: MJPEG Streaming ──────────────────────────────────────────────
-    async def mjpeg_gen(video_path: str, request: Request):
-        streamer = get_streamer(video_path, CONFIG_PATH)
+    async def mjpeg_gen(video_path: str, request: Request, preview: bool = False):
+        if _cameras_locked:
+            cam_name = Path(video_path).name
+            shm_path = f"/dev/shm/lerobot_cam_{cam_name}.jpg"
+            last_mtime = 0
+            while True:
+                if await request.is_disconnected():
+                    break
+                if not _cameras_locked:
+                    break
+                try:
+                    if os.path.exists(shm_path):
+                        mtime = os.path.getmtime(shm_path)
+                        if mtime != last_mtime:
+                            with open(shm_path, "rb") as f:
+                                frame = f.read()
+                            if frame:
+                                yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + frame + b"\r\n"
+                                last_mtime = mtime
+                except Exception:
+                    pass
+                await asyncio.sleep(1 / 30)
+            return
+        
+        if preview:
+            streamer = get_preview_streamer(video_path)
+        else:
+            streamer = get_streamer(video_path, CONFIG_PATH)
+        if streamer is None:
+            return
         try:
             while True:
                 if await request.is_disconnected():
+                    break
+                if _cameras_locked:
                     break
                 if streamer.failed:
                     break
@@ -425,12 +557,15 @@ def create_app(
                     yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + frame + b"\r\n"
                 await asyncio.sleep(1 / 30)
         finally:
-            release_streamer(video_path)
-
+            if preview:
+                release_preview_streamer(video_path)
+            else:
+                release_streamer(video_path)
+        
     @app.get("/stream/{video_name}")
-    async def stream_camera(request: Request, video_name: str):
+    async def stream_camera(request: Request, video_name: str, preview: int = 0):
         return StreamingResponse(
-            mjpeg_gen(f"/dev/{video_name}", request),
+            mjpeg_gen(f"/dev/{video_name}", request, preview=bool(preview)),
             media_type="multipart/x-mixed-replace; boundary=frame",
         )
 
@@ -490,6 +625,7 @@ def create_app(
     @app.post("/api/process/{name}/stop")
     def api_proc_stop(name: str):
         proc_mgr.stop(name)
+        unlock_cameras()
         return {"ok": True}
 
     @app.post("/api/process/{name}/input")
@@ -502,6 +638,7 @@ def create_app(
     async def api_teleop_start(data: dict):
         if proc_mgr.is_running("teleop"):
             return {"ok": False, "error": "Already running"}
+        stop_all_streamers_for_process()
         args = build_teleop_args(PYTHON, data)
         return {"ok": proc_mgr.start("teleop", args)}
 
@@ -510,7 +647,13 @@ def create_app(
     async def api_record_start(data: dict):
         if proc_mgr.is_running("record"):
             return {"ok": False, "error": "Already running"}
+        stop_all_streamers_for_process()
         cfg = data
+        # Inject camera settings (resolution/fps) from user's config into record args
+        cam_settings = _get_cam_settings(CONFIG_PATH)
+        cfg["record_cam_width"] = cam_settings.get("width", 640)
+        cfg["record_cam_height"] = cam_settings.get("height", 480)
+        cfg["record_cam_fps"] = cam_settings.get("fps", 30)
         requested_resume, resume_enabled = resolve_record_resume(cfg)
         args = build_record_args(PYTHON, cfg, resume_enabled)
         return {
@@ -645,14 +788,70 @@ def create_app(
         try:
             info = json.loads(info_path.read_text())
             cameras = [k for k, v in info.get("features", {}).items() if v.get("dtype") == "video"]
-            
+
             episodes = []
-            for ep_idx in range(info.get("total_episodes", 0)):
-                episodes.append({
-                    "episode_index": ep_idx,
-                    "length": 0,
-                    "tasks": []
-                })
+            episodes_dir = base / "meta" / "episodes"
+            if episodes_dir.exists():
+                try:
+                    pd = __import__("pandas")
+
+                    rows = []
+                    for pq_path in sorted(episodes_dir.glob("**/*.parquet")):
+                        base_cols = ["episode_index", "length", "tasks"]
+                        video_cols = []
+                        for cam in cameras:
+                            video_cols.append(f"videos/{cam}/chunk_index")
+                            video_cols.append(f"videos/{cam}/file_index")
+                            video_cols.append(f"videos/{cam}/from_timestamp")
+                            video_cols.append(f"videos/{cam}/to_timestamp")
+                        try:
+                            df = pd.read_parquet(pq_path, columns=base_cols + video_cols)
+                        except Exception:
+                            df = pd.read_parquet(pq_path, columns=base_cols)
+                        for _, row in df.iterrows():
+                            tasks = row.get("tasks", [])
+                            if tasks is None:
+                                tasks = []
+                            elif not isinstance(tasks, list):
+                                tasks = list(tasks)
+                            video_files = {}
+                            for cam in cameras:
+                                chunk_key = f"videos/{cam}/chunk_index"
+                                file_key = f"videos/{cam}/file_index"
+                                from_key = f"videos/{cam}/from_timestamp"
+                                to_key = f"videos/{cam}/to_timestamp"
+                                if chunk_key in row and file_key in row:
+                                    chunk_val = row.get(chunk_key)
+                                    file_val = row.get(file_key)
+                                    if not pd.isna(chunk_val) and not pd.isna(file_val):
+                                        from_val = row.get(from_key) if from_key in row else None
+                                        to_val = row.get(to_key) if to_key in row else None
+                                        video_files[cam] = {
+                                            "chunk_index": int(chunk_val),
+                                            "file_index": int(file_val),
+                                            "from_timestamp": None if from_val is None or pd.isna(from_val) else float(from_val),
+                                            "to_timestamp": None if to_val is None or pd.isna(to_val) else float(to_val),
+                                        }
+                            rows.append({
+                                "episode_index": int(row["episode_index"]),
+                                "length": int(row["length"]),
+                                "tasks": tasks,
+                                "video_files": video_files,
+                            })
+
+                    rows.sort(key=lambda x: x["episode_index"])
+                    episodes = rows
+                except Exception:
+                    episodes = []
+
+            if not episodes:
+                for ep_idx in range(info.get("total_episodes", 0)):
+                    episodes.append({
+                        "episode_index": ep_idx,
+                        "length": 0,
+                        "tasks": [],
+                        "video_files": {},
+                    })
             
             return {
                 "dataset_id": repo_id,

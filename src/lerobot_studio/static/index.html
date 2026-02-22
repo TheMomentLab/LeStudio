@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>LeRobot Studio</title>
+  <link rel="icon" href="/static/logo.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
@@ -12,7 +13,7 @@
     <!-- ── Header ── -->
     <header>
       <div class="header-left">
-        <span class="logo">🤖</span>
+        <img src="/static/logo.svg" alt="Moment Lab Logo" class="logo" style="width: 32px; height: 32px;" />
         <h1>LeRobot <span style="color:var(--text2);font-weight:400">Studio</span></h1>
       </div>
       <div class="header-right">
@@ -29,7 +30,7 @@
     <!-- ── Tabs ── -->
     <nav id="tab-nav">
       <button class="tab-btn active" data-tab="status">⬡ Status</button>
-      <button class="tab-btn" data-tab="device-setup">📷 Camera Setup</button>
+      <button class="tab-btn" data-tab="device-setup">🗺️ Mapping</button>
       <button class="tab-btn" data-tab="motor-setup">⚙ Motor Setup</button>
       <button class="tab-btn" data-tab="calibrate">⚖ Calibration</button>
       <button class="tab-btn" data-tab="teleop">🕹 Teleop</button>
@@ -47,16 +48,6 @@
           <h2>System Status</h2>
           <span id="status-last-update" style="font-size:11px; color:var(--text2); margin-left:auto;"></span>
           <button id="status-refresh-btn" onclick="StatusTab.refresh()" class="btn-sm">↺ Refresh</button>
-        </div>
-
-        <div class="quick-guide">
-          <h3>Quick Check (30 seconds)</h3>
-          <p>Use this page first before setup. Confirm all required devices are detected and no process is stuck.</p>
-          <div class="quick-steps">
-            <div class="quick-step"><b>1)</b> Check camera list</div>
-            <div class="quick-step"><b>2)</b> Check arm ports</div>
-            <div class="quick-step"><b>3)</b> Confirm all processes are idle</div>
-          </div>
         </div>
 
         <div class="status-grid">
@@ -84,16 +75,6 @@
             <button id="teleop-mode-single" class="toggle active" onclick="TeleopTab.setMode('single')">Single Arm</button>
             <button id="teleop-mode-bi"     class="toggle"        onclick="TeleopTab.setMode('bi')">Bi-Arm</button>
             <span id="teleop-loop-pill" class="perf-pill idle">Loop: --</span>
-          </div>
-        </div>
-
-        <div class="quick-guide">
-          <h3>Teleop Flow</h3>
-          <p>Choose arm ports, verify camera feeds, then start teleoperation. If something moves wrong, press Stop immediately.</p>
-          <div class="quick-steps">
-            <div class="quick-step"><b>1)</b> Set arm ports/IDs</div>
-            <div class="quick-step"><b>2)</b> Confirm camera feeds</div>
-            <div class="quick-step"><b>3)</b> Press Start Teleop</div>
           </div>
         </div>
 
@@ -128,6 +109,8 @@
               <span style="font-size:16px;">⚠️</span>
               <span>If the arm moves unexpectedly, press <b>Stop</b> immediately. Keep hands clear of the arm during operation.</span>
             </div>
+
+            <div class="spacer"></div>
             <div class="btn-row">
               <button id="teleop-start-btn" class="btn-primary" onclick="TeleopTab.start()">▶ Start Teleop</button>
               <button id="teleop-stop-btn"  class="btn-danger hidden" onclick="TeleopTab.stop()">■ Stop</button>
@@ -138,7 +121,35 @@
           <div class="card">
             <h3>Step 2: Camera Feeds</h3>
             <div class="field-help">Set only cameras you need. Empty fields are ignored.</div>
-            <div id="teleop-cameras" class="camera-cfg">
+            <div class="settings-grid" style="margin-top:12px;">
+              <div class="setting-item">
+                <label>Codec</label>
+                <select class="cam-codec-sync">
+                  <option value="MJPG">MJPG (compressed)</option>
+                  <option value="YUYV">YUYV (raw)</option>
+                </select>
+              </div>
+              <div class="setting-item">
+                <label>Resolution</label>
+                <select class="cam-resolution-sync">
+                  <option value="1280x720">1280 × 720 (720p)</option>
+                  <option value="800x600">800 × 600</option>
+                  <option value="640x480">640 × 480 (480p)</option>
+                  <option value="320x240">320 × 240 (240p)</option>
+                </select>
+              </div>
+              <div class="setting-item">
+                <label>FPS</label>
+                <select class="cam-fps-sync">
+                  <option value="30">30</option>
+                </select>
+              </div>
+              <div class="setting-item">
+                <label>JPEG Quality <span class="cam-quality-val-sync muted">70</span></label>
+                <input type="range" class="cam-jpeg-quality-sync" min="30" max="95" step="5" value="70" />
+              </div>
+            </div>
+            <div id="teleop-cameras" class="camera-cfg" style="margin-top:16px;">
               <div class="cam-row">
                 <span>front_1</span>
                 <input id="tc-front1" type="text" value="/dev/follower_cam_1" placeholder="/dev/…" />
@@ -152,14 +163,7 @@
                 <input id="tc-top2" type="text" value="/dev/top_cam_2" placeholder="/dev/…" />
               </div>
             </div>
-            <div id="teleop-usb-bars"></div>
-            <div class="feed-quality-bar">
-              <span class="q-label">Quality:</span>
-              <button id="teleop-qbtn-high"   class="feed-quality-btn" onclick="FeedManager.setQuality('high','teleop-quality-st')">High</button>
-              <button id="teleop-qbtn-medium" class="feed-quality-btn" onclick="FeedManager.setQuality('medium','teleop-quality-st')">Medium</button>
-              <button id="teleop-qbtn-low"    class="feed-quality-btn" onclick="FeedManager.setQuality('low','teleop-quality-st')">Low</button>
-              <span id="teleop-quality-st" class="feed-quality-status"></span>
-            </div>
+            <h3 style="margin-top:16px">Live Feeds</h3>
             <div id="teleop-feeds" class="feed-grid"></div>
           </div>
         </div>
@@ -186,16 +190,6 @@
             <label>Recording Mode:</label>
             <button id="record-mode-single" class="toggle active" onclick="RecordTab.setMode('single')">Single</button>
             <button id="record-mode-bi"     class="toggle"        onclick="RecordTab.setMode('bi')">Bi-Arm</button>
-          </div>
-        </div>
-
-        <div class="quick-guide">
-          <h3>Recording Flow</h3>
-          <p>Create a plan, connect ports/cameras, then start recording. Save or discard each episode with buttons below.</p>
-          <div class="quick-steps">
-            <div class="quick-step"><b>1)</b> Fill recording plan</div>
-            <div class="quick-step"><b>2)</b> Set arm/camera ports</div>
-            <div class="quick-step"><b>3)</b> Start and save episodes</div>
           </div>
         </div>
 
@@ -240,10 +234,40 @@
               <label>Right Leader</label>
               <input id="record-right-leader" type="text" value="/dev/leader_arm_2" />
             </div>
+          </div>
 
+          <div class="card">
             <h3 style="margin-top:16px">Step 3: Camera Feeds</h3>
             <div class="field-help">Set only cameras you want to save in the dataset.</div>
-            <div class="cam-row">
+            <div class="settings-grid" style="margin-top:12px;">
+              <div class="setting-item">
+                <label>Codec</label>
+                <select class="cam-codec-sync">
+                  <option value="MJPG">MJPG (compressed)</option>
+                  <option value="YUYV">YUYV (raw)</option>
+                </select>
+              </div>
+              <div class="setting-item">
+                <label>Resolution</label>
+                <select class="cam-resolution-sync">
+                  <option value="1280x720">1280 × 720 (720p)</option>
+                  <option value="800x600">800 × 600</option>
+                  <option value="640x480">640 × 480 (480p)</option>
+                  <option value="320x240">320 × 240 (240p)</option>
+                </select>
+              </div>
+              <div class="setting-item">
+                <label>FPS</label>
+                <select class="cam-fps-sync">
+                  <option value="30">30</option>
+                </select>
+              </div>
+              <div class="setting-item">
+                <label>JPEG Quality <span class="cam-quality-val-sync muted">70</span></label>
+                <input type="range" class="cam-jpeg-quality-sync" min="30" max="95" step="5" value="70" />
+              </div>
+            </div>
+            <div class="cam-row" style="margin-top:16px;">
               <span>front_1</span>
               <input id="rc-front1" type="text" value="/dev/follower_cam_1" placeholder="/dev/…" />
             </div>
@@ -255,45 +279,36 @@
               <span>top_2</span>
               <input id="rc-top2" type="text" value="/dev/top_cam_2" placeholder="/dev/…" />
             </div>
-
-            <div class="spacer"></div>
-            <div class="btn-row">
-              <button id="record-start-btn" class="btn-primary" onclick="RecordTab.start()">▶ Start Recording</button>
-              <button id="record-stop-btn"  class="btn-danger hidden" onclick="RecordTab.stop()">■ Stop</button>
-            </div>
+            <h3 style="margin-top:16px">Live Feeds</h3>
+            <div id="record-feeds" class="feed-grid"></div>
           </div>
+        </div>
 
-          <!-- Status & Feeds -->
-          <div class="card">
-            <h3>Episode Progress</h3>
+        <div class="episode-progress-card">
+          <div class="ep-card-title">Episode Progress</div>
+          <div class="ep-layout-grid">
             <div class="episode-status">
-              <div class="ep-num">
-                <span id="record-ep-current">0</span>
-                <span class="ep-sep">/</span>
-                <span id="record-ep-total">—</span>
+              <div class="ep-status-row">
+                <div class="ep-num">
+                  <span id="record-ep-current">—</span>
+                  <span class="ep-sep">/</span>
+                  <span id="record-ep-total">—</span>
+                </div>
+                <div id="record-state-pill" class="ep-state-pill idle">Idle</div>
               </div>
               <div class="ep-label">Episodes</div>
               <div class="ep-bar-wrap"><div class="ep-bar" id="record-ep-bar"></div></div>
             </div>
-            <div class="info-box" style="margin:10px 0 8px;font-size:11px">
-              ℹ️ After each episode: <kbd>→</kbd> save &nbsp;·&nbsp; <kbd>←</kbd> discard &nbsp;·&nbsp; <kbd>Esc</kbd> end session
+            <div class="ep-actions-panel">
+              <div class="ep-controls-row" id="record-ep-controls">
+                 <button id="record-start-btn" class="btn-primary" onclick="RecordTab.start()">▶ Start Recording</button>
+                 <button class="btn-sm record-ep-action" onclick="RecordTab.sendKey('right')" disabled>✓ Save →</button>
+                 <button class="btn-sm btn-warn record-ep-action" onclick="RecordTab.sendKey('left')" disabled>✗ Discard ←</button>
+                 <button class="btn-sm record-ep-action" onclick="RecordTab.sendKey('escape')" disabled>⏹ End</button>
+                 <button id="record-stop-btn" class="btn-danger hidden" onclick="RecordTab.stop()">■ Force Stop</button>
+              </div>
+              <div id="record-ep-guard" class="ep-guard-msg">Start recording to enable controls</div>
             </div>
-            <div class="btn-row" id="record-ep-controls" style="margin-top:4px">
-               <button class="btn-sm" onclick="RecordTab.sendKey('right')" disabled>✓ Save →</button>
-               <button class="btn-sm btn-warn" onclick="RecordTab.sendKey('left')" disabled>✗ Discard ←</button>
-               <button class="btn-sm" onclick="RecordTab.sendKey('escape')" disabled>⏹ End</button>
-               <div id="record-ep-guard" style="font-size:11px; color:var(--text2); margin-left:8px; display:flex; align-items:center;">Start recording to enable controls</div>
-             </div>
-            <h3 style="margin-top:16px">Camera Feeds</h3>
-            <div id="record-usb-bars"></div>
-            <div class="feed-quality-bar">
-              <span class="q-label">Quality:</span>
-              <button id="record-qbtn-high"   class="feed-quality-btn" onclick="FeedManager.setQuality('high','record-quality-st')">High</button>
-              <button id="record-qbtn-medium" class="feed-quality-btn" onclick="FeedManager.setQuality('medium','record-quality-st')">Medium</button>
-              <button id="record-qbtn-low"    class="feed-quality-btn" onclick="FeedManager.setQuality('low','record-quality-st')">Low</button>
-              <span id="record-quality-st" class="feed-quality-status"></span>
-            </div>
-            <div id="record-feeds" class="feed-grid"></div>
           </div>
         </div>
 
@@ -309,16 +324,6 @@
       <!-- ━━━━ CALIBRATE ━━━━ -->
       <section id="tab-calibrate" class="tab">
         <div class="section-header"><h2>Calibration</h2></div>
-
-        <div class="quick-guide">
-          <h3>Calibration Flow</h3>
-          <p>Select arm info, check file status, then start calibration and follow on-screen prompts.</p>
-          <div class="quick-steps">
-            <div class="quick-step"><b>1)</b> Set type, ID, port</div>
-            <div class="quick-step"><b>2)</b> Check file status</div>
-            <div class="quick-step"><b>3)</b> Start calibration</div>
-          </div>
-        </div>
 
         <div class="two-col">
           <div class="card">
@@ -401,85 +406,25 @@
       <!-- ━━━━ DEVICE SETUP ━━━━ -->
       <section id="tab-device-setup" class="tab">
         <div class="section-header">
-          <h2>Camera Setup</h2>
+          <h2>Device Mapping</h2>
           <button onclick="DeviceSetupTab.refresh()" class="btn-sm">↺ Refresh</button>
         </div>
 
-        <div class="quick-guide" style="margin-bottom: 24px;">
-          <h3>Identify Your Cameras</h3>
-          <p>View streams to identify cameras, select their roles, and apply mapping rules.</p>
-          <div class="quick-steps">
-            <div class="quick-step"><b>1)</b> Click ▶ View Stream</div>
-            <div class="quick-step"><b>2)</b> Select camera's role</div>
-            <div class="quick-step"><b>3)</b> Click ⚡ Save Camera Mapping</div>
-          </div>
-        </div>
+
 
         <div class="card" style="border: 2px solid var(--border); box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
           
+          <div class="muted" style="margin-bottom:12px; font-size:12px;">Camera Setup previews run in bandwidth-safe mode (fixed 144p @ 5fps) to keep multi-camera mapping stable.</div>
           <div id="device-cameras-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 20px;">Loading…</div>
           
-          <div style="margin-top: 32px; padding-top: 20px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;">
-            <div id="rules-status" class="rules-status" style="font-weight: 500; font-size: 15px;">Waiting for assignments...</div>
-            <button onclick="DeviceSetupTab.applyRules()" class="btn-primary" style="padding: 12px 24px; font-size: 16px; font-weight: bold; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.2);">
-              ⚡ Save Camera Mapping
-            </button>
-          </div>
-
-          <div style="margin-top: 24px; text-align: center;">
-            <button onclick="DeviceSetupTab.toggleRulesPanel()" class="btn-xs" style="background:transparent; color:var(--text2); border:none; text-decoration: underline; cursor: pointer; font-size: 13px;">
-              <span id="rules-toggle-icon">▶</span> Advanced rules view
-            </button>
-            <div id="rules-advanced-panel" style="display: none; margin-top: 12px; border:1px solid var(--border); padding: 12px; border-radius: 6px; background:var(--bg-card); text-align: left;">
-              <div class="rules-row" style="margin-bottom: 8px; display: flex; gap: 8px;">
-                <button onclick="DeviceSetupTab.previewRules()" class="btn-sm">Preview changes</button>
-                <button onclick="DeviceSetupTab.showCurrent()"  class="btn-sm">Show current file</button>
-              </div>
-              <div class="rules-help">Readable view first. Use raw text only if needed.</div>
+          <div style="margin-top: 32px; text-align: left;">
+            <h3 style="margin-bottom: 12px; color: var(--text1); font-size: 16px;">Current Active Rules</h3>
+            <div id="rules-advanced-panel" style="margin-top: 12px; padding: 0;">
               <div id="rules-readable" class="rules-readable">
-                <div class="rules-empty">Press "Preview changes" to generate readable rules.</div>
+                <div class="rules-empty">Loading rules...</div>
               </div>
-              <details class="rules-raw-wrap">
-                <summary>Raw rules text</summary>
-                <pre id="rules-preview" class="rules-box" style="margin:8px 0 0 0;">Press "Preview changes" to see generated rules.</pre>
-              </details>
-            </div>
-          </div>
-        </div>
 
-        <div class="card">
-           <h3>Streaming Settings</h3>
-           <p class="muted">Adjust codec, resolution, FPS and JPEG quality for all camera streams. Changes restart active streams.</p>
-           <div id="device-setup-usb-bars" style="margin-bottom:12px"></div>
-           <div class="settings-grid">
-            <div class="setting-item">
-              <label>Codec</label>
-              <select id="cam-codec">
-                <option value="MJPG">MJPG (compressed)</option>
-                <option value="YUYV">YUYV (raw)</option>
-              </select>
             </div>
-            <div class="setting-item">
-              <label>Resolution</label>
-              <select id="cam-resolution">
-                <option value="640x480">640 × 480</option>
-                <option value="1280x720">1280 × 720</option>
-              </select>
-            </div>
-            <div class="setting-item">
-              <label>FPS <span id="cam-fps-val" class="muted">30</span></label>
-              <input type="range" id="cam-fps" min="1" max="60" step="1" value="30"
-                     oninput="document.getElementById('cam-fps-val').textContent=this.value" />
-            </div>
-            <div class="setting-item">
-              <label>JPEG Quality <span id="cam-quality-val" class="muted">70</span></label>
-              <input type="range" id="cam-jpeg-quality" min="30" max="95" step="5" value="70"
-                     oninput="document.getElementById('cam-quality-val').textContent=this.value" />
-            </div>
-          </div>
-          <div class="btn-row" style="margin-top:12px">
-            <button class="btn-primary-sm" onclick="DeviceSetupTab.applyStreamSettings()">✓ Apply</button>
-            <span id="cam-settings-status" class="muted"></span>
           </div>
         </div>
       </section>
@@ -487,16 +432,6 @@
       <!-- ━━━━ MOTOR SETUP ━━━━ -->
       <section id="tab-motor-setup" class="tab">
         <div class="section-header"><h2>Motor Setup</h2></div>
-
-        <div class="quick-guide">
-          <h3>Motor Setup Flow</h3>
-          <p>Use this once per arm to set motor IDs and communication speed.</p>
-          <div class="quick-steps">
-            <div class="quick-step"><b>1)</b> Choose arm type</div>
-            <div class="quick-step"><b>2)</b> Set arm port</div>
-            <div class="quick-step"><b>3)</b> Start and follow prompts</div>
-          </div>
-        </div>
 
         <div class="two-col">
           <div class="card">
@@ -548,16 +483,6 @@
           <h2>Train Policy</h2>
         </div>
 
-        <div class="quick-guide">
-          <h3>Training Flow</h3>
-          <p>Configure your training policy, select dataset, and start training. Uses local GPU if available.</p>
-          <div class="quick-steps">
-            <div class="quick-step"><b>1)</b> Select policy and dataset</div>
-            <div class="quick-step"><b>2)</b> Configure steps & device</div>
-            <div class="quick-step"><b>3)</b> Start training</div>
-          </div>
-        </div>
-
         <div class="two-col">
           <div class="card">
             <h3>Configuration</h3>
@@ -568,11 +493,24 @@
               <option value="tdmpc2">TD-MPC2</option>
             </select>
             
-            <label>Dataset Repo ID</label>
-            <input id="train-repo" type="text" value="user/my-dataset" placeholder="Example: yourname/my-dataset" list="train-dataset-list" oninput="TrainTab.validateRepoId()" />
-            <datalist id="train-dataset-list"></datalist>
+            <label>Dataset Source</label>
+            <div class="mode-toggle" style="margin-left:0; margin-bottom:8px;">
+              <button id="train-source-local" class="toggle active" onclick="TrainTab.setDatasetSource('local')">Local</button>
+              <button id="train-source-hf" class="toggle" onclick="TrainTab.setDatasetSource('hf')">Hugging Face</button>
+            </div>
+
+            <div id="train-local-wrap">
+              <label>Local Dataset</label>
+              <select id="train-local-repo" onchange="TrainTab.syncRepoFromSource()"></select>
+              <div class="field-help" style="margin-top:4px;">Choose a dataset from local cache (`~/.cache/huggingface/lerobot`).</div>
+            </div>
+
+            <div id="train-hf-wrap" class="hidden">
+              <label>Dataset Repo ID</label>
+              <input id="train-repo" type="text" value="user/my-dataset" placeholder="Example: yourname/my-dataset" oninput="TrainTab.validateRepoId()" />
+              <div class="field-help" style="margin-top:4px;">Type a Hugging Face Hub dataset ID (`username/dataset-name`).</div>
+            </div>
             <div id="train-repo-error" style="display:none; color:var(--red); font-size:11px; margin-top:4px; padding:4px 8px; background:rgba(248,81,73,0.1); border-radius:4px;"></div>
-            <div class="field-help" style="margin-top:4px;">Select a local dataset from the dropdown, or type a Hugging Face Hub ID.</div>
             
             <label>Training Steps</label>
             <input id="train-steps" type="number" value="100000" min="1000" step="1000" />
