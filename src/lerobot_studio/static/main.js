@@ -1377,6 +1377,8 @@ const DeviceSetupTab = {
   armAssignments: {},
   streamApplyTimer: null,
   rulesApplyTimer: null,
+  installCommands: [],
+  rulesStatus: null,
 
   async refresh() {
     const data = await api.get('/api/devices');
@@ -1397,6 +1399,7 @@ const DeviceSetupTab = {
     this.renderArmsGrid();
     this.validateAssignments();
     this.showCurrent();
+    this.refreshRulesStatus();
   },
 
   renderGrid() {
@@ -1600,7 +1603,7 @@ const DeviceSetupTab = {
     if (this.rulesApplyTimer !== null) clearTimeout(this.rulesApplyTimer);
     this.rulesApplyTimer = setTimeout(() => {
       this.rulesApplyTimer = null;
-      this.applyRules({ silent: true });
+      this.previewRules();
     }, delay);
   },
 
@@ -1623,6 +1626,7 @@ const DeviceSetupTab = {
       arm_assignments: this.armAssignments,
     });
     this.renderReadableRules(res.content);
+    this.refreshRulesStatus();
   },
 
   async applyRules({ silent = false } = {}) {
@@ -1637,11 +1641,65 @@ const DeviceSetupTab = {
       assignments: this.assignments,
       arm_assignments: this.armAssignments,
     });
+    this.installCommands = Array.isArray(res.manual_commands) ? res.manual_commands : [];
     if (!res.ok && !silent) {
-      alert(`Failed to apply camera mapping: ${res.error}`);
+      const detail = res.error ? `\n\n${res.error}` : '';
+      alert(`Failed to apply mapping directly.${detail}`);
+      showToast('Direct apply failed. Use CLI install commands.', 'error');
     } else if (res.ok) {
+      showToast('Mapping rules applied.', 'success');
       this.showCurrent();
     }
+    this.refreshRulesStatus();
+  },
+
+  async refreshRulesStatus() {
+    const statusEl = document.getElementById('rules-install-status');
+    const hintEl = document.getElementById('rules-install-hint');
+    if (!statusEl || !hintEl) return;
+
+    try {
+      const res = await api.get('/api/rules/status');
+      this.rulesStatus = res;
+      this.installCommands = Array.isArray(res.manual_commands) ? res.manual_commands : [];
+
+      if (res.rules_installed) {
+        statusEl.textContent = `udev rules installed at ${res.rules_path}`;
+        statusEl.style.color = 'var(--green)';
+      } else {
+        statusEl.textContent = `udev rules not installed (${res.rules_path})`;
+        statusEl.style.color = 'var(--yellow)';
+      }
+
+      const cmdText = this.installCommands.length
+        ? this.installCommands.join('\n')
+        : 'No manual commands available.';
+      hintEl.textContent =
+        `CLI helper: lerobot-studio install-udev\n` +
+        `Fallback rules file: ${res.fallback_rules_path}\n\n` +
+        `Manual commands:\n${cmdText}`;
+    } catch (err) {
+      statusEl.textContent = 'Failed to read udev install status';
+      statusEl.style.color = 'var(--red)';
+      hintEl.textContent = String(err || 'Unknown error');
+    }
+  },
+
+  copyInstallCommands() {
+    const cmds = this.installCommands.length
+      ? this.installCommands
+      : ['lerobot-studio install-udev'];
+    const text = cmds.join('\n');
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text)
+        .then(() => showToast('Install commands copied.', 'success'))
+        .catch(() => {
+          showToast('Clipboard unavailable. Commands shown in mapping panel.', 'error');
+        });
+      return;
+    }
+    showToast('Clipboard unavailable. Commands shown in mapping panel.', 'error');
   },
 
   async showCurrent() {
@@ -2477,10 +2535,20 @@ const TrainTab = {
 const EvalTab = {
   runActive: false,
   hadError: false,
+  runSeq: 0,
+  activeRunSeq: 0,
   targetEpisodes: null,
   doneEpisodes: 0,
   successRate: null,
   meanReward: null,
+  finalReward: null,
+  finalSuccess: null,
+  finalConfirmed: false,
+  startedAtMs: null,
+  endedAtMs: null,
+  bestEpisode: null,
+  worstEpisode: null,
+  perEpisodeReward: {},
 
   applyConfig(cfg) {
     if (!cfg) return;
@@ -2533,8 +2601,12 @@ const EvalTab = {
     this.clearLog();
     const cfg = this.buildConfig();
     if (!this.validate(cfg)) return;
+    this.runSeq += 1;
+    this.activeRunSeq = this.runSeq;
     this.targetEpisodes = cfg.eval_episodes;
     this.resetProgress('starting');
+    this.startedAtMs = Date.now();
+    this.endedAtMs = null;
 
     state.config.eval_policy_path = cfg.eval_policy_path;
     state.config.eval_repo_id = cfg.eval_repo_id;
@@ -2549,11 +2621,14 @@ const EvalTab = {
       appendLog('eval-log', `[ERROR] ${res.error || 'Failed to start eval process.'}`, 'error');
       this.hadError = true;
       this.setProgressStatus('error');
+      this.endedAtMs = Date.now();
+      this.updateSummaryUI();
       return;
     }
     appendLog('eval-log', '[INFO] Eval process started.', 'info');
     this.runActive = true;
     this.setProgressStatus('running');
+    this.updateSummaryUI();
   },
 
   async stop() {
@@ -2561,6 +2636,8 @@ const EvalTab = {
     this.runActive = false;
     if (this.hadError) this.setProgressStatus('error');
     else this.setProgressStatus('stopped');
+    this.endedAtMs = Date.now();
+    this.updateSummaryUI();
   },
 
   clearLog() {
@@ -2569,24 +2646,35 @@ const EvalTab = {
 
   ingestLogLine(line, kind = 'stdout') {
     if (!line) return;
+    const endMarker = /\[eval process ended\]/i;
+    const completeMarker = /evaluation complete|end of evaluation|eval complete/i;
+    if (!state.procStatus.eval && !this.runActive && !endMarker.test(line) && !completeMarker.test(line)) {
+      return;
+    }
+    if (!this.startedAtMs && state.procStatus.eval) {
+      this.startedAtMs = Date.now();
+    }
 
     if (kind === 'error' || /\[ERROR\]|Traceback|RuntimeError|Exception|failed/i.test(line)) {
       this.hadError = true;
       this.setProgressStatus('error');
     }
 
-    const epTotalMatch = line.match(/(?:episodes|n_episodes)\s*[:=]\s*([0-9]+)/i);
+    const epTotalMatch = line.match(/(?:^|\s)(?:n_episodes|episodes)\s*[:=]\s*([0-9]+)/i)
+      || line.match(/episode\s*\d+\s*\/\s*([0-9]+)/i)
+      || line.match(/completed\s*episodes\s*[:=]\s*\d+\s*\/\s*([0-9]+)/i);
     if (epTotalMatch) {
       const total = parseInt(epTotalMatch[1], 10);
       if (Number.isFinite(total) && total > 0) this.targetEpisodes = total;
     }
 
     const doneMatch = line.match(/episode\s*([0-9]+)\s*\/\s*([0-9]+)/i)
-      || line.match(/episode\s*([0-9]+)\b/i);
+      || line.match(/completed\s*episodes\s*[:=]\s*([0-9]+)\s*\/\s*([0-9]+)/i)
+      || line.match(/\bepisode\s*[:#]\s*([0-9]+)\b/i);
     if (doneMatch) {
       const done = parseInt(doneMatch[1], 10);
       if (Number.isFinite(done) && done >= 0) {
-        this.doneEpisodes = done;
+        this.doneEpisodes = Math.max(this.doneEpisodes || 0, done);
         this.runActive = true;
         if (!this.hadError) this.setProgressStatus('running');
       }
@@ -2596,7 +2684,7 @@ const EvalTab = {
       }
     }
 
-    const successMatch = line.match(/success(?:[_\s-]?rate)?\s*[:=]\s*([0-9]*\.?[0-9]+)/i);
+    const successMatch = line.match(/\bsuccess(?:[_\s-]?rate)?\s*[:=]\s*([0-9]*\.?[0-9]+)\s*%?/i);
     if (successMatch) {
       const raw = Number(successMatch[1]);
       if (Number.isFinite(raw)) {
@@ -2604,26 +2692,72 @@ const EvalTab = {
       }
     }
 
-    const rewardMatch = line.match(/(?:mean[_\s-]?reward|avg[_\s-]?reward|reward)\s*[:=]\s*([+-]?[0-9]*\.?[0-9]+(?:e[+-]?[0-9]+)?)/i);
+    const rewardMatch = line.match(/\b(?:mean[_\s-]?reward|avg[_\s-]?reward|episode[_\s-]?reward)\s*[:=]\s*([+-]?[0-9]*\.?[0-9]+(?:e[+-]?[0-9]+)?)/i);
     if (rewardMatch) {
       const reward = Number(rewardMatch[1]);
       if (Number.isFinite(reward)) this.meanReward = reward;
+
+      const epForReward = line.match(/episode\s*([0-9]+)\b/i);
+      if (epForReward) {
+        const epIdx = parseInt(epForReward[1], 10);
+        if (Number.isFinite(epIdx)) {
+          this.perEpisodeReward[epIdx] = reward;
+          this.recomputeBestWorst();
+        }
+      }
     }
 
-    if (/evaluation complete|end of evaluation|eval complete/i.test(line)) {
+    const finalRewardMatch = line.match(/(?:final|overall|eval)\s*(?:mean[_\s-]?reward|avg[_\s-]?reward|reward)\s*[:=]\s*([+-]?[0-9]*\.?[0-9]+(?:e[+-]?[0-9]+)?)/i);
+    if (finalRewardMatch) {
+      const v = Number(finalRewardMatch[1]);
+      if (Number.isFinite(v)) this.finalReward = v;
+    }
+
+    const finalSuccessMatch = line.match(/(?:final|overall|eval)\s*(?:success(?:[_\s-]?rate)?)\s*[:=]\s*([0-9]*\.?[0-9]+)\s*%?/i);
+    if (finalSuccessMatch) {
+      const raw = Number(finalSuccessMatch[1]);
+      if (Number.isFinite(raw)) {
+        this.finalSuccess = raw > 1 ? Math.min(100, raw) : Math.max(0, raw * 100);
+      }
+    }
+
+    if (completeMarker.test(line)) {
       this.runActive = false;
       if (this.hadError) this.setProgressStatus('error');
       else this.setProgressStatus('completed');
+      if (!Number.isFinite(this.finalReward) && Number.isFinite(this.meanReward)) this.finalReward = this.meanReward;
+      if (!Number.isFinite(this.finalSuccess) && Number.isFinite(this.successRate)) this.finalSuccess = this.successRate;
+      this.finalConfirmed = this.targetEpisodes ? this.doneEpisodes >= this.targetEpisodes : true;
+      this.endedAtMs = Date.now();
     }
 
-    if (/\[eval process ended\]/i.test(line)) {
+    if (endMarker.test(line)) {
       this.runActive = false;
       if (this.hadError) this.setProgressStatus('error');
       else if (this.targetEpisodes && this.doneEpisodes >= this.targetEpisodes) this.setProgressStatus('completed');
       else this.setProgressStatus('stopped');
+      this.endedAtMs = Date.now();
+      if (!this.hadError && this.targetEpisodes && this.doneEpisodes >= this.targetEpisodes) {
+        this.finalConfirmed = true;
+      }
     }
 
     this.updateProgressUI();
+    this.updateSummaryUI();
+  },
+
+  recomputeBestWorst() {
+    const entries = Object.entries(this.perEpisodeReward)
+      .map(([ep, reward]) => ({ ep: Number(ep), reward: Number(reward) }))
+      .filter((v) => Number.isFinite(v.ep) && Number.isFinite(v.reward));
+    if (!entries.length) {
+      this.bestEpisode = null;
+      this.worstEpisode = null;
+      return;
+    }
+    entries.sort((a, b) => a.reward - b.reward);
+    this.worstEpisode = entries[0];
+    this.bestEpisode = entries[entries.length - 1];
   },
 
   setProgressStatus(status) {
@@ -2659,14 +2793,63 @@ const EvalTab = {
     if (successEl) successEl.textContent = `Success: ${Number.isFinite(this.successRate) ? `${this.successRate.toFixed(1)}%` : '--'}`;
   },
 
+  updateSummaryUI() {
+    const finalRewardEl = document.getElementById('eval-summary-final-reward');
+    const finalSuccessEl = document.getElementById('eval-summary-final-success');
+    const bestEl = document.getElementById('eval-summary-best');
+    const worstEl = document.getElementById('eval-summary-worst');
+    const confidenceEl = document.getElementById('eval-summary-confidence');
+    const timeEl = document.getElementById('eval-summary-time');
+    if (finalRewardEl) {
+      finalRewardEl.textContent = `Final Reward: ${Number.isFinite(this.finalReward) ? this.finalReward.toFixed(4) : '--'}`;
+    }
+    if (finalSuccessEl) {
+      finalSuccessEl.textContent = `Final Success: ${Number.isFinite(this.finalSuccess) ? `${this.finalSuccess.toFixed(1)}%` : '--'}`;
+    }
+    if (bestEl) {
+      bestEl.textContent = this.bestEpisode
+        ? `Best Episode: #${this.bestEpisode.ep} (${this.bestEpisode.reward.toFixed(4)})`
+        : 'Best Episode: --';
+    }
+    if (worstEl) {
+      worstEl.textContent = this.worstEpisode
+        ? `Worst Episode: #${this.worstEpisode.ep} (${this.worstEpisode.reward.toFixed(4)})`
+        : 'Worst Episode: --';
+    }
+    if (confidenceEl) {
+      confidenceEl.textContent = this.finalConfirmed ? 'FINAL' : 'PARTIAL';
+      confidenceEl.className = `dbadge ${this.finalConfirmed ? 'badge-ok' : 'badge-warn'}`;
+    }
+    if (timeEl) {
+      const start = this.startedAtMs ? new Date(this.startedAtMs).toLocaleTimeString() : '--';
+      const end = this.endedAtMs ? new Date(this.endedAtMs).toLocaleTimeString() : '--';
+      let elapsed = '--';
+      if (this.startedAtMs) {
+        const endMs = this.endedAtMs || Date.now();
+        const sec = Math.max(0, Math.floor((endMs - this.startedAtMs) / 1000));
+        const mm = String(Math.floor(sec / 60)).padStart(2, '0');
+        const ss = String(sec % 60).padStart(2, '0');
+        elapsed = `${mm}:${ss}`;
+      }
+      timeEl.textContent = `Start ${start} · Elapsed ${elapsed} · End ${end}`;
+    }
+  },
+
   resetProgress(status = 'idle') {
     this.runActive = false;
     this.hadError = false;
     this.doneEpisodes = 0;
     this.successRate = null;
     this.meanReward = null;
+    this.finalReward = null;
+    this.finalSuccess = null;
+    this.finalConfirmed = false;
+    this.bestEpisode = null;
+    this.worstEpisode = null;
+    this.perEpisodeReward = {};
     this.setProgressStatus(status);
     this.updateProgressUI();
+    this.updateSummaryUI();
   },
 
   syncBtn() {
@@ -2743,12 +2926,12 @@ const DatasetTab = {
     wrap.style.display = visible ? 'block' : 'none';
   },
 
-  updatePushStatus(status, progress, note = '') {
+  updatePushStatus(status, phase, progress, note = '') {
     const label = document.getElementById('ds-push-label');
     const pct = document.getElementById('ds-push-percent');
     const fill = document.getElementById('ds-push-fill');
     const msg = document.getElementById('ds-push-note');
-    if (label) label.textContent = `Hub Upload · ${status}`;
+    if (label) label.textContent = `Hub Upload · ${phase || status}`;
     if (pct) pct.textContent = `${Math.max(0, Math.min(100, progress || 0))}%`;
     if (fill) fill.style.width = `${Math.max(0, Math.min(100, progress || 0))}%`;
     if (msg) msg.textContent = note || '';
@@ -2764,16 +2947,17 @@ const DatasetTab = {
       if (!this.pushJobId) return;
       const res = await api.get(`/api/datasets/push/status/${encodeURIComponent(this.pushJobId)}`);
       if (!res.ok) {
-        this.updatePushStatus('error', 0, res.error || 'Unknown push status error');
+        this.updatePushStatus('error', 'error', 0, res.error || 'Unknown push status error');
         if (this.pushPollTimer) clearInterval(this.pushPollTimer);
         this.pushPollTimer = null;
         return;
       }
       const status = String(res.status || 'running');
+      const phase = String(res.phase || status);
       const progress = Number(res.progress || 0);
       const tail = Array.isArray(res.logs) && res.logs.length ? res.logs[res.logs.length - 1] : '';
       const note = status === 'error' ? (res.error || tail || 'Upload failed') : tail;
-      this.updatePushStatus(status, progress, note);
+      this.updatePushStatus(status, phase, progress, note);
 
       if (status === 'success') {
         showToast(`Dataset pushed to Hub: ${res.repo_id}`, 'success');
@@ -2804,14 +2988,14 @@ const DatasetTab = {
     }
 
     this.showPushStatus(true);
-    this.updatePushStatus('starting', 2, 'Preparing upload job...');
+    this.updatePushStatus('starting', 'starting', 2, 'Preparing upload job...');
     const res = await api.post(`/api/datasets/${parsed.user}/${parsed.repo}/push`, { target_repo_id: target });
     if (!res.ok) {
-      this.updatePushStatus('error', 0, res.error || 'Failed to create upload job');
+      this.updatePushStatus('error', 'error', 0, res.error || 'Failed to create upload job');
       showToast(`Hub push failed: ${res.error || 'Unknown error'}`, 'error');
       return;
     }
-    this.updatePushStatus('queued', 5, 'Upload job queued...');
+    this.updatePushStatus('queued', 'queued', 5, 'Upload job queued...');
     this.startPushPolling(res.job_id);
   },
 
@@ -2826,13 +3010,25 @@ const DatasetTab = {
   renderQualityResult(res) {
     const panel = document.getElementById('ds-quality-panel');
     const scoreEl = document.getElementById('ds-quality-score');
+    const statsEl = document.getElementById('ds-quality-stats');
     const checksEl = document.getElementById('ds-quality-checks');
-    if (!panel || !scoreEl || !checksEl) return;
+    if (!panel || !scoreEl || !checksEl || !statsEl) return;
 
     panel.style.display = 'block';
     const score = Number(res.score || 0);
     scoreEl.textContent = `Score: ${score}`;
     scoreEl.className = `dbadge ${score >= 80 ? 'badge-ok' : score >= 60 ? 'badge-warn' : 'badge-err'}`;
+
+    const stats = res.stats || {};
+    const breakdown = res.score_breakdown || {};
+    const cameraCounts = stats.camera_file_counts || {};
+    const camSummary = Object.keys(cameraCounts).length
+      ? Object.entries(cameraCounts).map(([k, v]) => `${k}:${v}`).join(' · ')
+      : '--';
+    const penaltySummary = Object.keys(breakdown).length
+      ? Object.entries(breakdown).map(([k, v]) => `${k}-${v}`).join(' · ')
+      : '--';
+    statsEl.textContent = `Episodes ${stats.total_detected_episodes ?? '--'} (expected ${stats.total_expected_episodes ?? '--'}) · Frames ${stats.total_frames ?? '--'} · FPS ${stats.fps ?? '--'} · Zero-byte videos ${stats.zero_byte_videos ?? '--'} · Camera files ${camSummary} · Penalty ${penaltySummary}`;
 
     const checks = Array.isArray(res.checks) ? res.checks : [];
     checksEl.innerHTML = checks.map((c) => {

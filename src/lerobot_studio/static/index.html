@@ -467,6 +467,17 @@
             <div class="muted" style="margin-bottom:10px; font-size:12px;">Assign stable symlink names to each detected arm by serial number.</div>
             <div id="device-arms-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 20px;">Loading…</div>
           </div>
+
+          <div style="margin-top: 18px; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg2);">
+            <div id="rules-install-status" style="font-size: 12px; margin-bottom: 8px; color: var(--text2);">Checking udev install status...</div>
+            <div id="rules-install-hint" style="font-size: 12px; color: var(--text2); white-space: pre-wrap;"></div>
+            <div style="margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap;">
+              <button class="btn-sm" onclick="DeviceSetupTab.previewRules()">Preview Rules</button>
+              <button class="btn-primary" onclick="DeviceSetupTab.applyRules()">Apply Rules</button>
+              <button class="btn-sm" onclick="DeviceSetupTab.copyInstallCommands()">Copy CLI Install Commands</button>
+              <button class="btn-xs" onclick="DeviceSetupTab.refreshRulesStatus()">Refresh udev status</button>
+            </div>
+          </div>
           
           <div style="margin-top: 32px; text-align: left;">
             <h3 style="margin-bottom: 12px; color: var(--text1); font-size: 16px;">Current Active Rules</h3>
@@ -670,6 +681,20 @@
                 <span id="eval-progress-episodes">Episodes: -- / --</span>
                 <span id="eval-progress-reward">Reward: --</span>
                 <span id="eval-progress-success">Success: --</span>
+              </div>
+            </div>
+
+            <div style="margin-top:10px; padding:10px; border:1px solid var(--border); border-radius:8px; background:rgba(255,255,255,0.02);">
+              <div style="font-size:12px; color:var(--text2); margin-bottom:8px;">Evaluation Summary</div>
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; font-size:11px; color:var(--text2);">
+                <span id="eval-summary-confidence" class="dbadge badge-idle">PARTIAL</span>
+                <span id="eval-summary-time">Start -- · Elapsed -- · End --</span>
+              </div>
+              <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px; font-size:12px; color:var(--text2);">
+                <div id="eval-summary-final-reward">Final Reward: --</div>
+                <div id="eval-summary-final-success">Final Success: --</div>
+                <div id="eval-summary-best">Best Episode: --</div>
+                <div id="eval-summary-worst">Worst Episode: --</div>
               </div>
             </div>
 

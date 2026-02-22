@@ -460,15 +460,52 @@ def _build_rules(assignments: dict[str, str], arm_assignments: dict[str, str], r
 
 
 def _apply_rules(assignments: dict[str, str], arm_assignments: dict[str, str], rules_path: Path) -> tuple[bool, str]:
+    return _apply_rules_with_fallback(assignments, arm_assignments, rules_path, None)
+
+
+def _manual_udev_install_commands(source_rules: Path, target_rules: Path) -> list[str]:
+    source_q = shlex.quote(str(source_rules))
+    target_q = shlex.quote(str(target_rules))
+    return [
+        f"sudo cp {source_q} {target_q}",
+        "sudo udevadm control --reload-rules",
+        "sudo udevadm trigger --subsystem-match=video4linux",
+        "sudo udevadm trigger --subsystem-match=tty",
+    ]
+
+
+def _apply_rules_with_fallback(
+    assignments: dict[str, str],
+    arm_assignments: dict[str, str],
+    rules_path: Path,
+    fallback_rules_path: Path | None,
+) -> tuple[bool, str]:
     content = _build_rules(assignments, arm_assignments, rules_path)
     tmp = Path("/tmp/99-lerobot.rules.new")
     tmp.write_text(content)
+
+    if fallback_rules_path is not None:
+        try:
+            fallback_rules_path.parent.mkdir(parents=True, exist_ok=True)
+            fallback_rules_path.write_text(content)
+        except Exception:
+            pass
+
     r = subprocess.run(
         ["sudo", "-n", "cp", str(tmp), str(rules_path)],
         capture_output=True, text=True,
     )
     if r.returncode != 0:
-        return False, r.stderr or "sudo failed — add NOPASSWD to sudoers for cp/udevadm"
+        base_err = (r.stderr or "").strip() or "sudo failed — install udev rules via CLI helper"
+        if fallback_rules_path is None:
+            return False, base_err
+        commands = _manual_udev_install_commands(fallback_rules_path, rules_path)
+        hint = "\n".join(commands)
+        return False, (
+            f"{base_err}\n\n"
+            f"Saved rules to: {fallback_rules_path}\n"
+            f"Run these commands:\n{hint}"
+        )
     subprocess.run(["sudo", "-n", "udevadm", "control", "--reload-rules"], capture_output=True)
     subprocess.run(
         ["sudo", "-n", "udevadm", "trigger", "--subsystem-match=video4linux"],
@@ -569,6 +606,7 @@ def create_app(
     STATIC_DIR = Path(__file__).parent / "static"
     CONFIG_PATH = config_dir / "config.json"
     PROFILES_DIR = config_dir / "profiles"
+    FALLBACK_RULES_PATH = config_dir / "99-lerobot.rules"
     PYTHON = sys.executable
 
     app = FastAPI(title="LeRobot Studio")
@@ -695,6 +733,23 @@ def create_app(
     def api_rules_current():
         return {"content": rules_path.read_text() if rules_path.exists() else "# File not found"}
 
+    @app.get("/api/rules/status")
+    def api_rules_status():
+        sudo_noninteractive = False
+        try:
+            probe = subprocess.run(["sudo", "-n", "true"], capture_output=True)
+            sudo_noninteractive = probe.returncode == 0
+        except Exception:
+            sudo_noninteractive = False
+        return {
+            "rules_path": str(rules_path),
+            "rules_installed": rules_path.exists(),
+            "fallback_rules_path": str(FALLBACK_RULES_PATH),
+            "fallback_rules_exists": FALLBACK_RULES_PATH.exists(),
+            "sudo_noninteractive": sudo_noninteractive,
+            "manual_commands": _manual_udev_install_commands(FALLBACK_RULES_PATH, rules_path),
+        }
+
     @app.post("/api/rules/preview")
     async def api_rules_preview(data: dict):
         return {
@@ -707,12 +762,18 @@ def create_app(
 
     @app.post("/api/rules/apply")
     async def api_rules_apply(data: dict):
-        ok, err = _apply_rules(
+        ok, err = _apply_rules_with_fallback(
             data.get("assignments", {}),
             data.get("arm_assignments", {}),
             rules_path,
+            FALLBACK_RULES_PATH,
         )
-        return {"ok": ok, "error": err}
+        return {
+            "ok": ok,
+            "error": err,
+            "fallback_rules_path": str(FALLBACK_RULES_PATH),
+            "manual_commands": _manual_udev_install_commands(FALLBACK_RULES_PATH, rules_path),
+        }
 
     @app.post("/api/preflight")
     async def api_preflight(data: dict):
@@ -1249,14 +1310,28 @@ def create_app(
 
         checks = []
         score = 100
+        category_weight = {
+            "metadata": 1.2,
+            "episodes": 1.1,
+            "videos": 1.4,
+            "distribution": 0.8,
+            "general": 1.0,
+        }
+        category_penalty: dict[str, int] = {k: 0 for k in category_weight.keys()}
 
-        def add_check(level: str, name: str, message: str):
+        def add_check(level: str, name: str, message: str, category: str = "general"):
             nonlocal score
-            checks.append({"level": level, "name": name, "message": message})
+            cat = category if category in category_weight else "general"
+            checks.append({"level": level, "name": name, "message": message, "category": cat})
+            base = 0
             if level == "error":
-                score -= 20
+                base = 20
             elif level == "warn":
-                score -= 8
+                base = 8
+            if base > 0:
+                penalty = int(round(base * category_weight[cat]))
+                category_penalty[cat] += penalty
+                score -= penalty
 
         try:
             info = json.loads(info_path.read_text())
@@ -1267,17 +1342,17 @@ def create_app(
         total_frames = int(info.get("total_frames", 0) or 0)
         fps = int(info.get("fps", 0) or 0)
         if fps <= 0:
-            add_check("error", "fps", "FPS in info.json is invalid or missing")
+            add_check("error", "fps", "FPS in info.json is invalid or missing", "metadata")
         elif fps < 5:
-            add_check("warn", "fps", f"FPS is low ({fps})")
+            add_check("warn", "fps", f"FPS is low ({fps})", "metadata")
         else:
-            add_check("ok", "fps", f"FPS looks valid ({fps})")
+            add_check("ok", "fps", f"FPS looks valid ({fps})", "metadata")
 
         cameras = [k for k, v in info.get("features", {}).items() if isinstance(v, dict) and v.get("dtype") == "video"]
         if not cameras:
-            add_check("warn", "cameras", "No video camera features found in dataset metadata")
+            add_check("warn", "cameras", "No video camera features found in dataset metadata", "metadata")
         else:
-            add_check("ok", "cameras", f"Detected {len(cameras)} camera streams")
+            add_check("ok", "cameras", f"Detected {len(cameras)} camera streams", "metadata")
 
         episodes = []
         episodes_dir = base / "meta" / "episodes"
@@ -1292,17 +1367,17 @@ def create_app(
                             "length": int(row.get("length", 0)),
                         })
             except Exception as e:
-                add_check("warn", "episodes", f"Could not parse episode parquet files: {e}")
+                add_check("warn", "episodes", f"Could not parse episode parquet files: {e}", "episodes")
 
         actual_episodes = len(episodes)
         if total_expected > 0 and actual_episodes > 0 and actual_episodes != total_expected:
-            add_check("warn", "episode_count", f"Expected {total_expected} episodes, found {actual_episodes}")
+            add_check("warn", "episode_count", f"Expected {total_expected} episodes, found {actual_episodes}", "episodes")
         else:
-            add_check("ok", "episode_count", f"Episode count: {max(total_expected, actual_episodes)}")
+            add_check("ok", "episode_count", f"Episode count: {max(total_expected, actual_episodes)}", "episodes")
 
         non_positive_lengths = [ep for ep in episodes if ep["length"] <= 0]
         if non_positive_lengths:
-            add_check("warn", "episode_length_zero", f"Episodes with non-positive length: {len(non_positive_lengths)}")
+            add_check("warn", "episode_length_zero", f"Episodes with non-positive length: {len(non_positive_lengths)}", "episodes")
 
         zero_byte_videos = 0
         total_videos = 0
@@ -1324,17 +1399,17 @@ def create_app(
                     zero_byte_videos += 1
 
         if total_videos == 0:
-            add_check("warn", "videos", "No video files found under videos/")
+            add_check("warn", "videos", "No video files found under videos/", "videos")
         elif zero_byte_videos > 0:
-            add_check("warn", "videos", f"Found {zero_byte_videos} zero-byte/corrupt candidate video files")
+            add_check("warn", "videos", f"Found {zero_byte_videos} zero-byte/corrupt candidate video files", "videos")
         else:
-            add_check("ok", "videos", f"Video files present: {total_videos}")
+            add_check("ok", "videos", f"Video files present: {total_videos}", "videos")
 
         missing_camera_files = [cam for cam, cnt in per_camera_files.items() if cnt <= 0]
         if cameras and missing_camera_files:
-            add_check("warn", "camera_coverage", f"Cameras without any video files: {', '.join(missing_camera_files)}")
+            add_check("warn", "camera_coverage", f"Cameras without any video files: {', '.join(missing_camera_files)}", "videos")
         elif cameras:
-            add_check("ok", "camera_coverage", "All camera streams have video files")
+            add_check("ok", "camera_coverage", "All camera streams have video files", "videos")
 
         avg_ep_len = 0
         median_ep_len = 0
@@ -1347,21 +1422,21 @@ def create_app(
             else:
                 median_ep_len = round(lengths[mid], 2)
             if avg_ep_len <= 1:
-                add_check("warn", "episode_length", "Average episode length is very short")
+                add_check("warn", "episode_length", "Average episode length is very short", "distribution")
             else:
-                add_check("ok", "episode_length", f"Average episode length: {avg_ep_len} frames")
+                add_check("ok", "episode_length", f"Average episode length: {avg_ep_len} frames", "distribution")
 
             if median_ep_len > 0:
                 ratio = avg_ep_len / max(1e-6, median_ep_len)
                 if ratio > 2.5 or ratio < 0.4:
-                    add_check("warn", "episode_length_distribution", "Episode lengths are highly imbalanced")
+                    add_check("warn", "episode_length_distribution", "Episode lengths are highly imbalanced", "distribution")
                 else:
-                    add_check("ok", "episode_length_distribution", "Episode length distribution looks reasonable")
+                    add_check("ok", "episode_length_distribution", "Episode length distribution looks reasonable", "distribution")
 
         if total_frames <= 0:
-            add_check("warn", "total_frames", "Total frame count is zero or missing")
+            add_check("warn", "total_frames", "Total frame count is zero or missing", "metadata")
         else:
-            add_check("ok", "total_frames", f"Total frames: {total_frames}")
+            add_check("ok", "total_frames", f"Total frames: {total_frames}", "metadata")
 
         score = max(0, min(100, score))
         has_error = any(c["level"] == "error" for c in checks)
@@ -1369,6 +1444,7 @@ def create_app(
             "ok": not has_error,
             "score": score,
             "checks": checks,
+            "score_breakdown": category_penalty,
             "stats": {
                 "dataset_id": f"{user}/{repo}",
                 "total_expected_episodes": total_expected,
@@ -1409,6 +1485,7 @@ def create_app(
             push_jobs[job_id] = {
                 "job_id": job_id,
                 "status": "queued",
+                "phase": "queued",
                 "progress": 0,
                 "repo_id": target_repo_id,
                 "dataset_id": f"{user}/{repo}",
@@ -1423,6 +1500,7 @@ def create_app(
                 if job_id not in push_jobs:
                     return
                 push_jobs[job_id]["status"] = "running"
+                push_jobs[job_id]["phase"] = "preparing"
                 push_jobs[job_id]["progress"] = 5
                 push_jobs[job_id]["updated_at"] = time.time()
 
@@ -1459,6 +1537,8 @@ def create_app(
                         if len(logs) > 300:
                             del logs[:-300]
 
+                        job["phase"] = "uploading"
+
                         m = re.search(r"(\d{1,3})%", line)
                         ratio = re.search(r"\b([0-9]{1,6})\s*/\s*([0-9]{1,6})\b", line)
                         if m:
@@ -1480,10 +1560,15 @@ def create_app(
                 if not job:
                     return
                 if rc == 0:
+                    job["phase"] = "finalizing"
+                    job["progress"] = max(97, int(job.get("progress", 0)))
+                    job["updated_at"] = time.time()
                     job["status"] = "success"
+                    job["phase"] = "completed"
                     job["progress"] = 100
                 else:
                     job["status"] = "error"
+                    job["phase"] = "error"
                     if not job["error"]:
                         tail = "\n".join(job["logs"][-5:]).strip()
                         job["error"] = tail or f"Upload failed with exit code {rc}"
