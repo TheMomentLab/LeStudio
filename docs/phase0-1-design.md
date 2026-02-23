@@ -2,7 +2,15 @@
 
 최종 갱신: 2026-02-23
 상태: 초안 (Draft)
-상위 문서: [`ecosystem-integration-plan.md`](ecosystem-integration-plan.md)
+상위 문서: [`private/ecosystem-integration-plan.md`](./private/ecosystem-integration-plan.md)
+
+---
+
+## 구현 반영 상태 (읽기 가이드)
+
+- 이 문서는 **Phase 0~1 설계 초안**이다. 구현 완료 여부를 보증하지 않는다.
+- 실제 구현 진행률의 기준 문서는 [`private/roadmap.md`](./private/roadmap.md)이다.
+- 설계와 코드/로드맵이 충돌하면, 코드와 로드맵을 우선으로 판단한다.
 
 ---
 
@@ -16,14 +24,14 @@ src/lestudio/
 ├── connection.py          (Phase 1)
 ├── command_builders.py    (Phase 1 — 기존 파일 리팩터링)
 ├── server.py              (Phase 0+1 — API 추가, 하드코딩 제거)
-└── static/                (Phase 0+1 — 선택기 UI 추가)
+└── frontend/src/          (Phase 0+1 — React 컴포넌트로 선택기 UI 추가)
 ```
 
 | 모듈 | Phase | 책임 | LeRobot import |
 |------|-------|------|:--------------:|
 | `device_registry.py` | 0 | 3-Registry 쿼리, config schema 추출, capabilities 추론, 호환 teleop 매핑 | ✅ (격리) |
 | `server.py` (API 추가) | 0 | `/api/robots`, `/api/teleops`, `/api/cameras` 엔드포인트, ROBOT_TYPES 동적화 | ❌ |
-| `static/` (선택기) | 0 | Robot/Teleoperator 분리 선택 드롭다운, 정보 카드 | ❌ |
+| `frontend/src/` (선택기 컴포넌트) | 0 | Robot/Teleoperator 분리 선택 드롭다운, 정보 카드 | ❌ |
 | `command_builders.py` | 1 | GenericCommandBuilder — config dict → CLI args, 새 엔트리포인트 | ❌ |
 | `connection.py` | 1 | Serial/CAN/ZMQ/Cloud 연결 확인, 디바이스 탐색 | ❌ |
 
@@ -34,8 +42,8 @@ src/lestudio/
 | `server.py` | 0 | `ROBOT_TYPES` → `registry.get_robot_types()`, 신규 API 3개 추가, `check_calibration()` 동적화 |
 | `server.py` | 1 | `get_arms()` → `connection.discover_devices()`, preflight 동적화 |
 | `command_builders.py` | 1 | 4개 빌더 함수 → `GenericCommandBuilder` 클래스로 통합 |
-| `static/workbench_teleop.js` | 0 | 로봇/텔레옵 타입 하드코딩 → API에서 동적 로드 |
-| `static/workbench_record.js` | 0 | 동일 |
+| `frontend/src/tabs/TeleopTab.tsx` | 0 | 로봇/텔레옵 타입 하드코딩 → API에서 동적 로드 |
+| `frontend/src/tabs/RecordTab.tsx` | 0 | 동일 |
 
 ---
 
@@ -594,18 +602,21 @@ def load_profile(profile_data: dict) -> tuple[dict, dict]:
 ### 5.4 UI 마이그레이션
 
 ```
-기존 UI:                              신규 UI:
-┌─────────────────────┐               ┌─────────────────────┐
-│ Robot: [SO-101 ▼]   │               │ Robot: [SO-101 ▼]   │  ← 기본값 유지
-│ Port:  [/dev/...]   │               │ Port:  [/dev/...]   │
-│                     │               │                     │
-│ Leader Port: [...]  │    →          │ Teleop: [SO-101 ▼]  │  ← 새로 분리됨
-│                     │               │ Port:   [/dev/...]  │
-│                     │               │                     │
-│ Single Arm Mode [✓] │               │ (capabilities 패널)  │  ← 점진적 추가
-└─────────────────────┘               └─────────────────────┘
-```
+현재 UI (React 19 + TypeScript):
 
+TeleopTab.tsx / RecordTab.tsx에서 robot_type, teleop_type 선택 컴포넌트를 렌더링.
+Zustand 스토어(store/index.ts)에서 config 상태를 관리하며, useConfig 훅으로 API 연동.
+
+┌─────────────────────┐
+│ Robot: [SO-101 ▼]   │  ← 기본값 유지 (Zustand 스토어)
+│ Port:  [/dev/...]   │
+│                     │
+│ Teleop: [SO-101 ▼]  │  ← Robot/Teleop 분리 선택
+│ Port:   [/dev/...]  │
+│                     │
+│ (capabilities 패널)  │  ← 로봇 capabilities에 따라 조건부 렌더링
+└─────────────────────┘
+```
 - SO-101 사용자에게는 "Teleop" 드롭다운이 추가된 것만 시각적 차이
 - 기본값이 `so101_leader`로 설정되어 있으므로 추가 조작 불필요
 
@@ -672,10 +683,10 @@ Phase 0 (7~10일 예상)
 │   ├── ROBOT_TYPES 동적화
 │   └── check_calibration() 동적화
 │
-└── Step 0.3: Frontend 선택기 (2~3일)
-    ├── Robot 드롭다운 + 정보 카드
-    ├── Teleoperator 드롭다운 (robot 선택 시 필터링)
-    └── 기존 UI와 통합 (workbench_teleop.js, workbench_record.js)
+└── Step 0.3: Frontend 선택기 컴포넌트 (2~3일)
+    ├── Robot 드롭다운 + 정보 카드 컴포넌트
+    ├── Teleoperator 드롭다운 (robot 선택 시 필터링) 컴포넌트
+    └── TeleopTab.tsx, RecordTab.tsx에 통합
 
 Phase 1 (10~14일 예상)
 ├── Step 1.1: GenericCommandBuilder (3일)
@@ -708,8 +719,8 @@ Phase 1 (10~14일 예상)
 |------|-------|----------|----------|
 | `device_registry.py` | 0 | **신규** | 3-Registry 쿼리, schema, capabilities, teleop 매핑 |
 | `server.py` | 0 | 수정 | API 3개 추가, ROBOT_TYPES 동적화, calibration 동적화 |
-| `static/workbench_teleop.js` | 0 | 수정 | Robot/Teleop 선택기 → API 연동 |
-| `static/workbench_record.js` | 0 | 수정 | 동일 |
+| `frontend/src/tabs/TeleopTab.tsx` | 0 | 수정 | Robot/Teleop 선택기 → API 연동 |
+| `frontend/src/tabs/RecordTab.tsx` | 0 | 수정 | 동일 |
 | `command_builders.py` | 1 | 수정 | GenericCommandBuilder 추가, 기존 함수 deprecate |
 | `connection.py` | 1 | **신규** | 4종 ConnectionAdapter |
 | `server.py` | 1 | 수정 | /api/devices, preflight 일반화, teleop/record API 리팩터링 |

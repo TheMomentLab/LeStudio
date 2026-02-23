@@ -5,6 +5,14 @@
 
 ---
 
+## 구현 반영 상태 (읽기 가이드)
+
+- 이 문서는 **Phase 1 목표 설계 문서**이며, 구현 완료 상태를 직접 보증하지 않는다.
+- 최신 구현 상태는 [`private/roadmap.md`](./private/roadmap.md)에서 확인한다.
+- 문서 내용과 실제 코드가 다르면 코드와 로드맵을 기준으로 해석한다.
+
+---
+
 ## 현재 상태 (Phase 0 이후)
 
 ```
@@ -27,7 +35,7 @@ Builder:  build_teleop_args() → cfg.get("robot_mode") == "bi" 로만 분기
 **결과**: SO-100, Koch, OMX, OpenArm 등 모든 serial arm 로봇이 즉시 동작.
 
 ### Phase 1b — Frontend 동적 필드 (중간 리스크)
-> `index.html`, `workbench_teleop.js`, `workbench_record.js` 수정.
+> `frontend/src/tabs/TeleopTab.tsx`, `frontend/src/tabs/RecordTab.tsx` 및 관련 컴포넌트 수정.
 
 **결과**: LeKiwi (remote_ip), keyboard/gamepad (포트 없음) 등 비-serial 로봇 지원.
 
@@ -252,54 +260,62 @@ elif family == "single_arm":
 
 ---
 
-## Phase 1b: Frontend 동적 필드 설계
+## Phase 1b: Frontend 동적 필드 설계 (React 컴포넌트)
 
-### 추가 필드 (index.html)
-```html
-<!-- LeKiwi, mobile_client 전용 -->
-<div class="field-group" id="teleop-remote-ip-group" style="display:none">
-  <label>Remote IP</label>
-  <input id="teleop-remote-ip" placeholder="192.168.1.100">
-</div>
+### 추가 필드 (TeleopTab.tsx 조건부 렌더링)
+```tsx
+{/* LeKiwi, mobile_client 전용 — capabilities 기반 조건부 렌더링 */}
+{family === 'mobile_client' && (
+  <div className="field-group">
+    <label htmlFor="remote-ip">Remote IP</label>
+    <input id="remote-ip" value={config.remoteIp} onChange={...} placeholder="192.168.1.100" />
+  </div>
+)}
 ```
 
-### 필드 가시성 로직 (JS)
+### 필드 가시성 로직 (React 조건부 렌더링)
 
-`robot_type` select가 변경될 때:
-1. `/api/robots/{robot_type}/family` 또는 `/api/robots`의 family 정보 조회
-2. family에 따라 필드 그룹 show/hide
+`robot_type` 변경 시 Zustand 스토어 업데이트 → 컴포넌트 리렌더링:
+1. `useConfig` 훅에서 `/api/robots/{robot_type}/family` 호출
+2. family 값에 따라 JSX 조건부 렌더링
 
-```javascript
-// workbench_teleop.js에 추가
-async onRobotTypeChange() {
-  const robotType = getVal('teleop-robot-type');
-  const resp = await api.get(`/api/robots/${robotType}/family`);
-  const family = resp.family || 'single_arm';
-  
-  // 필드 그룹 가시성
-  show('teleop-single-arm-fields',  family === 'single_arm');
-  show('teleop-bi-arm-fields',      family === 'bi_arm');
-  show('teleop-remote-ip-group',    family === 'mobile_client');
-  
-  // teleop type 선택지 갱신 (호환되는 것만)
-  await this.refreshTeleopTypeOptions(robotType);
-},
+```tsx
+// TeleopTab.tsx 내부
+const { config, setConfig } = useStore();
+const [family, setFamily] = useState('single_arm');
+
+useEffect(() => {
+  fetch(`/api/robots/${config.robotType}/family`)
+    .then(r => r.json())
+    .then(data => setFamily(data.family || 'single_arm'));
+}, [config.robotType]);
+
+return (
+  <>
+    {family === 'single_arm' && <SingleArmFields />}
+    {family === 'bi_arm' && <BiArmFields />}
+    {family === 'mobile_client' && <RemoteIpField />}
+    <TeleopTypeSelector robotType={config.robotType} />
+  </>
+);
 ```
 
-### 검증 업데이트 (JS)
+### 검증 업데이트 (React + useProcess 훅)
 
-`start()`의 validation을 `robot_mode` 기반에서 family 기반으로 교체:
-```javascript
-// Before: if (this.mode === 'single')
-// After:
-const family = await getRobotFamily(cfg.robot_type);
-if (family === 'single_arm') {
-  if (!cfg.follower_port?.startsWith('/dev/')) errors.push('...');
-  if (!cfg.leader_port?.startsWith('/dev/'))   errors.push('...');
-} else if (family === 'bi_arm') {
-  // bi arm 포트 검증
-} else if (family === 'mobile_client') {
-  if (!cfg.remote_ip) errors.push('Remote IP is required');
+`useProcess` 훅에서 실행 전 validation을 family 기반으로 수행:
+```tsx
+// hooks/useProcess.ts 내부 validateConfig()
+function validateConfig(config: TeleopConfig, family: string): string[] {
+  const errors: string[] = [];
+  if (family === 'single_arm') {
+    if (!config.followerPort?.startsWith('/dev/')) errors.push('Follower port required');
+    if (!config.leaderPort?.startsWith('/dev/'))   errors.push('Leader port required');
+  } else if (family === 'bi_arm') {
+    // bi arm 포트 검증
+  } else if (family === 'mobile_client') {
+    if (!config.remoteIp) errors.push('Remote IP is required');
+  }
+  return errors;
 }
 ```
 
@@ -332,11 +348,11 @@ Phase 1a (Backend only):
   ─────────────────────────────────────────────────
   검증: SO-101 teleop/record 기존 동작 유지 확인
 
-Phase 1b (Frontend dynamic fields):
+Phase 1b (Frontend dynamic fields — React 컴포넌트):
   4. server.py: GET /api/robots/{robot_type}/family 엔드포인트 추가
-  5. index.html: remote_ip 필드 추가 (hidden)
-  6. workbench_teleop.js: onRobotTypeChange(), family 기반 검증
-  7. workbench_record.js: 동일 패턴
+  5. frontend/src/tabs/TeleopTab.tsx: family 기반 조건부 렌더링 + 검증
+  6. frontend/src/tabs/RecordTab.tsx: 동일 패턴
+  7. frontend/src/components/shared/: 공유 필드 컴포넌트 (RemoteIpField, BiArmFields 등)
   ─────────────────────────────────────────────────
   검증: LeKiwi remote_ip 필드 표시, keyboard teleop 포트 필드 숨김
 ```
@@ -350,9 +366,9 @@ Phase 1b (Frontend dynamic fields):
 | `device_registry.py` | FAMILY_MAP + 2 함수 추가 | - |
 | `command_builders.py` | `build_teleop_args`, `build_record_args` 전면 재작성 | - |
 | `server.py` | preflight 검증 교체 | `/family` 엔드포인트 추가 |
-| `index.html` | - | `remote_ip` 필드 추가 |
-| `workbench_teleop.js` | - | `onRobotTypeChange()`, validation 교체 |
-| `workbench_record.js` | - | 동일 패턴 |
+| `frontend/src/tabs/TeleopTab.tsx` | - | family 기반 조건부 렌더링, validation 교체 |
+| `frontend/src/tabs/RecordTab.tsx` | - | 동일 패턴 |
+| `frontend/src/components/shared/` | - | RemoteIpField, BiArmFields 등 공유 컴포넌트 |
 
 ---
 
@@ -362,4 +378,4 @@ Phase 1에서 다루지 않는 것 (Phase 2로):
 - LeKiwi 서버 사이드 실행 (lekiwi 타입은 로봇에서 직접 실행)
 - Unitree G1 / Reachy2 전용 연결 관리 (SDK 레이어)
 - EarthRover 지원 (스펙 미확정)
-- React/Vue 전환 (Phase 1.5로 별도 계획)
+ React 전환 완료 — 추가 프레임워크 전환 불필요

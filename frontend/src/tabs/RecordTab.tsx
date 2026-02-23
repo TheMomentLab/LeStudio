@@ -1,17 +1,34 @@
 import { useEffect, useMemo, useState } from 'react'
 import { MappedCameraRows } from '../components/shared/MappedCameraRows'
-import { LogConsole } from '../components/shared/LogConsole'
-import { ProcessButtons } from '../components/shared/ProcessButtons'
+import { RobotCapabilitiesCard } from '../components/shared/RobotCapabilitiesCard'
+
+
 import { useConfig } from '../hooks/useConfig'
 import { useMappedCameras } from '../hooks/useMappedCameras'
 import { useProcess } from '../hooks/useProcess'
 import { apiGet, apiPost } from '../lib/api'
 import { useLeStudioStore } from '../store'
-import type { LogLine } from '../lib/types'
+import type { LogLine, RobotDetail, RobotsResponse, TeleopsResponse } from '../lib/types'
 
 interface RecordTabProps {
   active: boolean
 }
+
+const EMPTY_RECORD_LINES: LogLine[] = []
+
+const REPO_ID_REGEX = /^[a-zA-Z0-9_-]+\/[a-zA-Z0-9_.-]+$/
+
+
+
+type LegacyCalibrationListResponse = {
+  files?: Array<{ id: string; guessed_type?: string }>
+}
+
+type CameraStatsResponse = {
+  cameras?: Record<string, { fps?: number | string; mbps?: number | string }>
+}
+
+const uniq = (items: string[]) => [...new Set(items.map((s) => s.trim()).filter(Boolean))]
 
 export function RecordTab({ active }: RecordTabProps) {
   const { config, buildConfig } = useConfig()
@@ -23,6 +40,17 @@ export function RecordTab({ active }: RecordTabProps) {
   const addToast = useLeStudioStore((s) => s.addToast)
   const [mode, setMode] = useState<'single' | 'bi'>('single')
   const [episodesDone, setEpisodesDone] = useState(0)
+  const [followerArmIds, setFollowerArmIds] = useState<string[]>(['my_so101_follower_1'])
+  const [leaderArmIds, setLeaderArmIds] = useState<string[]>(['my_so101_leader_1'])
+  const [streamCodec, setStreamCodec] = useState('MJPG')
+  const [streamResolution, setStreamResolution] = useState('640x480')
+  const [streamFps, setStreamFps] = useState('30')
+  const [streamQuality, setStreamQuality] = useState(70)
+  const [cameraStats, setCameraStats] = useState<Record<string, { fps: number; mbps: number }>>({})
+  const [pausedFeeds, setPausedFeeds] = useState<Record<string, boolean>>({})
+  const [robotTypes, setRobotTypes] = useState<string[]>(['so101_follower'])
+  const [teleopTypes, setTeleopTypes] = useState<string[]>(['so101_leader'])
+  const [robotDetails, setRobotDetails] = useState<Record<string, RobotDetail>>({})
 
   const devices = useLeStudioStore((s) => s.devices)
   const armPaths = useMemo(() => {
@@ -37,15 +65,97 @@ export function RecordTab({ active }: RecordTabProps) {
   useEffect(() => {
     if (!active) return
     refreshDevices()
-    apiGet('/api/calibrate/list').catch(() => undefined)
+    const loadCalibrationFiles = async () => {
+      try {
+        const res = await apiGet<LegacyCalibrationListResponse>('/api/calibrate/list')
+        const files = res.files ?? []
+        const follower = uniq(
+          files.filter((f) => String(f.guessed_type ?? '').includes('follower')).map((f) => f.id),
+        )
+        const leader = uniq(
+          files.filter((f) => String(f.guessed_type ?? '').includes('leader')).map((f) => f.id),
+        )
+        if (follower.length > 0) setFollowerArmIds(follower)
+        if (leader.length > 0) setLeaderArmIds(leader)
+      } catch {
+        return
+      }
+    }
+
+    loadCalibrationFiles().catch(() => undefined)
   }, [active, refreshDevices])
+
+
+  useEffect(() => {
+    if (!active) return
+    apiGet<RobotsResponse>('/api/robots').then((r) => {
+      setRobotTypes(r.types ?? ['so101_follower'])
+      setRobotDetails(r.details ?? {})
+    })
+    const currentRobotType = (config.robot_type as string) || 'so101_follower'
+    apiGet<TeleopsResponse>(`/api/teleops?robot_type=${encodeURIComponent(currentRobotType)}`).then((r) => setTeleopTypes(r.types ?? ['so101_leader']))
+  }, [active])
+
+  useEffect(() => {
+    if (!active) return
+
+    let cancelled = false
+
+    const pollStats = async () => {
+      try {
+        const data = await apiGet<CameraStatsResponse>('/api/camera/stats')
+        if (cancelled) return
+        const next: Record<string, { fps: number; mbps: number }> = {}
+        Object.entries(data.cameras ?? {}).forEach(([cam, stat]) => {
+          const fps = Number(stat.fps ?? 0)
+          const mbps = Number(stat.mbps ?? 0)
+          next[cam] = {
+            fps: Number.isFinite(fps) ? fps : 0,
+            mbps: Number.isFinite(mbps) ? mbps : 0,
+          }
+        })
+        setCameraStats(next)
+      } catch {
+        if (!cancelled) setCameraStats({})
+      }
+    }
+
+    pollStats().catch(() => undefined)
+    const timer = window.setInterval(() => {
+      pollStats().catch(() => undefined)
+    }, 2000)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [active])
 
   useEffect(() => {
     const robotMode = (config.robot_mode as string) ?? 'single'
     setMode(robotMode === 'bi' ? 'bi' : 'single')
   }, [config.robot_mode])
 
-  const recordLines: LogLine[] = useLeStudioStore((s) => s.logLines.record ?? [])
+
+  const selectedRobotType = (config.robot_type as string) ?? robotTypes[0] ?? 'so101_follower'
+
+  useEffect(() => {
+    if (!active) return
+    apiGet<TeleopsResponse>(`/api/teleops?robot_type=${encodeURIComponent(selectedRobotType)}`)
+      .then((r) => {
+        const types = r.types ?? ['so101_leader']
+        setTeleopTypes(types)
+        const currentTeleop = (config.teleop_type as string) ?? ''
+        if (currentTeleop && !types.includes(currentTeleop) && types.length > 0) {
+          buildConfig({ teleop_type: types[0] })
+        }
+      })
+      .catch(() => setTeleopTypes(['so101_leader']))
+  }, [active, selectedRobotType])
+
+  const selectedRobotDetail = robotDetails[selectedRobotType] ?? null
+
+  const recordLines: LogLine[] = useLeStudioStore((s) => s.logLines.record ?? EMPTY_RECORD_LINES)
   useEffect(() => {
     if (!active) return
     const latest = recordLines.at(-1)?.text ?? ''
@@ -76,11 +186,64 @@ export function RecordTab({ active }: RecordTabProps) {
     cameras: mappedCameras,
   })
 
+  const streamDims = useMemo(() => {
+    const [widthRaw, heightRaw] = streamResolution.split('x')
+    const width = Number(widthRaw)
+    const height = Number(heightRaw)
+    return {
+      width: Number.isFinite(width) && width > 0 ? width : 640,
+      height: Number.isFinite(height) && height > 0 ? height : 480,
+    }
+  }, [streamResolution])
+
+  const repoId = (config.record_repo_id as string) ?? 'user/my-dataset'
+  const repoError = useMemo(() => {
+    const repo = repoId.trim()
+    if (!repo) return 'Repo ID is required'
+    if (!REPO_ID_REGEX.test(repo)) return 'Must be "user/dataset" format (e.g. yourname/my-dataset)'
+    return ''
+  }, [repoId])
+
+  const followerIdOptions = useMemo(() => uniq(['my_so101_follower_1', ...(config.robot_id ? [String(config.robot_id)] : []), ...followerArmIds]), [
+    config.robot_id,
+    followerArmIds,
+  ])
+  const leaderIdOptions = useMemo(() => uniq(['my_so101_leader_1', ...(config.teleop_id ? [String(config.teleop_id)] : []), ...leaderArmIds]), [
+    config.teleop_id,
+    leaderArmIds,
+  ])
+
+  const feedCameras = useMemo(
+    () =>
+      Object.entries(mappedCameras)
+        .map(([name, path]) => {
+          const cam = path.startsWith('/dev/') ? path.slice('/dev/'.length) : name
+          return { name, path, cam }
+        })
+        .filter((c) => c.path),
+    [mappedCameras],
+  )
+
+  useEffect(() => {
+    if (active) return
+    setPausedFeeds({})
+  }, [active])
+
+  useEffect(() => {
+    setPausedFeeds((prev) => {
+      const next: Record<string, boolean> = {}
+      feedCameras.forEach((camera) => {
+        if (prev[camera.cam]) next[camera.cam] = true
+      })
+      return next
+    })
+  }, [feedCameras])
+
   const start = async () => {
     clearLog('record')
     const cfg = getCfg()
     await buildConfig(cfg)
-    if (!/^[a-zA-Z0-9_-]+\/[a-zA-Z0-9_.-]+$/.test(cfg.record_repo_id)) {
+    if (!REPO_ID_REGEX.test(cfg.record_repo_id)) {
       appendLog('record', '[ERROR] Repo ID must be in "user/dataset" format', 'error')
       return
     }
@@ -136,25 +299,73 @@ export function RecordTab({ active }: RecordTabProps) {
         <div className="card">
           <h3>Step 1: Recording Plan</h3>
           <label>Task Description</label>
-          <input value={(config.record_task as string) ?? ''} onChange={(e) => update('record_task', e.target.value)} />
+          <input
+            type="text"
+            value={(config.record_task as string) ?? ''}
+            onChange={(e) => update('record_task', e.target.value)}
+            placeholder="Example: Pick up red block and place in left bin"
+          />
           <label>Number of Episodes</label>
           <input type="number" min={1} value={totalEpisodes} onChange={(e) => update('record_episodes', Number(e.target.value))} />
+          <div className="field-help">Start with 20-50 for first test run.</div>
           <label>Dataset Repo ID (Hugging Face)</label>
-          <input value={(config.record_repo_id as string) ?? 'user/my-dataset'} onChange={(e) => update('record_repo_id', e.target.value)} />
-          <label>
-            <input
-              id="record-resume"
-              type="checkbox"
-              checked={Boolean(config.record_resume)}
-              onChange={(e) => update('record_resume', e.target.checked)}
-              style={{ width: 'auto', marginRight: 8 }}
-            />
-            Resume existing dataset
-          </label>
+          <input
+            type="text"
+            value={repoId}
+            placeholder="Example: yourname/my-dataset"
+            onChange={(e) => update('record_repo_id', e.target.value)}
+            style={repoError ? { borderColor: 'var(--red)' } : undefined}
+          />
+          <div
+            id="record-repo-error"
+            style={{
+              display: repoError ? 'block' : 'none',
+              color: 'var(--red)',
+              fontSize: 11,
+              marginTop: 4,
+              padding: '4px 8px',
+              background: 'rgba(248,81,73,0.1)',
+              borderRadius: 4,
+            }}
+          >
+            {repoError}
+          </div>
+          <div className="field-help" style={{ marginTop: 8, marginBottom: 0 }}>
+            <label htmlFor="record-resume" style={{ display: 'flex', alignItems: 'center', gap: 8, margin: 0, fontSize: 12, color: 'var(--text)' }}>
+              <input
+                id="record-resume"
+                type="checkbox"
+                checked={Boolean(config.record_resume)}
+                onChange={(e) => update('record_resume', e.target.checked)}
+                style={{ width: 'auto' }}
+              />
+              Resume existing dataset if it already exists
+            </label>
+            Prevents crash when the target dataset folder already exists.
+          </div>
         </div>
 
         <div className="card">
-          <h3>Step 2: Arm Ports</h3>
+          <label>Robot Type</label>
+          <select value={(config.robot_type as string) ?? robotTypes[0] ?? ''} onChange={(e) => update('robot_type', e.target.value)}>
+            {robotTypes.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </select>
+          <label>Teleoperator Type</label>
+          <select value={(config.teleop_type as string) ?? teleopTypes[0] ?? ''} onChange={(e) => update('teleop_type', e.target.value)}>
+            {teleopTypes.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </select>
+          <RobotCapabilitiesCard
+            capabilities={selectedRobotDetail?.capabilities ?? null}
+            compatibleTeleops={selectedRobotDetail?.compatible_teleops ?? []}
+          />
           {mode === 'single' ? (
             <>
               <label>Follower Arm Port</label>
@@ -166,7 +377,14 @@ export function RecordTab({ active }: RecordTabProps) {
                 ))}
               </select>
               <label>Follower Arm ID</label>
-              <input value={(config.robot_id as string) ?? 'my_so101_follower_1'} onChange={(e) => update('robot_id', e.target.value)} />
+              <select value={(config.robot_id as string) ?? 'my_so101_follower_1'} onChange={(e) => update('robot_id', e.target.value)}>
+                {followerIdOptions.map((id) => (
+                  <option key={id} value={id}>
+                    {id}
+                  </option>
+                ))}
+              </select>
+              <div className="field-help">Arm ID selects the calibration profile file name (without .json).</div>
               <label>Leader Arm Port</label>
               <select value={(config.leader_port as string) ?? '/dev/leader_arm_1'} onChange={(e) => update('leader_port', e.target.value)}>
                 {armPaths.map((p) => (
@@ -176,29 +394,135 @@ export function RecordTab({ active }: RecordTabProps) {
                 ))}
               </select>
               <label>Leader Arm ID</label>
-              <input value={(config.teleop_id as string) ?? 'my_so101_leader_1'} onChange={(e) => update('teleop_id', e.target.value)} />
+              <select value={(config.teleop_id as string) ?? 'my_so101_leader_1'} onChange={(e) => update('teleop_id', e.target.value)}>
+                {leaderIdOptions.map((id) => (
+                  <option key={id} value={id}>
+                    {id}
+                  </option>
+                ))}
+              </select>
+              <div className="field-help">Suggestions come from existing calibration files.</div>
             </>
           ) : (
             <>
               <label>Left Follower</label>
-              <input value={(config.left_follower_port as string) ?? '/dev/follower_arm_1'} onChange={(e) => update('left_follower_port', e.target.value)} />
+              <select value={(config.left_follower_port as string) ?? '/dev/follower_arm_1'} onChange={(e) => update('left_follower_port', e.target.value)}>
+                {armPaths.map((p) => (
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
+                ))}
+              </select>
               <label>Right Follower</label>
-              <input value={(config.right_follower_port as string) ?? '/dev/follower_arm_2'} onChange={(e) => update('right_follower_port', e.target.value)} />
+              <select value={(config.right_follower_port as string) ?? '/dev/follower_arm_2'} onChange={(e) => update('right_follower_port', e.target.value)}>
+                {armPaths.map((p) => (
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
+                ))}
+              </select>
               <label>Left Leader</label>
-              <input value={(config.left_leader_port as string) ?? '/dev/leader_arm_1'} onChange={(e) => update('left_leader_port', e.target.value)} />
+              <select value={(config.left_leader_port as string) ?? '/dev/leader_arm_1'} onChange={(e) => update('left_leader_port', e.target.value)}>
+                {armPaths.map((p) => (
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
+                ))}
+              </select>
               <label>Right Leader</label>
-              <input value={(config.right_leader_port as string) ?? '/dev/leader_arm_2'} onChange={(e) => update('right_leader_port', e.target.value)} />
+              <select value={(config.right_leader_port as string) ?? '/dev/leader_arm_2'} onChange={(e) => update('right_leader_port', e.target.value)}>
+                {armPaths.map((p) => (
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
+                ))}
+              </select>
             </>
           )}
         </div>
 
         <div className="card">
           <h3>Step 3: Camera Feeds</h3>
+          <div className="field-help">Required: confirm mapped camera set for this recording.</div>
           <MappedCameraRows mappedCameras={mappedCameras} />
+          <details className="advanced-panel" style={{ marginTop: 12 }}>
+            <summary>Advanced Stream Settings</summary>
+            <div className="settings-grid" style={{ marginTop: 10 }}>
+              <div className="setting-item">
+                <label>Codec</label>
+                <select value={streamCodec} onChange={(e) => setStreamCodec(e.target.value)}>
+                  <option value="MJPG">MJPG (compressed)</option>
+                  <option value="YUYV">YUYV (raw)</option>
+                </select>
+              </div>
+              <div className="setting-item">
+                <label>Resolution</label>
+                <select value={streamResolution} onChange={(e) => setStreamResolution(e.target.value)}>
+                  <option value="1280x720">1280 × 720 (720p)</option>
+                  <option value="800x600">800 × 600</option>
+                  <option value="640x480">640 × 480 (480p)</option>
+                  <option value="320x240">320 × 240 (240p)</option>
+                </select>
+              </div>
+              <div className="setting-item">
+                <label>FPS</label>
+                <select value={streamFps} onChange={(e) => setStreamFps(e.target.value)}>
+                  <option value="30">30</option>
+                </select>
+              </div>
+              <div className="setting-item">
+                <label>
+                  JPEG Quality <span className="muted">{streamQuality}%</span>
+                </label>
+                <input
+                  type="range"
+                  min={30}
+                  max={95}
+                  step={5}
+                  value={streamQuality}
+                  onChange={(e) => setStreamQuality(Number(e.target.value))}
+                />
+              </div>
+            </div>
+          </details>
         </div>
 
         <div className="episode-progress-card">
           <div className="ep-card-title">Episode Progress</div>
+          <div id="record-feeds" className="feed-grid">
+            {active ? feedCameras.map((camera) => {
+              const streamSrc = `/stream/${camera.cam}?codec=${encodeURIComponent(streamCodec)}&width=${streamDims.width}&height=${streamDims.height}&fps=${encodeURIComponent(streamFps)}&quality=${streamQuality}`
+              const stats = cameraStats[camera.cam]
+              const fpsText = stats ? `${stats.fps.toFixed(1)} fps` : `${streamFps} fps`
+              const statText = stats ? `${stats.fps.toFixed(1)}fps · ${stats.mbps.toFixed(1)}MB/s` : ''
+              const paused = !!pausedFeeds[camera.cam]
+              return (
+                <div key={`${camera.cam}-${streamCodec}-${streamResolution}-${streamFps}-${streamQuality}`} className="feed-card" data-vid={camera.cam}>
+                  <img src={paused ? undefined : streamSrc} alt={camera.name} />
+                  <div className={`feed-live-badge ${paused ? '' : 'visible'}`}>
+                    <div className="feed-live-dot" />LIVE
+                  </div>
+                  <div className={`feed-fps-badge ${paused ? '' : 'visible'}`}>{fpsText}</div>
+                  <button className="feed-close-btn" title="Pause this feed" onClick={() => setPausedFeeds((prev) => ({ ...prev, [camera.cam]: true }))}>×</button>
+                  {paused ? (
+                    <div className="feed-paused-ov">
+                      <span style={{ fontSize: 20, opacity: 0.4 }}>⏸</span>
+                      <span className="feed-paused-text">{camera.name} — paused</span>
+                      <button className="btn-xs feed-overlay-btn" onClick={() => setPausedFeeds((prev) => ({ ...prev, [camera.cam]: false }))}>
+                        ▶ Resume
+                      </button>
+                    </div>
+                  ) : null}
+                  <div className="feed-label">
+                    <span>
+                      {camera.name} — {camera.path}
+                    </span>
+                    <span className="feed-stat">{statText}</span>
+                  </div>
+                </div>
+              )
+            }) : null}
+          </div>
           <div className="episode-status">
             <div className="ep-label">Episodes</div>
             <div className="ep-bar-wrap">
@@ -207,7 +531,7 @@ export function RecordTab({ active }: RecordTabProps) {
             <div className="ep-status-row">
               <div className="ep-num">
                 <span id="record-ep-current">{running ? episodesDone : '—'}</span>
-                <span className="ep-sep">/</span>
+                <span className="ep-sep"> / </span>
                 <span id="record-ep-total">{running ? totalEpisodes : '—'}</span>
               </div>
               <div id="record-state-pill" className={`ep-state-pill ${running ? 'running' : 'idle'}`}>
@@ -216,8 +540,13 @@ export function RecordTab({ active }: RecordTabProps) {
             </div>
           </div>
           <div className="ep-actions-panel">
-            <ProcessButtons running={running} onStart={start} onStop={stop} startLabel="▶ Start Recording" />
-            <div className="ep-controls-row" style={{ marginTop: 8 }}>
+            <div className="ep-controls-row" id="record-ep-controls">
+              {!running && (
+                <button className="btn-primary" onClick={start}>▶ Start Recording</button>
+              )}
+              {running && (
+                <button className="btn-danger" onClick={stop}>■ Force Stop</button>
+              )}
               <button className="btn-sm record-ep-action" disabled={!running} onClick={() => sendKey('right')}>
                 ✓ Save →
               </button>
@@ -228,9 +557,9 @@ export function RecordTab({ active }: RecordTabProps) {
                 ⏹ End (Esc)
               </button>
             </div>
-          </div>
-          <div className="terminal-card" style={{ marginTop: 10 }}>
-            <LogConsole processName="record" />
+            <div id="record-ep-guard" className="ep-guard-msg" style={{ display: running ? 'none' : 'block' }}>
+              Start recording first. During capture: Save (→), Discard (←), End (Esc).
+            </div>
           </div>
         </div>
       </div>

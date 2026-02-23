@@ -16,7 +16,7 @@ export function MappedCameraRows({ mappedCameras }: MappedCameraRowsProps) {
     )
   }
   return (
-    <div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       {entries.map(([role, path]) => (
         <div className="mapped-cam-row" key={role}>
           <div className="mapped-cam-role">{role}</div>

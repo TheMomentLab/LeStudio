@@ -3,13 +3,14 @@ interface ProcessButtonsProps {
   onStart: () => void
   onStop: () => void
   startLabel: string
+  disabled?: boolean
 }
 
-export function ProcessButtons({ running, onStart, onStop, startLabel }: ProcessButtonsProps) {
+export function ProcessButtons({ running, onStart, onStop, startLabel, disabled }: ProcessButtonsProps) {
   return (
     <div className="btn-row">
       {!running ? (
-        <button className="btn-primary" onClick={onStart}>
+        <button className="btn-primary" onClick={onStart} disabled={disabled}>
           {startLabel}
         </button>
       ) : (

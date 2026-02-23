@@ -32,6 +32,25 @@ interface LeStudioState {
 }
 
 const MAX_LOG_LINES = 1200
+const ACTIVE_TAB_STORAGE_KEY = 'lestudio.active-tab'
+const VALID_TABS = new Set([
+  'status',
+  'device-setup',
+  'motor-setup',
+  'calibrate',
+  'teleop',
+  'record',
+  'dataset',
+  'train',
+  'eval',
+])
+
+function loadInitialActiveTab(): string {
+  if (typeof window === 'undefined') return 'status'
+  const saved = window.localStorage.getItem(ACTIVE_TAB_STORAGE_KEY)
+  if (saved && VALID_TABS.has(saved)) return saved
+  return 'status'
+}
 
 const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
 
@@ -45,7 +64,7 @@ const defaultSignals: SidebarSignals = {
 }
 
 export const useLeStudioStore = create<LeStudioState>((set) => ({
-  activeTab: 'status',
+  activeTab: loadInitialActiveTab(),
   config: {},
   procStatus: {},
   devices: { cameras: [], arms: [] },
@@ -58,7 +77,13 @@ export const useLeStudioStore = create<LeStudioState>((set) => ({
   sidebarSignals: defaultSignals,
   mobileSidebarOpen: false,
 
-  setActiveTab: (tab) => set({ activeTab: tab }),
+  setActiveTab: (tab) => {
+    if (!VALID_TABS.has(tab)) return
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(ACTIVE_TAB_STORAGE_KEY, tab)
+    }
+    set({ activeTab: tab })
+  },
   setConfig: (cfg) => set({ config: cfg }),
   updateConfig: (partial) => set((s) => ({ config: { ...s.config, ...partial } })),
   setProcStatus: (status) => set({ procStatus: status }),

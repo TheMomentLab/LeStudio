@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { LogConsole } from '../components/shared/LogConsole'
 import { ProcessButtons } from '../components/shared/ProcessButtons'
 import { useProcess } from '../hooks/useProcess'
 import { apiGet, apiPost } from '../lib/api'
@@ -52,11 +51,26 @@ export function MotorSetupTab({ active }: MotorSetupTabProps) {
         <div className="card">
           <h3>Step 1: Connect Arm</h3>
           <label>Arm Role Type</label>
-          <input value={type} onChange={(e) => setType(e.target.value)} />
+          <select value={type} onChange={(e) => setType(e.target.value)}>
+            <option value="so101_follower">Follower (SO101)</option>
+            <option value="so100_follower">Follower (SO100)</option>
+            <option value="so101_leader">Leader (SO101)</option>
+            <option value="so100_leader">Leader (SO100)</option>
+          </select>
           <label>Arm Port</label>
-          <input value={port} onChange={(e) => setPort(e.target.value)} />
+          <select value={port} onChange={(e) => setPort(e.target.value)}>
+            {devices.arms.length === 0 ? (
+              <option value={port}>{port}</option>
+            ) : (
+              devices.arms.map((arm, idx) => {
+                const p = arm.path ?? `/dev/${arm.device ?? 'ttyUSB' + idx}`
+                return <option key={p} value={p}>{arm.symlink ?? p}</option>
+              })
+            )}
+          </select>
           <div className="info-box" style={{ marginTop: 12 }}>
-            Run once for each arm to assign motor IDs and set baudrate.
+            ℹ️ Run once for each arm to assign motor IDs and set baudrate.<br />
+            If asked for keyboard input, use the global console input field.
           </div>
           <div className="spacer" />
           <ProcessButtons running={running} onStart={start} onStop={stop} startLabel="▶ Start Setup" />
@@ -77,7 +91,6 @@ export function MotorSetupTab({ active }: MotorSetupTabProps) {
           </div>
         </div>
       </div>
-      <LogConsole processName="motor_setup" />
     </section>
   )
 }

@@ -1,73 +1,66 @@
-# React + TypeScript + Vite
+# LeStudio Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React 19 + TypeScript + Vite frontend for LeStudio.
 
-Currently, two official plugins are available:
+This app powers the 9-tab workbench UI and is served by FastAPI after build output is written to `src/lestudio/static`.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## Prerequisites
 
-## React Compiler
+- Node.js 20+
+- npm 10+
+- LeStudio backend installed (`pip install -e .` from repo root)
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Local Development
 
-## Expanding the ESLint configuration
+From `LeStudio/frontend`:
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
+npm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+Default dev server:
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+- Frontend: `http://localhost:5173`
+- API proxy target: `http://localhost:8000`
+- WS proxy target: `ws://localhost:8000`
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+Start backend in a separate terminal (from repo root):
+
+```bash
+lestudio --port 8000
 ```
+
+## Build
+
+```bash
+npm run build
+```
+
+Build behavior is defined in `frontend/vite.config.ts`:
+
+- `outDir: ../src/lestudio/static`
+- `emptyOutDir: true`
+
+So the build is directly deployed into the backend static directory.
+
+## Lint and Preview
+
+```bash
+npm run lint
+npm run preview
+```
+
+## Key Frontend Structure
+
+- `src/App.tsx`: app shell, navigation, mode/theme/global behaviors
+- `src/store/index.ts`: Zustand global state
+- `src/tabs/*`: feature tabs (Status, Device Setup, Motor Setup, Calibrate, Teleop, Record, Dataset, Train, Eval)
+- `src/components/shared/*`: reusable UI blocks
+- `src/hooks/*`: API and websocket hooks
+
+## Notes
+
+- Keep shared state in Zustand; avoid per-tab duplicated source-of-truth state.
+- Keep API access in hooks when possible (`useConfig`, `useProcess`, `useWebSocket`).
+- Keep styling in project CSS and existing variable conventions.

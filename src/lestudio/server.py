@@ -1579,47 +1579,56 @@ def create_app(
 
                     rows = []
                     for pq_path in sorted(episodes_dir.glob("**/*.parquet")):
-                        base_cols = ["episode_index", "length", "tasks"]
-                        video_cols = []
-                        for cam in cameras:
-                            video_cols.append(f"videos/{cam}/chunk_index")
-                            video_cols.append(f"videos/{cam}/file_index")
-                            video_cols.append(f"videos/{cam}/from_timestamp")
-                            video_cols.append(f"videos/{cam}/to_timestamp")
                         try:
-                            df = pd.read_parquet(pq_path, columns=base_cols + video_cols)
-                        except Exception:
-                            df = pd.read_parquet(pq_path, columns=base_cols)
-                        for _, row in df.iterrows():
-                            tasks = row.get("tasks", [])
-                            if tasks is None:
-                                tasks = []
-                            elif not isinstance(tasks, list):
-                                tasks = list(tasks)
-                            video_files = {}
+                            base_cols = ["episode_index", "length", "tasks"]
+                            video_cols = []
                             for cam in cameras:
-                                chunk_key = f"videos/{cam}/chunk_index"
-                                file_key = f"videos/{cam}/file_index"
-                                from_key = f"videos/{cam}/from_timestamp"
-                                to_key = f"videos/{cam}/to_timestamp"
-                                if chunk_key in row and file_key in row:
-                                    chunk_val = row.get(chunk_key)
-                                    file_val = row.get(file_key)
-                                    if not pd.isna(chunk_val) and not pd.isna(file_val):
-                                        from_val = row.get(from_key) if from_key in row else None
-                                        to_val = row.get(to_key) if to_key in row else None
-                                        video_files[cam] = {
-                                            "chunk_index": int(chunk_val),
-                                            "file_index": int(file_val),
-                                            "from_timestamp": None if from_val is None or pd.isna(from_val) else float(from_val),
-                                            "to_timestamp": None if to_val is None or pd.isna(to_val) else float(to_val),
-                                        }
-                            rows.append({
-                                "episode_index": int(row["episode_index"]),
-                                "length": int(row["length"]),
-                                "tasks": tasks,
-                                "video_files": video_files,
-                            })
+                                video_cols.append(f"videos/{cam}/chunk_index")
+                                video_cols.append(f"videos/{cam}/file_index")
+                                video_cols.append(f"videos/{cam}/from_timestamp")
+                                video_cols.append(f"videos/{cam}/to_timestamp")
+                            try:
+                                df = pd.read_parquet(pq_path, columns=base_cols + video_cols)
+                            except Exception:
+                                df = pd.read_parquet(pq_path)
+                            for _, row in df.iterrows():
+                                tasks = row.get("tasks", [])
+                                if tasks is None:
+                                    tasks = []
+                                elif not isinstance(tasks, list):
+                                    tasks = list(tasks)
+                                length_value = row.get("length", row.get("episode_length", row.get("num_frames", row.get("frame_count", 0))))
+                                if length_value is None or pd.isna(length_value):
+                                    length_value = 0
+                                episode_index_value = row.get("episode_index", row.get("episode_id", 0))
+                                if episode_index_value is None or pd.isna(episode_index_value):
+                                    episode_index_value = 0
+                                video_files = {}
+                                for cam in cameras:
+                                    chunk_key = f"videos/{cam}/chunk_index"
+                                    file_key = f"videos/{cam}/file_index"
+                                    from_key = f"videos/{cam}/from_timestamp"
+                                    to_key = f"videos/{cam}/to_timestamp"
+                                    if chunk_key in row and file_key in row:
+                                        chunk_val = row.get(chunk_key)
+                                        file_val = row.get(file_key)
+                                        if not pd.isna(chunk_val) and not pd.isna(file_val):
+                                            from_val = row.get(from_key) if from_key in row else None
+                                            to_val = row.get(to_key) if to_key in row else None
+                                            video_files[cam] = {
+                                                "chunk_index": int(chunk_val),
+                                                "file_index": int(file_val),
+                                                "from_timestamp": None if from_val is None or pd.isna(from_val) else float(from_val),
+                                                "to_timestamp": None if to_val is None or pd.isna(to_val) else float(to_val),
+                                            }
+                                rows.append({
+                                    "episode_index": int(episode_index_value),
+                                    "length": int(length_value),
+                                    "tasks": tasks,
+                                    "video_files": video_files,
+                                })
+                        except Exception:
+                            continue
 
                     rows.sort(key=lambda x: x["episode_index"])
                     episodes = rows
@@ -1765,11 +1774,23 @@ def create_app(
             try:
                 pd = __import__("pandas")
                 for pq_path in sorted(episodes_dir.glob("**/*.parquet")):
-                    df = pd.read_parquet(pq_path, columns=["episode_index", "length"])
+                    try:
+                        df = pd.read_parquet(pq_path, columns=["episode_index", "length"])
+                    except Exception:
+                        try:
+                            df = pd.read_parquet(pq_path, columns=["episode_index", "episode_length"])
+                        except Exception:
+                            df = pd.read_parquet(pq_path)
                     for _, row in df.iterrows():
+                        length_value = row.get("length", row.get("episode_length", row.get("num_frames", row.get("frame_count", 0))))
+                        if length_value is None or pd.isna(length_value):
+                            length_value = 0
+                        episode_index_value = row.get("episode_index", row.get("episode_id", 0))
+                        if episode_index_value is None or pd.isna(episode_index_value):
+                            episode_index_value = 0
                         episodes.append({
-                            "episode_index": int(row.get("episode_index", 0)),
-                            "length": int(row.get("length", 0)),
+                            "episode_index": int(episode_index_value),
+                            "length": int(length_value),
                         })
             except Exception as e:
                 add_check("warn", "episodes", f"Could not parse episode parquet files: {e}", "episodes")
@@ -2206,10 +2227,7 @@ def create_app(
             pass
 
     # ─── Static + Root ─────────────────────────────────────────────────────
-    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
-
-    @app.get("/")
-    async def root():
-        return HTMLResponse((STATIC_DIR / "index.html").read_text())
-
+    # Vite builds assets to STATIC_DIR with root-relative paths (/assets/...)
+    # Mount at "/" with html=True so /assets/* resolves and SPA fallback works.
+    app.mount("/", StaticFiles(directory=str(STATIC_DIR), html=True), name="static")
     return app

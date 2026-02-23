@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react'
 import { useLeStudioStore } from '../../store'
 import { Sidebar } from './Sidebar'
+import { ProfileSelector } from '../shared/ProfileSelector'
+import { ConsoleDrawer } from '../shared/ConsoleDrawer'
 
 interface AppShellProps {
   children: ReactNode
@@ -9,21 +11,20 @@ interface AppShellProps {
   onToggleTheme: () => void
 }
 
-const tabs = [
-  { id: 'status', label: 'Status' },
-  { id: 'teleop', label: 'Teleop' },
-  { id: 'record', label: 'Record' },
-  { id: 'dataset', label: 'Dataset' },
-  { id: 'calibrate', label: 'Calibration' },
-  { id: 'motor-setup', label: 'Motor Setup' },
-  { id: 'device-setup', label: 'Mapping' },
-  { id: 'train', label: 'Train' },
-  { id: 'eval', label: 'Eval' },
-]
-
 export function AppShell({ children, wsConnected, theme, onToggleTheme }: AppShellProps) {
   const mobileSidebarOpen = useLeStudioStore((s) => s.mobileSidebarOpen)
   const setMobileSidebarOpen = useLeStudioStore((s) => s.setMobileSidebarOpen)
+  const uiMode = useLeStudioStore((s) => s.uiMode)
+  const setUiMode = useLeStudioStore((s) => s.setUiMode)
+  const apiHealth = useLeStudioStore((s) => s.apiHealth)
+  const apiSupport = useLeStudioStore((s) => s.apiSupport)
+
+  const degraded =
+    wsConnected
+    && ((apiSupport.resources !== false && !apiHealth.resources)
+      || (apiSupport.history !== false && !apiHealth.history))
+  const wsDotClass = !wsConnected ? 'red' : degraded ? 'yellow' : 'green'
+  const wsLabel = !wsConnected ? 'Disconnected' : degraded ? 'Degraded' : 'Connected'
 
   return (
     <div id="app" className={mobileSidebarOpen ? 'sidebar-open' : ''}>
@@ -38,27 +39,60 @@ export function AppShell({ children, wsConnected, theme, onToggleTheme }: AppShe
           >
             ☰
           </button>
-          <img src="/static/logo.svg" alt="LeStudio Logo" className="logo" style={{ width: 32, height: 32 }} />
-          <h1>
-            LeRobot <span style={{ color: 'var(--text2)', fontWeight: 400 }}>Studio</span>
-          </h1>
+          <img src="/logo.svg" alt="LeStudio Logo" className="logo" style={{ width: 32, height: 32 }} />
+          <h1>LeStudio</h1>
           <span className="beta-badge">BETA</span>
         </div>
         <div className="header-right">
+          <ProfileSelector />
+          <div className="view-mode-toggle" title="UI mode">
+            <button
+              id="mode-guided-btn"
+              className={`mode-btn ${uiMode === 'guided' ? 'active' : ''}`}
+              type="button"
+              onClick={() => setUiMode('guided')}
+            >
+              Guided
+            </button>
+            <button
+              id="mode-advanced-btn"
+              className={`mode-btn ${uiMode === 'advanced' ? 'active' : ''}`}
+              type="button"
+              onClick={() => setUiMode('advanced')}
+            >
+              Advanced
+            </button>
+          </div>
           <button id="theme-toggle-btn" className="btn-xs" onClick={onToggleTheme}>
             {theme === 'dark' ? '🌙' : '☀️'}
           </button>
+          <a
+            href="https://github.com/TheMomentLab/lerobot-studio"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="github-link"
+            title="View on GitHub"
+          >
+            <svg height="24" viewBox="0 0 16 16" width="24" aria-hidden="true">
+              <path
+                fill="currentColor"
+                fillRule="evenodd"
+                d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"
+              />
+            </svg>
+          </a>
           <div id="ws-status" className="ws-status" aria-live="polite">
-            <span id="ws-dot" className={`dot ${wsConnected ? 'green' : 'red'}`} />
-            <span id="ws-label">{wsConnected ? 'Connected' : 'Disconnected'}</span>
+            <span id="ws-dot" className={`dot ${wsDotClass}`} />
+            <span id="ws-label">{wsLabel}</span>
           </div>
         </div>
       </header>
       <div className="workbench-shell">
-        <Sidebar tabs={tabs} />
+        <Sidebar />
         <div id="sidebar-backdrop" aria-hidden="true" onClick={() => setMobileSidebarOpen(false)} />
         <main>{children}</main>
       </div>
+      <ConsoleDrawer />
     </div>
   )
 }

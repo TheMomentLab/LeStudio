@@ -48,6 +48,14 @@ body {
   flex-direction: column;
 }
 
+
+#root {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
 #app {
   display: flex;
   flex-direction: column;
@@ -121,7 +129,7 @@ h1 { font-size: 16px; font-weight: 600; letter-spacing: .3px; }
   border: 1px solid var(--border);
   background: color-mix(in srgb, var(--accent) 18%, var(--bg3));
   color: var(--text);
-  font-size: 11px;
+  font-size: 9px;
   line-height: 1;
   white-space: nowrap;
 }
@@ -324,63 +332,37 @@ h1 { font-size: 16px; font-weight: 600; letter-spacing: .3px; }
   text-overflow: ellipsis;
 }
 
-#sidebar-nav .tab-btn .tab-state-badge {
+/* ── Sidebar status dot ── */
+@keyframes dot-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .35; }
+}
+#sidebar-nav .tab-btn .tab-state-dot {
   display: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
   margin-left: auto;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  padding: 1px 6px;
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: .3px;
-  text-transform: uppercase;
-  line-height: 1.4;
+  animation: dot-pulse 2s ease-in-out infinite;
 }
-
-#sidebar-nav .tab-btn.has-running .tab-state-badge,
-#sidebar-nav .tab-btn.has-error .tab-state-badge,
-#sidebar-nav .tab-btn.has-needs-root .tab-state-badge,
-#sidebar-nav .tab-btn.has-needs-udev .tab-state-badge,
-#sidebar-nav .tab-btn.has-missing-dep .tab-state-badge,
-#sidebar-nav .tab-btn.has-needs-device .tab-state-badge {
-  display: inline-block;
+#sidebar-nav .tab-btn.has-error .tab-state-dot,
+#sidebar-nav .tab-btn.has-needs-root .tab-state-dot,
+#sidebar-nav .tab-btn.has-needs-udev .tab-state-dot,
+#sidebar-nav .tab-btn.has-missing-dep .tab-state-dot,
+#sidebar-nav .tab-btn.has-needs-device .tab-state-dot {
+  display: block;
 }
-
-#sidebar-nav .tab-btn[data-proc].has-running .tab-state-badge {
-  color: var(--green);
-  border-color: color-mix(in srgb, var(--green) 45%, var(--border));
-  background: color-mix(in srgb, var(--green) 16%, transparent);
+#sidebar-nav .tab-btn[data-proc].has-running .tab-state-dot {
+  display: block;
+  background: var(--green);
+  animation: none;
 }
-
-#sidebar-nav .tab-btn[data-proc].has-error .tab-state-badge {
-  color: var(--red);
-  border-color: color-mix(in srgb, var(--red) 45%, var(--border));
-  background: color-mix(in srgb, var(--red) 16%, transparent);
-}
-
-#sidebar-nav .tab-btn.has-needs-root .tab-state-badge {
-  color: var(--yellow);
-  border-color: color-mix(in srgb, var(--yellow) 45%, var(--border));
-  background: color-mix(in srgb, var(--yellow) 16%, transparent);
-}
-
-#sidebar-nav .tab-btn.has-needs-udev .tab-state-badge {
-  color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
-  background: color-mix(in srgb, var(--accent) 16%, transparent);
-}
-
-#sidebar-nav .tab-btn.has-missing-dep .tab-state-badge {
-  color: var(--purple);
-  border-color: color-mix(in srgb, var(--purple) 45%, var(--border));
-  background: color-mix(in srgb, var(--purple) 16%, transparent);
-}
-
-#sidebar-nav .tab-btn.has-needs-device .tab-state-badge {
-  color: var(--yellow);
-  border-color: color-mix(in srgb, var(--yellow) 45%, var(--border));
-  background: color-mix(in srgb, var(--yellow) 16%, transparent);
-}
+#sidebar-nav .tab-btn[data-proc].has-error .tab-state-dot { background: var(--red); }
+#sidebar-nav .tab-btn.has-needs-root .tab-state-dot { background: var(--yellow); }
+#sidebar-nav .tab-btn.has-needs-udev .tab-state-dot { background: var(--accent); }
+#sidebar-nav .tab-btn.has-missing-dep .tab-state-dot { background: var(--purple); }
+#sidebar-nav .tab-btn.has-needs-device .tab-state-dot { background: var(--yellow); }
 
 #sidebar-nav .tab-btn:hover {
   color: var(--text);
@@ -596,6 +578,7 @@ label {
   color: var(--text2);
   margin: 8px 0 4px;
 }
+input:not([type]),
 input[type="text"],
 input[type="number"],
 select {
@@ -614,7 +597,7 @@ input:focus, select:focus { border-color: var(--accent); }
 select option { background: var(--bg3); }
 
 .spacer { height: 12px; }
-.btn-row { display: flex; gap: 8px; margin-top: 4px; }
+.btn-row { display: flex; gap: 8px; margin-top: 4px; justify-content: flex-end; }
 .hidden  { display: none !important; }
 .muted   { font-size: 13px; color: var(--text2); margin-bottom: 12px; }
 
@@ -685,6 +668,17 @@ select option { background: var(--bg3); }
 
 .advanced-panel[open] > summary {
   color: var(--text);
+}
+
+.train-device-warning {
+  margin-top: 6px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #f87171;
+  font-size: 9px;
+  font-weight: 400;
+  line-height: 1.35;
 }
 
 /* ─── Buttons ───────────────────────────────────────────────────────────────── */
@@ -916,12 +910,12 @@ button:active   { opacity: .7; }
   border-radius: 6px;
   overflow: hidden;
   position: relative;
-  min-height: 150px;
+  aspect-ratio: 16 / 9;
 }
 .feed-card img {
   width: 100%;
-  height: 150px;
-  object-fit: cover;
+  height: 100%;
+  object-fit: contain;
   display: block;
 }
 .feed-label {
@@ -1012,14 +1006,14 @@ button:active   { opacity: .7; }
 }
 .cam-preview-wrap {
   background: #000;
-  height: 140px;
+  aspect-ratio: 16 / 9;
   display: flex;
   align-items: center;
   justify-content: center;
   position: relative;
   cursor: pointer;
 }
-.cam-preview-wrap img { width: 100%; height: 100%; object-fit: cover; }
+.cam-preview-wrap img { width: 100%; height: 100%; object-fit: contain; }
 .cam-preview-wrap .play-hint {
   color: rgba(255,255,255,.5);
   font-size: 12px;
@@ -1396,9 +1390,6 @@ button:active   { opacity: .7; }
 .card { transition: border-color .15s; }
 .card:hover { border-color: color-mix(in srgb, var(--accent) 30%, var(--border)); }
 
-/* ─── Button full-width when alone ─────────────────────────────────────────── */
-.btn-row .btn-primary:only-child,
-.btn-row .btn-danger:only-child  { width: 100%; }
 
 /* ─── kbd ───────────────────────────────────────────────────────────────────── */
 kbd {
@@ -1593,6 +1584,7 @@ kbd {
 .dataset-empty-state {
   display: flex;
   flex-direction: column;
+  flex: 1;
   align-items: center;
   justify-content: center;
   gap: 8px;

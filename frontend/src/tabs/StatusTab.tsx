@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { apiGet, apiPost } from '../lib/api'
-import type { DevicesResponse } from '../lib/types'
+import type { ArmDevice, CameraDevice, DevicesResponse } from '../lib/types'
 import { useLeStudioStore } from '../store'
 
 interface StatusTabProps {
@@ -13,36 +13,87 @@ interface HistoryEntry {
   meta?: Record<string, unknown>
 }
 
+interface ResourcesResponse {
+  ok?: boolean
+  cpu_percent?: number
+  memory_percent?: number
+  ram_percent?: number
+  ram_used_mb?: number
+  ram_total_mb?: number
+  disk_percent?: number
+  disk_used_gb?: number
+  disk_total_gb?: number
+  lerobot_cache_mb?: number | null
+  cache_size_mb?: number | null
+}
+
+function asNumber(value: unknown): number | null {
+  if (typeof value !== 'number' || Number.isNaN(value)) return null
+  return value
+}
+
+function clampPercent(value: number | null): number {
+  if (value === null) return 0
+  return Math.max(0, Math.min(100, value))
+}
+
+function pctText(value: number | null): string {
+  return value === null ? '--%' : `${value.toFixed(1)}%`
+}
+
+function fmtSizeFromMb(value: number | null): string {
+  if (value === null) return '--'
+  if (value >= 1024) return `${(value / 1024).toFixed(1)} GB`
+  return `${value.toFixed(1)} MB`
+}
+
+function barSeverityClass(value: number | null): string {
+  if (value === null) return ''
+  if (value >= 90) return 'danger'
+  if (value >= 75) return 'warn'
+  return ''
+}
+
+function cameraSubtitle(camera: CameraDevice): string {
+  const port = camera.kernels?.trim() || '?'
+  const model = camera.model?.trim() || 'unknown model'
+  return `/dev/${camera.device ?? '?'} · port ${port} · ${model}`
+}
+
+function armSubtitle(arm: ArmDevice): string {
+  return `/dev/${arm.device ?? '?'}`
+}
+
 export function StatusTab({ active }: StatusTabProps) {
   const devices = useLeStudioStore((s) => s.devices)
   const setDevices = useLeStudioStore((s) => s.setDevices)
   const procStatus = useLeStudioStore((s) => s.procStatus)
   const addToast = useLeStudioStore((s) => s.addToast)
-  const [resources, setResources] = useState<Record<string, unknown> | null>(null)
+  const [resources, setResources] = useState<ResourcesResponse | null>(null)
   const [history, setHistory] = useState<HistoryEntry[]>([])
   const [lastUpdate, setLastUpdate] = useState('')
 
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
     const data = await apiGet<DevicesResponse>('/api/devices')
     setDevices({ cameras: data.cameras ?? [], arms: data.arms ?? [] })
     setLastUpdate(new Date().toLocaleTimeString())
-  }
+  }, [setDevices])
 
-  const refreshResources = async () => {
-    const data = await apiGet<Record<string, unknown>>('/api/system/resources')
+  const refreshResources = useCallback(async () => {
+    const data = await apiGet<ResourcesResponse>('/api/system/resources')
     setResources(data)
-  }
+  }, [])
 
-  const refreshHistory = async () => {
+  const refreshHistory = useCallback(async () => {
     const data = await apiGet<{ ok: boolean; entries: HistoryEntry[] }>('/api/history?limit=50')
     setHistory(Array.isArray(data.entries) ? data.entries : [])
-  }
+  }, [])
 
-  const clearHistory = async () => {
+  const clearHistory = useCallback(async () => {
     await apiPost('/api/history/clear', {})
     addToast('History cleared', 'info')
     await refreshHistory()
-  }
+  }, [addToast, refreshHistory])
 
   useEffect(() => {
     if (!active) return
@@ -55,7 +106,7 @@ export function StatusTab({ active }: StatusTabProps) {
       window.clearInterval(rId)
       window.clearInterval(hId)
     }
-  }, [active])
+  }, [active, refresh, refreshHistory, refreshResources])
 
   return (
     <section id="tab-status" className={`tab ${active ? 'active' : ''}`}>
@@ -79,10 +130,13 @@ export function StatusTab({ active }: StatusTabProps) {
               devices.cameras.map((camera, idx) => (
                 <div className="device-item" key={`${camera.device ?? 'cam'}-${idx}`}>
                   <span className={`dot ${camera.symlink ? 'green' : 'yellow'}`} />
-                  <div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
                     <div className="dname">{camera.symlink ?? camera.device ?? 'unknown'}</div>
-                    <div className="dsub">/dev/{camera.device ?? '?'}</div>
+                    <div className="dsub">{cameraSubtitle(camera)}</div>
                   </div>
+                  <span className={`dbadge ${camera.symlink ? 'badge-ok' : 'badge-warn'}`}>
+                    {camera.symlink ? 'linked' : 'no link'}
+                  </span>
                 </div>
               ))
             )}
@@ -98,10 +152,13 @@ export function StatusTab({ active }: StatusTabProps) {
               devices.arms.map((arm, idx) => (
                 <div className="device-item" key={`${arm.device ?? 'arm'}-${idx}`}>
                   <span className={`dot ${arm.symlink ? 'green' : 'yellow'}`} />
-                  <div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
                     <div className="dname">{arm.symlink ?? arm.device ?? 'unknown'}</div>
-                    <div className="dsub">/dev/{arm.device ?? '?'}</div>
+                    <div className="dsub">{armSubtitle(arm)}</div>
                   </div>
+                  <span className={`dbadge ${arm.symlink ? 'badge-ok' : 'badge-warn'}`}>
+                    {arm.symlink ? 'linked' : 'no link'}
+                  </span>
                 </div>
               ))
             )}
@@ -131,9 +188,57 @@ export function StatusTab({ active }: StatusTabProps) {
               <div className="device-item">Loading…</div>
             ) : (
               <>
-                <div className="device-item">CPU: {String(resources.cpu_percent ?? '--')}%</div>
-                <div className="device-item">RAM: {String(resources.ram_percent ?? '--')}%</div>
-                <div className="device-item">Disk: {String(resources.disk_percent ?? '--')}%</div>
+                <div className="device-item" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 2 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span className="dname">CPU</span>
+                    <span className="dsub">{pctText(asNumber(resources.cpu_percent))}</span>
+                  </div>
+                  <div className="usb-bus-bar-track">
+                    <div
+                      className={`usb-bar-fill ${barSeverityClass(asNumber(resources.cpu_percent))}`.trim()}
+                      style={{ width: `${clampPercent(asNumber(resources.cpu_percent))}%` }}
+                    />
+                  </div>
+                </div>
+
+                <div className="device-item" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 2 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span className="dname">RAM</span>
+                    <span className="dsub">{(() => {
+                      const usedMb = asNumber(resources.ram_used_mb)
+                      const totalMb = asNumber(resources.ram_total_mb)
+                      if (usedMb !== null && totalMb !== null) return `${fmtSizeFromMb(usedMb)} / ${fmtSizeFromMb(totalMb)}`
+                      return pctText(asNumber(resources.memory_percent ?? resources.ram_percent))
+                    })()}</span>
+                  </div>
+                  <div className="usb-bus-bar-track">
+                    <div
+                      className={`usb-bar-fill ${barSeverityClass(asNumber(resources.memory_percent ?? resources.ram_percent))}`.trim()}
+                      style={{ width: `${clampPercent(asNumber(resources.memory_percent ?? resources.ram_percent))}%` }}
+                    />
+                  </div>
+                </div>
+
+                <div className="device-item" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 2 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span className="dname">Disk (home)</span>
+                    <span className="dsub">{`${String(resources.disk_used_gb ?? '--')} / ${String(resources.disk_total_gb ?? '--')} GB`}</span>
+                  </div>
+                  <div className="usb-bus-bar-track">
+                    <div
+                      className={`usb-bar-fill ${barSeverityClass(asNumber(resources.disk_percent))}`.trim()}
+                      style={{ width: `${clampPercent(asNumber(resources.disk_percent))}%` }}
+                    />
+                  </div>
+                </div>
+
+                <div className="device-item" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <div className="dname">LeRobot Cache</div>
+                    <div className="dsub">~/.cache/huggingface/lerobot</div>
+                  </div>
+                  <span className="dsub">{fmtSizeFromMb(asNumber(resources.lerobot_cache_mb ?? resources.cache_size_mb ?? null))}</span>
+                </div>
               </>
             )}
           </div>
@@ -148,7 +253,7 @@ export function StatusTab({ active }: StatusTabProps) {
           </div>
           <div id="status-history" className="device-list" style={{ maxHeight: 220, overflowY: 'auto' }}>
             {history.length === 0 ? (
-              <div className="device-item">No session events yet.</div>
+              <div className="device-item">No session events yet. Start calibration, recording, training, or eval to see history here.</div>
             ) : (
               [...history].reverse().map((entry, idx) => (
                 <div className="device-item" key={`${entry.ts}-${idx}`}>

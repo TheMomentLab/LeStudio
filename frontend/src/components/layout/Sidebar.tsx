@@ -9,6 +9,40 @@ const PROCESS_TABS: Record<string, string> = {
   eval: 'eval',
 }
 
+const TAB_GROUPS = [
+  {
+    id: 'setup',
+    title: 'Setup',
+    tabs: [
+      { id: 'status', label: 'Status' },
+      { id: 'device-setup', label: 'Mapping' },
+      { id: 'motor-setup', label: 'Motor Setup' },
+      { id: 'calibrate', label: 'Calibration' },
+    ],
+  },
+  {
+    id: 'operate',
+    title: 'Operate',
+    tabs: [
+      { id: 'teleop', label: 'Teleop' },
+      { id: 'record', label: 'Record' },
+    ],
+  },
+  {
+    id: 'data',
+    title: 'Data',
+    tabs: [{ id: 'dataset', label: 'Dataset' }],
+  },
+  {
+    id: 'ml',
+    title: 'ML',
+    tabs: [
+      { id: 'train', label: 'Train' },
+      { id: 'eval', label: 'Eval' },
+    ],
+  },
+]
+
 function tabHealthState(tab: string, signals: ReturnType<typeof useLeStudioStore.getState>['sidebarSignals']): string {
   if (tab === 'device-setup') {
     if (signals.rulesNeedsRoot) return 'needs_root'
@@ -22,6 +56,7 @@ function tabHealthState(tab: string, signals: ReturnType<typeof useLeStudioStore
 
 function badgeLabel(state: string): string {
   if (state === 'running') return 'Running'
+  if (state === 'error') return 'Error'
   if (state === 'needs_root') return 'Needs Root'
   if (state === 'needs_udev') return 'Setup Needed'
   if (state === 'missing_dep') return 'Install Needed'
@@ -29,51 +64,56 @@ function badgeLabel(state: string): string {
   return ''
 }
 
-interface SidebarProps {
-  tabs: { id: string; label: string }[]
-}
 
-export function Sidebar({ tabs }: SidebarProps) {
+export function Sidebar() {
   const activeTab = useLeStudioStore((s) => s.activeTab)
   const setActiveTab = useLeStudioStore((s) => s.setActiveTab)
   const procStatus = useLeStudioStore((s) => s.procStatus)
-  const uiMode = useLeStudioStore((s) => s.uiMode)
-  const setUiMode = useLeStudioStore((s) => s.setUiMode)
   const signals = useLeStudioStore((s) => s.sidebarSignals)
   const setMobileSidebarOpen = useLeStudioStore((s) => s.setMobileSidebarOpen)
 
   return (
-    <aside id="sidebar-nav" aria-label="Workflow Navigation">
-      {tabs.map((tab) => {
-        const proc = PROCESS_TABS[tab.id]
-        const running = proc ? !!procStatus[proc] : false
-        const health = tabHealthState(tab.id, signals)
-        const state = running ? 'running' : health
-        return (
-          <button
-            key={tab.id}
-            className={`tab-btn ${activeTab === tab.id ? 'active' : ''} ${state ? `has-${state.replace('_', '-')}` : ''}`}
-            onClick={() => {
-              setActiveTab(tab.id)
-              setMobileSidebarOpen(false)
-            }}
-            data-tab={tab.id}
-            data-proc={proc ?? ''}
-          >
-            <span className="tab-text">{tab.label}</span>
-            <span className="tab-state-badge">{badgeLabel(state)}</span>
-          </button>
-        )
-      })}
+    <aside id="sidebar-nav" aria-label="Workflow Navigation" role="tablist" aria-orientation="vertical">
+      {TAB_GROUPS.map((group) => (
+        <div key={group.id} id={`sidebar-group-${group.id}`} className="sidebar-group">
+          <div className="sidebar-group-title">{group.title}</div>
+          {group.tabs.map((tab) => {
+            const proc = PROCESS_TABS[tab.id]
+            const running = proc ? !!procStatus[proc] : false
+            const health = tabHealthState(tab.id, signals)
+            const state = running ? 'running' : health
+            const isActive = activeTab === tab.id
+            const panelId = `tab-${tab.id}`
+            const stateLabel = badgeLabel(state)
 
-      <div className="view-mode-toggle" style={{ marginTop: 12 }} title="UI mode">
-        <button id="mode-guided-btn" className={`mode-btn ${uiMode === 'guided' ? 'active' : ''}`} type="button" onClick={() => setUiMode('guided')}>
-          Guided
-        </button>
-        <button id="mode-advanced-btn" className={`mode-btn ${uiMode === 'advanced' ? 'active' : ''}`} type="button" onClick={() => setUiMode('advanced')}>
-          Advanced
-        </button>
-      </div>
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                id={`nav-tab-${tab.id}`}
+                aria-selected={isActive}
+                aria-controls={panelId}
+                tabIndex={isActive ? 0 : -1}
+                className={`tab-btn ${isActive ? 'active' : ''} ${state ? `has-${state.replace('_', '-')}` : ''}`}
+                onClick={() => {
+                  setActiveTab(tab.id)
+                  setMobileSidebarOpen(false)
+                }}
+                data-tab={tab.id}
+                data-proc={proc ?? ''}
+              >
+                <span className="tab-text">{tab.label}</span>
+                {stateLabel ? (
+                  <span className="tab-state-badge" aria-label={stateLabel}>
+                    {stateLabel}
+                  </span>
+                ) : null}
+              </button>
+            )
+          })}
+        </div>
+      ))}
     </aside>
   )
 }

@@ -1,12 +1,15 @@
 import { useEffect, useRef } from 'react'
+import type { LogLine } from '../../lib/types'
 import { useLeStudioStore } from '../../store'
 
 interface LogConsoleProps {
   processName: string
 }
 
+const EMPTY_LINES: LogLine[] = []
+
 export function LogConsole({ processName }: LogConsoleProps) {
-  const lines = useLeStudioStore((s) => s.logLines[processName] ?? [])
+  const lines = useLeStudioStore((s) => s.logLines[processName] ?? EMPTY_LINES)
   const elRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
