@@ -141,7 +141,7 @@ export function ProfileSelector() {
           </option>
         ))}
       </select>
-      <span className="profile-badge">Active: {activeProfile}</span>
+
       <button className="btn-xs" onClick={saveCurrent}>
         Save
       </button>

@@ -298,7 +298,13 @@ export function EvalTab({ active }: EvalTabProps) {
       <div className="section-header">
         <h2>Evaluate Policy</h2>
       </div>
-      <div className="two-col">
+
+      <div className="quick-guide">
+        <h3>Evaluation Guide</h3>
+        <p>Select a <strong>trained checkpoint</strong> or enter a custom path. Match the <strong>Dataset Repo ID</strong> to the dataset used during training. Switch <strong>Compute Device</strong> to CPU/MPS if CUDA is unavailable. Start with <strong>3–5 episodes</strong> for a quick sanity check. Logs and detailed metrics appear in the <strong>global console drawer</strong>.</p>
+      </div>
+
+      <div>
         <div className="card">
           <h3>Configuration</h3>
           <label>Checkpoint</label>
@@ -393,14 +399,6 @@ export function EvalTab({ active }: EvalTabProps) {
 
           <div className="spacer" />
           <ProcessButtons running={running} onStart={start} onStop={stop} startLabel="▶ Start Eval" />
-        </div>
-        <div className="card">
-          <h3>Notes</h3>
-          <ul style={{ fontSize: 13, color: 'var(--text2)', paddingLeft: 20, marginTop: 8, lineHeight: 1.5 }}>
-            <li>Use a trained checkpoint path from your training output directory.</li>
-            <li>If CUDA is unavailable, switch Eval device to CPU or MPS.</li>
-            <li>Eval logs and metrics are available in the global console drawer.</li>
-          </ul>
         </div>
       </div>
     </section>

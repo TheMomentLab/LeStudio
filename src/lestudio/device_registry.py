@@ -311,7 +311,7 @@ def get_robot_types() -> list[str]:
     if not _LEROBOT_AVAILABLE or _RobotConfig is None:
         return _FALLBACK_ROBOT_TYPES.copy()
     try:
-        return list(_RobotConfig._subclass_registry.keys())
+        return list(_RobotConfig.get_known_choices().keys())
     except Exception as e:
         logger.warning("Failed to query RobotConfig registry: %s", e)
         return _FALLBACK_ROBOT_TYPES.copy()
@@ -326,7 +326,7 @@ def get_teleop_types(robot_type: str | None = None) -> list[str]:
     if not _LEROBOT_AVAILABLE or _TeleoperatorConfig is None:
         return _FALLBACK_TELEOP_TYPES.copy()
     try:
-        all_teleops = list(_TeleoperatorConfig._subclass_registry.keys())
+        all_teleops = list(_TeleoperatorConfig.get_known_choices().keys())
     except Exception as e:
         logger.warning("Failed to query TeleoperatorConfig registry: %s", e)
         return _FALLBACK_TELEOP_TYPES.copy()
@@ -349,7 +349,7 @@ def get_camera_types() -> list[str]:
     if not _LEROBOT_AVAILABLE or _CameraConfig is None:
         return _FALLBACK_CAMERA_TYPES.copy()
     try:
-        return list(_CameraConfig._subclass_registry.keys())
+        return list(_CameraConfig.get_known_choices().keys())
     except Exception as e:
         logger.warning("Failed to query CameraConfig registry: %s", e)
         return _FALLBACK_CAMERA_TYPES.copy()
@@ -364,7 +364,7 @@ def get_capabilities(robot_type: str) -> dict:
     # 미지 타입: config 필드에서 추론
     if _LEROBOT_AVAILABLE and _RobotConfig is not None:
         try:
-            config_cls = _RobotConfig._subclass_registry.get(robot_type)
+            config_cls = _RobotConfig.get_known_choices().get(robot_type)
             return _infer_capabilities(robot_type, config_cls)
         except Exception as e:
             logger.warning("Failed to infer capabilities for %s: %s", robot_type, e)
@@ -392,17 +392,17 @@ def get_config_schema(registry: str, type_name: str) -> dict:
     try:
         if registry == "robots":
             config_cls = (
-                _RobotConfig._subclass_registry.get(type_name) if _RobotConfig else None
+                _RobotConfig.get_known_choices().get(type_name) if _RobotConfig else None
             )
         elif registry == "teleoperators":
             config_cls = (
-                _TeleoperatorConfig._subclass_registry.get(type_name)
+                _TeleoperatorConfig.get_known_choices().get(type_name)
                 if _TeleoperatorConfig
                 else None
             )
         elif registry == "cameras":
             config_cls = (
-                _CameraConfig._subclass_registry.get(type_name)
+                _CameraConfig.get_known_choices().get(type_name)
                 if _CameraConfig
                 else None
             )

@@ -121,18 +121,6 @@ h1 { font-size: 16px; font-weight: 600; letter-spacing: .3px; }
   gap: 6px;
 }
 
-.profile-badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 4px 8px;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  background: color-mix(in srgb, var(--accent) 18%, var(--bg3));
-  color: var(--text);
-  font-size: 9px;
-  line-height: 1;
-  white-space: nowrap;
-}
 
 
 /* ── Profile More Menu ── */
@@ -332,37 +320,73 @@ h1 { font-size: 16px; font-weight: 600; letter-spacing: .3px; }
   text-overflow: ellipsis;
 }
 
-/* ── Sidebar status dot ── */
-@keyframes dot-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: .35; }
-}
-#sidebar-nav .tab-btn .tab-state-dot {
-  display: none;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
+
+#sidebar-nav .tab-btn .tab-icon {
+  font-size: 14px;
+  line-height: 1;
   flex-shrink: 0;
+}
+
+/* ── Sidebar state badge ── */
+#sidebar-nav .tab-btn .tab-state-badge {
+  display: none;
   margin-left: auto;
-  animation: dot-pulse 2s ease-in-out infinite;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  padding: 1px 6px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .3px;
+  text-transform: uppercase;
+  line-height: 1.4;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
-#sidebar-nav .tab-btn.has-error .tab-state-dot,
-#sidebar-nav .tab-btn.has-needs-root .tab-state-dot,
-#sidebar-nav .tab-btn.has-needs-udev .tab-state-dot,
-#sidebar-nav .tab-btn.has-missing-dep .tab-state-dot,
-#sidebar-nav .tab-btn.has-needs-device .tab-state-dot {
-  display: block;
+
+#sidebar-nav .tab-btn.has-running .tab-state-badge,
+#sidebar-nav .tab-btn.has-error .tab-state-badge,
+#sidebar-nav .tab-btn.has-needs-root .tab-state-badge,
+#sidebar-nav .tab-btn.has-needs-udev .tab-state-badge,
+#sidebar-nav .tab-btn.has-missing-dep .tab-state-badge,
+#sidebar-nav .tab-btn.has-needs-device .tab-state-badge {
+  display: inline-block;
 }
-#sidebar-nav .tab-btn[data-proc].has-running .tab-state-dot {
-  display: block;
-  background: var(--green);
-  animation: none;
+
+#sidebar-nav .tab-btn[data-proc].has-running .tab-state-badge {
+  color: var(--green);
+  border-color: color-mix(in srgb, var(--green) 45%, var(--border));
+  background: color-mix(in srgb, var(--green) 16%, transparent);
 }
-#sidebar-nav .tab-btn[data-proc].has-error .tab-state-dot { background: var(--red); }
-#sidebar-nav .tab-btn.has-needs-root .tab-state-dot { background: var(--yellow); }
-#sidebar-nav .tab-btn.has-needs-udev .tab-state-dot { background: var(--accent); }
-#sidebar-nav .tab-btn.has-missing-dep .tab-state-dot { background: var(--purple); }
-#sidebar-nav .tab-btn.has-needs-device .tab-state-dot { background: var(--yellow); }
+
+#sidebar-nav .tab-btn[data-proc].has-error .tab-state-badge {
+  color: var(--red);
+  border-color: color-mix(in srgb, var(--red) 45%, var(--border));
+  background: color-mix(in srgb, var(--red) 16%, transparent);
+}
+
+#sidebar-nav .tab-btn.has-needs-root .tab-state-badge {
+  color: var(--yellow);
+  border-color: color-mix(in srgb, var(--yellow) 45%, var(--border));
+  background: color-mix(in srgb, var(--yellow) 16%, transparent);
+}
+
+#sidebar-nav .tab-btn.has-needs-udev .tab-state-badge {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+#sidebar-nav .tab-btn.has-missing-dep .tab-state-badge {
+  color: var(--purple);
+  border-color: color-mix(in srgb, var(--purple) 45%, var(--border));
+  background: color-mix(in srgb, var(--purple) 16%, transparent);
+}
+
+#sidebar-nav .tab-btn.has-needs-device .tab-state-badge {
+  color: var(--yellow);
+  border-color: color-mix(in srgb, var(--yellow) 45%, var(--border));
+  background: color-mix(in srgb, var(--yellow) 16%, transparent);
+}
 
 #sidebar-nav .tab-btn:hover {
   color: var(--text);
@@ -384,6 +408,20 @@ main {
 }
 .tab         { display: none; }
 .tab.active  { display: block; }
+
+/* Record tab needs flex layout to push sticky bar to viewport bottom */
+#tab-record.active {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+#tab-record > .two-col {
+  flex: 1;
+  padding-bottom: 80px;
+}
+main:has(#tab-record.active) {
+  padding-bottom: 0;
+}
 
 @media (max-width: 1100px) and (min-width: 800px) {
   #sidebar-nav {
@@ -454,9 +492,6 @@ main {
     max-width: 138px;
   }
 
-  .profile-badge {
-    display: none;
-  }
 
   .github-link {
     margin-right: 0;
@@ -510,7 +545,6 @@ main {
     padding: 16px;
   }
 }
-
 /* ─── Section Header ────────────────────────────────────────────────────────── */
 .section-header {
   display: flex;
@@ -671,14 +705,15 @@ select option { background: var(--bg3); }
 }
 
 .train-device-warning {
-  margin-top: 6px;
-  padding: 0;
-  border: 0;
-  background: transparent;
+  margin-top: 8px;
+  padding: 10px 14px;
+  border: 1px solid color-mix(in srgb, var(--red) 40%, var(--border));
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--red) 10%, transparent);
   color: #f87171;
-  font-size: 9px;
-  font-weight: 400;
-  line-height: 1.35;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
 }
 
 /* ─── Buttons ───────────────────────────────────────────────────────────────── */
@@ -1580,6 +1615,30 @@ kbd {
   margin-top: auto;
 }
 
+/* P0-3: Record tab controls — sticky bottom bar */
+#tab-record > .record-sticky-controls {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin: 0 -20px;
+  padding: 18px 24px;
+  border-top: 2px solid var(--accent);
+  background: var(--bg3);
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.record-sticky-controls .ep-controls-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
 /* === m-13: Dataset empty state === */
 .dataset-empty-state {
   display: flex;
@@ -1605,4 +1664,21 @@ kbd {
   font-size: 12px;
   line-height: 1.5;
   max-width: 280px;
+}
+
+
+/* ─── Teleop Arm Grid (#10) ──────────────────────────────────────────────── */
+.teleop-arm-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 8px;
+}
+.teleop-arm-grid .form-field-full {
+  grid-column: 1 / -1;
+}
+@media (max-width: 600px) {
+  .teleop-arm-grid {
+    grid-template-columns: 1fr;
+  }
 }

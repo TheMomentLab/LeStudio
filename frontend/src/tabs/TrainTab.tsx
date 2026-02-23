@@ -73,6 +73,8 @@ export function TrainTab({ active }: TrainTabProps) {
   const [gpuStatus, setGpuStatus] = useState<GpuStatusResponse | null>(null)
   const [checkpoints, setCheckpoints] = useState<CheckpointItem[]>([])
   const [checkpointsLoading, setCheckpointsLoading] = useState(false)
+  const [gpuTimedOut, setGpuTimedOut] = useState(false)
+  const [checkpointsTimedOut, setCheckpointsTimedOut] = useState(false)
   const [preflightAction, setPreflightAction] = useState('')
   const [preflightReason, setPreflightReason] = useState('')
   const [preflightOk, setPreflightOk] = useState(true)
@@ -156,6 +158,7 @@ export function TrainTab({ active }: TrainTabProps) {
     try {
       const res = await apiGet<GpuStatusResponse>('/api/gpu/status')
       setGpuStatus(res)
+      setGpuTimedOut(false)
     } catch { /* GPU unavailable */ }
   }, [])
 
@@ -166,6 +169,7 @@ export function TrainTab({ active }: TrainTabProps) {
       setCheckpoints(res.checkpoints ?? [])
     } finally {
       setCheckpointsLoading(false)
+      setCheckpointsTimedOut(false)
     }
   }, [])
 
@@ -210,6 +214,22 @@ export function TrainTab({ active }: TrainTabProps) {
     }, 5000)
     return () => window.clearInterval(timer)
   }, [active, refreshGpu])
+
+  useEffect(() => {
+    if (!active || gpuStatus !== null) return
+    const timer = window.setTimeout(() => {
+      setGpuTimedOut(true)
+    }, 10000)
+    return () => window.clearTimeout(timer)
+  }, [active, gpuStatus])
+
+  useEffect(() => {
+    if (!active || !checkpointsLoading) return
+    const timer = window.setTimeout(() => {
+      setCheckpointsTimedOut(true)
+    }, 10000)
+    return () => window.clearTimeout(timer)
+  }, [active, checkpointsLoading])
 
   useEffect(() => {
     const canvas = lossCanvasRef.current
@@ -328,8 +348,14 @@ export function TrainTab({ active }: TrainTabProps) {
         <h2>Train Policy</h2>
       </div>
 
-      <div className="two-col">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+
+      <div className="quick-guide">
+        <h3>Training Guide</h3>
+        <p>Training can take <strong>hours to days</strong> depending on hardware and dataset size. Closing the GUI or restarting the server will <strong>terminate the process</strong>. Monitor real-time progress and loss values in the <strong>global console drawer</strong>.</p>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           <div className="card">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
               <h3 style={{ margin: 0 }}>Checkpoints</h3>
@@ -338,7 +364,16 @@ export function TrainTab({ active }: TrainTabProps) {
               </button>
             </div>
             <div id="train-checkpoints-list" className="device-list">
-              {checkpointsLoading ? <div className="muted">Loading checkpoints...</div> : null}
+              {checkpointsLoading ? (
+              checkpointsTimedOut ? (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span className="muted" style={{ color: 'var(--red)' }}>Failed to load checkpoints</span>
+                  <button className="btn-xs" onClick={refreshCheckpoints}>Retry</button>
+                </div>
+              ) : (
+                <div className="muted">Loading checkpoints...</div>
+              )
+            ) : null}
               {!checkpointsLoading && checkpoints.length === 0 ? <div className="muted">No checkpoints found. Train a model first.</div> : null}
               {!checkpointsLoading && checkpoints.length > 0
                 ? checkpoints.map((cp) => (
@@ -352,6 +387,55 @@ export function TrainTab({ active }: TrainTabProps) {
           </div>
 
           <div className="card">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <h3 style={{ margin: 0 }}>GPU Status</h3>
+              <button onClick={refreshGpu} className="btn-xs">
+                ↺ Refresh
+              </button>
+            </div>
+            <div id="train-gpu-status" className="device-list">
+              {!gpuStatus ? (
+                gpuTimedOut ? (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span className="muted" style={{ color: 'var(--red)' }}>Failed to load GPU info</span>
+                    <button className="btn-xs" onClick={refreshGpu}>Retry</button>
+                  </div>
+                ) : (
+                  <div className="muted">Loading GPU info...</div>
+                )
+              ) : null}
+              {gpuStatus && !gpuStatus.exists ? <div className="muted">NVIDIA GPU info unavailable: {gpuStatus.error ?? 'Check nvidia-smi'}</div> : null}
+              {gpuStatus?.exists ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>GPU Utilization</span>
+                    <span style={{ fontFamily: 'var(--mono)', fontWeight: 700 }}>{Math.round(gpuStatus.utilization ?? 0)}%</span>
+                  </div>
+                  <div className="usb-bus-bar-track">
+                    <div
+                      className={`usb-bar-fill ${(gpuStatus.utilization ?? 0) > 80 ? 'danger' : (gpuStatus.utilization ?? 0) > 50 ? 'warn' : 'good'}`}
+                      style={{ width: `${Math.max(0, Math.min(100, gpuStatus.utilization ?? 0))}%` }}
+                    />
+                  </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8 }}>
+                    <span>VRAM Usage</span>
+                    <span style={{ fontFamily: 'var(--mono)' }}>
+                      {Math.round(gpuStatus.memory_used ?? 0)}MB / {Math.round(gpuStatus.memory_total ?? 0)}MB
+                    </span>
+                  </div>
+                  <div className="usb-bus-bar-track">
+                    <div
+                      className={`usb-bar-fill ${(gpuStatus.memory_percent ?? 0) > 85 ? 'danger' : (gpuStatus.memory_percent ?? 0) > 70 ? 'warn' : 'good'}`}
+                      style={{ width: `${Math.max(0, Math.min(100, gpuStatus.memory_percent ?? 0))}%` }}
+                    />
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
+
+        <div className="card">
           <h3>Configuration</h3>
           <label>Policy Type</label>
           <select value={(config.train_policy as string) ?? 'act'} onChange={(e) => buildConfig({ train_policy: e.target.value })}>
@@ -359,7 +443,6 @@ export function TrainTab({ active }: TrainTabProps) {
             <option value="diffusion">Diffusion Policy</option>
             <option value="tdmpc2">TD-MPC2</option>
           </select>
-
           <label>Dataset Source</label>
           <div className="mode-toggle" style={{ marginLeft: 0, marginBottom: 8 }}>
             <button className={`toggle ${source === 'local' ? 'active' : ''}`} onClick={() => setSource('local')}>
@@ -369,12 +452,11 @@ export function TrainTab({ active }: TrainTabProps) {
               Hugging Face
             </button>
           </div>
-
           {source === 'local' ? (
             <>
               <label>Local Dataset</label>
               <select value={repoId} onChange={(e) => buildConfig({ train_repo_id: e.target.value })}>
-                {datasets.length === 0 ? <option value="__none__">No local datasets</option> : null}
+                {datasets.length === 0 ? <option value="__none__">No local datasets — record in Record tab first</option> : null}
                 {datasets.map((ds) => (
                   <option key={ds.id} value={ds.id}>
                     {ds.id}
@@ -389,7 +471,6 @@ export function TrainTab({ active }: TrainTabProps) {
               <input type="text" value={(config.train_repo_id as string) ?? 'user/my-dataset'} onChange={(e) => buildConfig({ train_repo_id: e.target.value })} />
             </>
           )}
-
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, marginBottom: 4 }}>
             <label style={{ margin: 0 }}>Training Steps</label>
             <div style={{ display: 'flex', gap: 4 }}>
@@ -433,7 +514,6 @@ export function TrainTab({ active }: TrainTabProps) {
               </div>
             </div>
           </div>
-
           <label>Compute Device</label>
           <select value={(config.train_device as string) ?? 'cuda'} onChange={(e) => buildConfig({ train_device: e.target.value })}>
             <option value="cuda">CUDA (GPU)</option>
@@ -452,7 +532,6 @@ export function TrainTab({ active }: TrainTabProps) {
               </button>
             </div>
           ) : null}
-
           <div style={{ marginTop: 10, padding: 10, border: '1px solid var(--border)', borderRadius: 8, background: 'rgba(255,255,255,0.02)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
               <span style={{ fontSize: 12, color: 'var(--text2)' }}>Training Progress</span>
@@ -478,55 +557,6 @@ export function TrainTab({ active }: TrainTabProps) {
           <div className="spacer" />
           <ProcessButtons running={running} onStart={start} onStop={stop} startLabel="▶ Start Training" disabled={!preflightOk} />
         </div>
-        </div>
-
-        <div className="card">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-            <h3 style={{ margin: 0 }}>GPU Status</h3>
-            <button onClick={refreshGpu} className="btn-xs">
-              ↺ Refresh
-            </button>
-          </div>
-          <div id="train-gpu-status" className="device-list">
-            {!gpuStatus ? <div className="muted">Loading GPU info...</div> : null}
-            {gpuStatus && !gpuStatus.exists ? <div className="muted">NVIDIA GPU info unavailable: {gpuStatus.error ?? 'Check nvidia-smi'}</div> : null}
-            {gpuStatus?.exists ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span>GPU Utilization</span>
-                  <span style={{ fontFamily: 'var(--mono)', fontWeight: 700 }}>{Math.round(gpuStatus.utilization ?? 0)}%</span>
-                </div>
-                <div className="usb-bus-bar-track">
-                  <div
-                    className={`usb-bar-fill ${(gpuStatus.utilization ?? 0) > 80 ? 'danger' : (gpuStatus.utilization ?? 0) > 50 ? 'warn' : 'good'}`}
-                    style={{ width: `${Math.max(0, Math.min(100, gpuStatus.utilization ?? 0))}%` }}
-                  />
-                </div>
-
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8 }}>
-                  <span>VRAM Usage</span>
-                  <span style={{ fontFamily: 'var(--mono)' }}>
-                    {Math.round(gpuStatus.memory_used ?? 0)}MB / {Math.round(gpuStatus.memory_total ?? 0)}MB
-                  </span>
-                </div>
-                <div className="usb-bus-bar-track">
-                  <div
-                    className={`usb-bar-fill ${(gpuStatus.memory_percent ?? 0) > 85 ? 'danger' : (gpuStatus.memory_percent ?? 0) > 70 ? 'warn' : 'good'}`}
-                    style={{ width: `${Math.max(0, Math.min(100, gpuStatus.memory_percent ?? 0))}%` }}
-                  />
-                </div>
-              </div>
-            ) : null}
-          </div>
-
-          <h3 style={{ marginTop: 20 }}>Important Notes</h3>
-          <ul style={{ fontSize: 13, color: 'var(--text2)', paddingLeft: 20, marginTop: 8, lineHeight: 1.5 }}>
-            <li>Training can take hours to days depending on your hardware and dataset size.</li>
-            <li>Closing this GUI or restarting the server will terminate the training process.</li>
-            <li>Use the global console drawer for real-time progress and loss values.</li>
-          </ul>
-        </div>
-
       </div>
     </section>
   )

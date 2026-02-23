@@ -63,7 +63,7 @@ export function AppShell({ children, wsConnected, theme, onToggleTheme }: AppShe
               Advanced
             </button>
           </div>
-          <button id="theme-toggle-btn" className="btn-xs" onClick={onToggleTheme}>
+          <button id="theme-toggle-btn" className="btn-xs" onClick={onToggleTheme} aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}>
             {theme === 'dark' ? '🌙' : '☀️'}
           </button>
           <a
@@ -81,8 +81,8 @@ export function AppShell({ children, wsConnected, theme, onToggleTheme }: AppShe
               />
             </svg>
           </a>
-          <div id="ws-status" className="ws-status" aria-live="polite">
-            <span id="ws-dot" className={`dot ${wsDotClass}`} />
+          <div id="ws-status" className="ws-status" aria-live="polite" aria-label={`Connection status: ${wsLabel}`}>
+            <span id="ws-dot" className={`dot ${wsDotClass}`} aria-hidden="true" />
             <span id="ws-label">{wsLabel}</span>
           </div>
         </div>

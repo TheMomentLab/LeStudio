@@ -70,6 +70,7 @@ export function StatusTab({ active }: StatusTabProps) {
   const procStatus = useLeStudioStore((s) => s.procStatus)
   const addToast = useLeStudioStore((s) => s.addToast)
   const [resources, setResources] = useState<ResourcesResponse | null>(null)
+  const [resourcesError, setResourcesError] = useState(false)
   const [history, setHistory] = useState<HistoryEntry[]>([])
   const [lastUpdate, setLastUpdate] = useState('')
 
@@ -80,8 +81,13 @@ export function StatusTab({ active }: StatusTabProps) {
   }, [setDevices])
 
   const refreshResources = useCallback(async () => {
-    const data = await apiGet<ResourcesResponse>('/api/system/resources')
-    setResources(data)
+    try {
+      const data = await apiGet<ResourcesResponse>('/api/system/resources')
+      setResources(data)
+      setResourcesError(false)
+    } catch {
+      setResourcesError(true)
+    }
   }, [])
 
   const refreshHistory = useCallback(async () => {
@@ -108,6 +114,14 @@ export function StatusTab({ active }: StatusTabProps) {
     }
   }, [active, refresh, refreshHistory, refreshResources])
 
+  useEffect(() => {
+    if (!active || resources !== null) return
+    const timeoutId = window.setTimeout(() => {
+      setResourcesError(true)
+    }, 10000)
+    return () => window.clearTimeout(timeoutId)
+  }, [active, resources])
+
   return (
     <section id="tab-status" className={`tab ${active ? 'active' : ''}`}>
       <div className="section-header">
@@ -125,7 +139,7 @@ export function StatusTab({ active }: StatusTabProps) {
           <h3>📷 Cameras</h3>
           <div id="status-cameras" className="device-list">
             {devices.cameras.length === 0 ? (
-              <div className="device-item">No cameras detected</div>
+              <div className="device-item" style={{ color: 'var(--text2)', fontSize: 12 }}>No cameras detected. Connect a USB camera and click <strong>Refresh</strong>.</div>
             ) : (
               devices.cameras.map((camera, idx) => (
                 <div className="device-item" key={`${camera.device ?? 'cam'}-${idx}`}>
@@ -147,7 +161,7 @@ export function StatusTab({ active }: StatusTabProps) {
           <h3>🦾 Arm Ports</h3>
           <div id="status-arms" className="device-list">
             {devices.arms.length === 0 ? (
-              <div className="device-item">No arm ports detected</div>
+              <div className="device-item" style={{ color: 'var(--text2)', fontSize: 12 }}>No arm ports detected. Connect an arm via USB and click <strong>Refresh</strong>.</div>
             ) : (
               devices.arms.map((arm, idx) => (
                 <div className="device-item" key={`${arm.device ?? 'arm'}-${idx}`}>
@@ -185,7 +199,14 @@ export function StatusTab({ active }: StatusTabProps) {
           <h3>🖥️ System Resources</h3>
           <div id="status-resources" className="device-list">
             {!resources ? (
-              <div className="device-item">Loading…</div>
+              resourcesError ? (
+                <div className="device-item" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ color: 'var(--red)', fontSize: 12 }}>Failed to load system resources</span>
+                  <button className="btn-xs" onClick={refreshResources}>Retry</button>
+                </div>
+              ) : (
+                <div className="device-item">Loading…</div>
+              )
             ) : (
               <>
                 <div className="device-item" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 2 }}>

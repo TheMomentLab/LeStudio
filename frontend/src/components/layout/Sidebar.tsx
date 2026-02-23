@@ -14,31 +14,31 @@ const TAB_GROUPS = [
     id: 'setup',
     title: 'Setup',
     tabs: [
-      { id: 'status', label: 'Status' },
-      { id: 'device-setup', label: 'Mapping' },
-      { id: 'motor-setup', label: 'Motor Setup' },
-      { id: 'calibrate', label: 'Calibration' },
+      { id: 'status', label: 'Status', icon: '📊' },
+      { id: 'device-setup', label: 'Mapping', icon: '🔌' },
+      { id: 'motor-setup', label: 'Motor Setup', icon: '⚙️' },
+      { id: 'calibrate', label: 'Calibration', icon: '🎯' },
     ],
   },
   {
     id: 'operate',
     title: 'Operate',
     tabs: [
-      { id: 'teleop', label: 'Teleop' },
-      { id: 'record', label: 'Record' },
+      { id: 'teleop', label: 'Teleop', icon: '🎮' },
+      { id: 'record', label: 'Record', icon: '🔴' },
     ],
   },
   {
     id: 'data',
     title: 'Data',
-    tabs: [{ id: 'dataset', label: 'Dataset' }],
+    tabs: [{ id: 'dataset', label: 'Dataset', icon: '📁' }],
   },
   {
     id: 'ml',
     title: 'ML',
     tabs: [
-      { id: 'train', label: 'Train' },
-      { id: 'eval', label: 'Eval' },
+      { id: 'train', label: 'Train', icon: '🧠' },
+      { id: 'eval', label: 'Eval', icon: '📈' },
     ],
   },
 ]
@@ -103,7 +103,7 @@ export function Sidebar() {
                 data-tab={tab.id}
                 data-proc={proc ?? ''}
               >
-                <span className="tab-text">{tab.label}</span>
+                <span className="tab-icon">{tab.icon}</span><span className="tab-text">{tab.label}</span>
                 {stateLabel ? (
                   <span className="tab-state-badge" aria-label={stateLabel}>
                     {stateLabel}

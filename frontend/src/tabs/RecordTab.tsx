@@ -1,14 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import { MappedCameraRows } from '../components/shared/MappedCameraRows'
 import { RobotCapabilitiesCard } from '../components/shared/RobotCapabilitiesCard'
-
-
 import { useConfig } from '../hooks/useConfig'
 import { useMappedCameras } from '../hooks/useMappedCameras'
 import { useProcess } from '../hooks/useProcess'
 import { apiGet, apiPost } from '../lib/api'
 import { useLeStudioStore } from '../store'
 import type { LogLine, RobotDetail, RobotsResponse, TeleopsResponse } from '../lib/types'
+
 
 interface RecordTabProps {
   active: boolean
@@ -17,9 +16,20 @@ interface RecordTabProps {
 const EMPTY_RECORD_LINES: LogLine[] = []
 
 const REPO_ID_REGEX = /^[a-zA-Z0-9_-]+\/[a-zA-Z0-9_.-]+$/
+const DEFAULT_FOLLOWER_PORTS = ['/dev/follower_arm_1', '/dev/follower_arm_2']
+const DEFAULT_LEADER_PORTS = ['/dev/leader_arm_1', '/dev/leader_arm_2']
 
-
-
+function buildSelectOptions(preferred: string[], values: string[], current: string): string[] {
+  const seen = new Set<string>()
+  const options: string[] = []
+  ;[...preferred, ...values, current].forEach((value) => {
+    const normalized = String(value ?? '').trim()
+    if (!normalized || seen.has(normalized)) return
+    seen.add(normalized)
+    options.push(normalized)
+  })
+  return options
+}
 type LegacyCalibrationListResponse = {
   files?: Array<{ id: string; guessed_type?: string }>
 }
@@ -61,6 +71,31 @@ export function RecordTab({ active }: RecordTabProps) {
     })
     return [...all]
   }, [devices])
+
+  const followerPortOpts = useMemo(
+    () => buildSelectOptions(DEFAULT_FOLLOWER_PORTS, armPaths, (config.follower_port as string) ?? '/dev/follower_arm_1'),
+    [armPaths, config.follower_port],
+  )
+  const leaderPortOpts = useMemo(
+    () => buildSelectOptions(DEFAULT_LEADER_PORTS, armPaths, (config.leader_port as string) ?? '/dev/leader_arm_1'),
+    [armPaths, config.leader_port],
+  )
+  const leftFollowerPortOpts = useMemo(
+    () => buildSelectOptions(DEFAULT_FOLLOWER_PORTS, armPaths, (config.left_follower_port as string) ?? '/dev/follower_arm_1'),
+    [armPaths, config.left_follower_port],
+  )
+  const rightFollowerPortOpts = useMemo(
+    () => buildSelectOptions(['/dev/follower_arm_2', '/dev/follower_arm_1'], armPaths, (config.right_follower_port as string) ?? '/dev/follower_arm_2'),
+    [armPaths, config.right_follower_port],
+  )
+  const leftLeaderPortOpts = useMemo(
+    () => buildSelectOptions(DEFAULT_LEADER_PORTS, armPaths, (config.left_leader_port as string) ?? '/dev/leader_arm_1'),
+    [armPaths, config.left_leader_port],
+  )
+  const rightLeaderPortOpts = useMemo(
+    () => buildSelectOptions(['/dev/leader_arm_2', '/dev/leader_arm_1'], armPaths, (config.right_leader_port as string) ?? '/dev/leader_arm_2'),
+    [armPaths, config.right_leader_port],
+  )
 
   useEffect(() => {
     if (!active) return
@@ -286,10 +321,10 @@ export function RecordTab({ active }: RecordTabProps) {
         <h2>Record Dataset</h2>
         <div className="mode-toggle">
           <label>Recording Mode:</label>
-          <button id="record-mode-single" className={`toggle ${mode === 'single' ? 'active' : ''}`} onClick={() => setMode('single')}>
+          <button id="record-mode-single" className={`toggle ${mode === 'single' ? 'active' : ''}`} onClick={() => { setMode('single'); buildConfig({ robot_mode: 'single' }) }}>
             Single
           </button>
-          <button id="record-mode-bi" className={`toggle ${mode === 'bi' ? 'active' : ''}`} onClick={() => setMode('bi')}>
+          <button id="record-mode-bi" className={`toggle ${mode === 'bi' ? 'active' : ''}`} onClick={() => { setMode('bi'); buildConfig({ robot_mode: 'bi' }) }}>
             Bi-Arm
           </button>
         </div>
@@ -346,6 +381,7 @@ export function RecordTab({ active }: RecordTabProps) {
         </div>
 
         <div className="card">
+          <h3>Step 2: Device Setup</h3>
           <label>Robot Type</label>
           <select value={(config.robot_type as string) ?? robotTypes[0] ?? ''} onChange={(e) => update('robot_type', e.target.value)}>
             {robotTypes.map((t) => (
@@ -370,7 +406,7 @@ export function RecordTab({ active }: RecordTabProps) {
             <>
               <label>Follower Arm Port</label>
               <select value={(config.follower_port as string) ?? '/dev/follower_arm_1'} onChange={(e) => update('follower_port', e.target.value)}>
-                {armPaths.map((p) => (
+                {followerPortOpts.map((p) => (
                   <option key={p} value={p}>
                     {p}
                   </option>
@@ -387,7 +423,7 @@ export function RecordTab({ active }: RecordTabProps) {
               <div className="field-help">Arm ID selects the calibration profile file name (without .json).</div>
               <label>Leader Arm Port</label>
               <select value={(config.leader_port as string) ?? '/dev/leader_arm_1'} onChange={(e) => update('leader_port', e.target.value)}>
-                {armPaths.map((p) => (
+                {leaderPortOpts.map((p) => (
                   <option key={p} value={p}>
                     {p}
                   </option>
@@ -407,7 +443,7 @@ export function RecordTab({ active }: RecordTabProps) {
             <>
               <label>Left Follower</label>
               <select value={(config.left_follower_port as string) ?? '/dev/follower_arm_1'} onChange={(e) => update('left_follower_port', e.target.value)}>
-                {armPaths.map((p) => (
+                {leftFollowerPortOpts.map((p) => (
                   <option key={p} value={p}>
                     {p}
                   </option>
@@ -415,7 +451,7 @@ export function RecordTab({ active }: RecordTabProps) {
               </select>
               <label>Right Follower</label>
               <select value={(config.right_follower_port as string) ?? '/dev/follower_arm_2'} onChange={(e) => update('right_follower_port', e.target.value)}>
-                {armPaths.map((p) => (
+                {rightFollowerPortOpts.map((p) => (
                   <option key={p} value={p}>
                     {p}
                   </option>
@@ -423,7 +459,7 @@ export function RecordTab({ active }: RecordTabProps) {
               </select>
               <label>Left Leader</label>
               <select value={(config.left_leader_port as string) ?? '/dev/leader_arm_1'} onChange={(e) => update('left_leader_port', e.target.value)}>
-                {armPaths.map((p) => (
+                {leftLeaderPortOpts.map((p) => (
                   <option key={p} value={p}>
                     {p}
                   </option>
@@ -431,7 +467,7 @@ export function RecordTab({ active }: RecordTabProps) {
               </select>
               <label>Right Leader</label>
               <select value={(config.right_leader_port as string) ?? '/dev/leader_arm_2'} onChange={(e) => update('right_leader_port', e.target.value)}>
-                {armPaths.map((p) => (
+                {rightLeaderPortOpts.map((p) => (
                   <option key={p} value={p}>
                     {p}
                   </option>
@@ -539,30 +575,30 @@ export function RecordTab({ active }: RecordTabProps) {
               </div>
             </div>
           </div>
-          <div className="ep-actions-panel">
-            <div className="ep-controls-row" id="record-ep-controls">
-              {!running && (
-                <button className="btn-primary" onClick={start}>▶ Start Recording</button>
-              )}
-              {running && (
-                <button className="btn-danger" onClick={stop}>■ Force Stop</button>
-              )}
-              <button className="btn-sm record-ep-action" disabled={!running} onClick={() => sendKey('right')}>
-                ✓ Save →
-              </button>
-              <button className="btn-sm record-ep-action record-ep-discard" disabled={!running} onClick={() => sendKey('left')}>
-                ✗ Discard ←
-              </button>
-              <button className="btn-sm record-ep-action record-ep-end" disabled={!running} onClick={() => sendKey('escape')}>
-                ⏹ End (Esc)
-              </button>
-            </div>
-            <div id="record-ep-guard" className="ep-guard-msg" style={{ display: running ? 'none' : 'block' }}>
-              Start recording first. During capture: Save (→), Discard (←), End (Esc).
-            </div>
-          </div>
         </div>
       </div>
-    </section>
+      <div className="record-sticky-controls">
+        <div className="ep-controls-row" id="record-ep-controls">
+          {!running && (
+            <button className="btn-primary" onClick={start}>▶ Start Recording</button>
+          )}
+          {running && (
+            <button className="btn-danger" onClick={stop}>■ Force Stop</button>
+          )}
+          <button className="btn-sm record-ep-action" disabled={!running} onClick={() => sendKey('right')}>
+            ✓ Save →
+          </button>
+          <button className="btn-sm record-ep-action record-ep-discard" disabled={!running} onClick={() => sendKey('left')}>
+            ✗ Discard ←
+          </button>
+          <button className="btn-sm record-ep-action record-ep-end" disabled={!running} onClick={() => sendKey('escape')}>
+            ⏹ End (Esc)
+          </button>
+        </div>
+        <div id="record-ep-guard" className="ep-guard-msg" style={{ display: running ? 'none' : 'block' }}>
+          Start recording first. During capture: Save (→), Discard (←), End (Esc).
+        </div>
+      </div>
+      </section>
   )
 }

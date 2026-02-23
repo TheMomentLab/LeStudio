@@ -621,7 +621,7 @@ export function DatasetTab({ active }: DatasetTabProps) {
           <h3>Local Datasets</h3>
           <div id="dataset-list" className="device-list" style={{ overflowY: 'auto', flex: 1 }}>
             {datasets.length === 0
-              ? 'No datasets found in cache'
+              ? <div style={{ padding: '16px 0', color: 'var(--text2)', fontSize: 12, lineHeight: 1.6 }}>No datasets found in local cache.<br />Record episodes in the <strong>Record</strong> tab, or search and download from the <strong>HuggingFace Hub</strong> above.</div>
                 : datasets.map((ds) => (
                   <div
                     className={`device-item ${selected?.dataset_id === ds.id ? 'selected' : ''}`}

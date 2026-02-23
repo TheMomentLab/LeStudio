@@ -293,97 +293,121 @@ export function TeleopTab({ active }: TeleopTabProps) {
         <div className="card">
           <h3>Step 1 — Arm Connections</h3>
           <div className="field-help">Single Arm controls one leader + one follower. Bi-Arm controls left/right pairs.</div>
-          <label>Robot Type</label>
-          <select value={(config.robot_type as string) ?? robotTypes[0] ?? ''} onChange={(e) => update('robot_type', e.target.value)}>
-            {robotTypes.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </select>
-          <label>Teleoperator Type</label>
-          <select value={(config.teleop_type as string) ?? teleopTypes[0] ?? ''} onChange={(e) => update('teleop_type', e.target.value)}>
-            {teleopTypes.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </select>
-          <RobotCapabilitiesCard
-            capabilities={selectedRobotDetail?.capabilities ?? null}
-            compatibleTeleops={selectedRobotDetail?.compatible_teleops ?? []}
-          />
-          {mode === 'single' ? (
-            <>
-              <label>Follower Arm Port</label>
-              <select value={followerPort} onChange={(e) => update('follower_port', e.target.value)}>
-                {followerPortOptions.map((p) => (
-                  <option key={p} value={p}>
-                    {p}
+          <div className="teleop-arm-grid">
+            <div className="form-field">
+              <label>Robot Type</label>
+              <select value={(config.robot_type as string) ?? robotTypes[0] ?? ''} onChange={(e) => update('robot_type', e.target.value)}>
+                {robotTypes.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
                   </option>
                 ))}
               </select>
-              <label>Follower Arm ID</label>
-              <select value={robotId} onChange={(e) => update('robot_id', e.target.value)}>
-                {followerIdOptions.map((id) => (
-                  <option key={id} value={id}>
-                    {id}
+            </div>
+            <div className="form-field">
+              <label>Teleoperator Type</label>
+              <select value={(config.teleop_type as string) ?? teleopTypes[0] ?? ''} onChange={(e) => update('teleop_type', e.target.value)}>
+                {teleopTypes.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
                   </option>
                 ))}
               </select>
-              <label>Leader Arm Port</label>
-              <select value={leaderPort} onChange={(e) => update('leader_port', e.target.value)}>
-                {leaderPortOptions.map((p) => (
-                  <option key={p} value={p}>
-                    {p}
-                  </option>
-                ))}
-              </select>
-              <label>Leader Arm ID</label>
-              <select value={teleopId} onChange={(e) => update('teleop_id', e.target.value)}>
-                {leaderIdOptions.map((id) => (
-                  <option key={id} value={id}>
-                    {id}
-                  </option>
-                ))}
-              </select>
-            </>
-          ) : (
-            <>
-              <label>Left Follower Arm Port</label>
-              <select value={leftFollowerPort} onChange={(e) => update('left_follower_port', e.target.value)}>
-                {leftFollowerPortOptions.map((p) => (
-                  <option key={p} value={p}>
-                    {p}
-                  </option>
-                ))}
-              </select>
-              <label>Right Follower Arm Port</label>
-              <select value={rightFollowerPort} onChange={(e) => update('right_follower_port', e.target.value)}>
-                {rightFollowerPortOptions.map((p) => (
-                  <option key={p} value={p}>
-                    {p}
-                  </option>
-                ))}
-              </select>
-              <label>Left Leader Arm Port</label>
-              <select value={leftLeaderPort} onChange={(e) => update('left_leader_port', e.target.value)}>
-                {leftLeaderPortOptions.map((p) => (
-                  <option key={p} value={p}>
-                    {p}
-                  </option>
-                ))}
-              </select>
-              <label>Right Leader Arm Port</label>
-              <select value={rightLeaderPort} onChange={(e) => update('right_leader_port', e.target.value)}>
-                {rightLeaderPortOptions.map((p) => (
-                  <option key={p} value={p}>
-                    {p}
-                  </option>
-                ))}
-              </select>
-            </>
-          )}
+            </div>
+            <div className="form-field-full">
+              <RobotCapabilitiesCard
+                capabilities={selectedRobotDetail?.capabilities ?? null}
+                compatibleTeleops={selectedRobotDetail?.compatible_teleops ?? []}
+              />
+            </div>
+            {mode === 'single' ? (
+              <>
+                <div className="form-field">
+                  <label>Follower Arm Port</label>
+                  <select value={followerPort} onChange={(e) => update('follower_port', e.target.value)}>
+                    {followerPortOptions.map((p) => (
+                      <option key={p} value={p}>
+                        {p}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="form-field">
+                  <label>Follower Arm ID</label>
+                  <select value={robotId} onChange={(e) => update('robot_id', e.target.value)}>
+                    {followerIdOptions.map((id) => (
+                      <option key={id} value={id}>
+                        {id}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="form-field">
+                  <label>Leader Arm Port</label>
+                  <select value={leaderPort} onChange={(e) => update('leader_port', e.target.value)}>
+                    {leaderPortOptions.map((p) => (
+                      <option key={p} value={p}>
+                        {p}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="form-field">
+                  <label>Leader Arm ID</label>
+                  <select value={teleopId} onChange={(e) => update('teleop_id', e.target.value)}>
+                    {leaderIdOptions.map((id) => (
+                      <option key={id} value={id}>
+                        {id}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="form-field">
+                  <label>Left Follower Arm Port</label>
+                  <select value={leftFollowerPort} onChange={(e) => update('left_follower_port', e.target.value)}>
+                    {leftFollowerPortOptions.map((p) => (
+                      <option key={p} value={p}>
+                        {p}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="form-field">
+                  <label>Right Follower Arm Port</label>
+                  <select value={rightFollowerPort} onChange={(e) => update('right_follower_port', e.target.value)}>
+                    {rightFollowerPortOptions.map((p) => (
+                      <option key={p} value={p}>
+                        {p}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="form-field">
+                  <label>Left Leader Arm Port</label>
+                  <select value={leftLeaderPort} onChange={(e) => update('left_leader_port', e.target.value)}>
+                    {leftLeaderPortOptions.map((p) => (
+                      <option key={p} value={p}>
+                        {p}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="form-field">
+                  <label>Right Leader Arm Port</label>
+                  <select value={rightLeaderPort} onChange={(e) => update('right_leader_port', e.target.value)}>
+                    {rightLeaderPortOptions.map((p) => (
+                      <option key={p} value={p}>
+                        {p}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </>
+            )}
+          </div>
         </div>
 
         <div className="card">

@@ -3,20 +3,13 @@ import { ProcessButtons } from '../components/shared/ProcessButtons'
 import { useProcess } from '../hooks/useProcess'
 import { apiDelete, apiGet, apiPost } from '../lib/api'
 import { useLeStudioStore } from '../store'
-import type { LogLine } from '../lib/types'
+import type { LogLine, RobotsResponse } from '../lib/types'
 
 interface CalibrateTabProps {
   active: boolean
 }
 
-type ArmType = 'so101_follower' | 'so100_follower' | 'so101_leader' | 'so100_leader'
-
-const ARM_TYPE_OPTIONS: Array<{ value: ArmType; label: string }> = [
-  { value: 'so101_follower', label: 'Follower (SO101)' },
-  { value: 'so100_follower', label: 'Follower (SO100)' },
-  { value: 'so101_leader', label: 'Leader (SO101)' },
-  { value: 'so100_leader', label: 'Leader (SO100)' },
-]
+const DEFAULT_ARM_TYPES = ['so101_follower', 'so100_follower', 'so101_leader', 'so100_leader']
 
 const IDENTIFY_DEFAULT_MSG = 'Disconnect one arm, then click Start to begin identification.'
 const EMPTY_CAL_LINES: LogLine[] = []
@@ -24,7 +17,13 @@ const MOTOR_ROW_RE = /^([a-zA-Z0-9_]+)\s+\|\s+(-?\d+)\s+\|\s+(-?\d+)\s+\|\s+(-?\
 const MOTOR_HEADER_RE = /^NAME\s+\|\s+MIN\s+\|\s+POS/i
 const MOTOR_SEPARATOR_RE = /^-{8,}\s*$/
 
-const isArmType = (value: string): value is ArmType => ARM_TYPE_OPTIONS.some((opt) => opt.value === value)
+function truncatePath(fullPath: string): string {
+  const homeMatch = fullPath.match(/^\/home\/[^/]+\//)
+  if (homeMatch) return fullPath.replace(homeMatch[0], '~/')
+  return fullPath
+}
+
+
 
 export function CalibrateTab({ active }: CalibrateTabProps) {
   const running = useLeStudioStore((s) => !!s.procStatus.calibrate)
@@ -34,13 +33,13 @@ export function CalibrateTab({ active }: CalibrateTabProps) {
   const devices = useLeStudioStore((s) => s.devices)
   const calibrateLines = useLeStudioStore((s) => s.logLines.calibrate ?? EMPTY_CAL_LINES)
   const { stopProcess } = useProcess()
-  const [type, setType] = useState<ArmType>('so101_follower')
-  const [id, setId] = useState('my_so101_follower_1')
+  const [type, setType] = useState('so101_follower')
+  const [id, setId] = useState('my_arm_1')
   const [port, setPort] = useState('/dev/follower_arm_1')
   const [fileStatus, setFileStatus] = useState('Checking...')
   const [fileMeta, setFileMeta] = useState('')
   const [files, setFiles] = useState<Array<{ id: string; guessed_type: string; modified?: string }>>([])
-  const [fileFilter, setFileFilter] = useState<'all' | ArmType>('all')
+  const [fileFilter, setFileFilter] = useState<string>('all')
   const [showIdentifyPanel, setShowIdentifyPanel] = useState(false)
   const [identifyRunning, setIdentifyRunning] = useState(false)
   const [identifyMessage, setIdentifyMessage] = useState(IDENTIFY_DEFAULT_MSG)
@@ -48,6 +47,20 @@ export function CalibrateTab({ active }: CalibrateTabProps) {
   const identifyPollTimer = useRef<number | null>(null)
   const identifySnapshot = useRef<Set<string> | null>(null)
   const filteredFiles = fileFilter === 'all' ? files : files.filter((f) => f.guessed_type === fileFilter)
+  const [armTypes, setArmTypes] = useState<string[]>(DEFAULT_ARM_TYPES)
+
+  // #6: Auto-match Arm Port when Arm Role Type changes
+  useEffect(() => {
+    const isFollower = type.includes('follower')
+    const defaultPort = isFollower ? '/dev/follower_arm_1' : '/dev/leader_arm_1'
+    const matchingArm = devices.arms.find((arm) => {
+      const sym = arm.symlink ?? ''
+      return isFollower ? sym.includes('follower') : sym.includes('leader')
+    })
+    const bestPort = matchingArm ? (matchingArm.path ?? `/dev/${matchingArm.device}`) : defaultPort
+    setPort(bestPort)
+  }, [type, devices.arms])
+
 
   const motorRows = useMemo(() => {
     const rows: Array<{ name: string; min: number; pos: number; max: number }> = []
@@ -130,11 +143,11 @@ export function CalibrateTab({ active }: CalibrateTabProps) {
     const res = await apiGet<{ exists: boolean; path: string; modified?: string; size?: number }>(`/api/calibrate/file?robot_type=${encodeURIComponent(type)}&robot_id=${encodeURIComponent(id)}`)
     if (res.exists) {
       setFileStatus('Found')
-      setFileMeta(`${res.path}\nModified: ${res.modified ?? ''} (${res.size ?? ''} bytes)`)
+      setFileMeta(`${truncatePath(res.path)}\nModified: ${res.modified ?? ''} (${res.size ?? ''} bytes)`)
       return
     }
     setFileStatus('Missing')
-    setFileMeta(`Will create new file:\n${res.path}`)
+    setFileMeta(`Will create new file:\n${truncatePath(res.path)}`)
   }, [id, type])
 
   const refreshFiles = useCallback(async () => {
@@ -167,6 +180,15 @@ export function CalibrateTab({ active }: CalibrateTabProps) {
     refreshFiles()
     checkFile()
   }, [active, checkFile, refreshFiles])
+
+
+  useEffect(() => {
+    if (!active) return
+    apiGet<RobotsResponse>('/api/robots').then((r) => {
+      const types = r.types ?? DEFAULT_ARM_TYPES
+      if (types.length > 0) setArmTypes(types)
+    })
+  }, [active])
 
   useEffect(() => {
     if (active) return
@@ -206,10 +228,10 @@ export function CalibrateTab({ active }: CalibrateTabProps) {
         <div className="card">
           <h3>Step 1: Arm Selection</h3>
           <label>Arm Role Type</label>
-          <select value={type} onChange={(e) => setType(e.target.value as ArmType)}>
-            {ARM_TYPE_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
+          <select value={type} onChange={(e) => setType(e.target.value)}>
+            {armTypes.map((t) => (
+              <option key={t} value={t}>
+                {t}
               </option>
             ))}
           </select>
@@ -217,11 +239,24 @@ export function CalibrateTab({ active }: CalibrateTabProps) {
           <select value={id} onChange={(e) => setId(e.target.value)}>
             {files.length === 0 ? (
               <option value={id}>{id}</option>
-            ) : (
-              files.map((f) => (
-                <option key={`${f.id}-${f.guessed_type}`} value={f.id}>{f.id}</option>
-              ))
-            )}
+            ) : (() => {
+              const leaderFiles = files.filter((f) => f.guessed_type.includes('leader'))
+              const followerFiles = files.filter((f) => f.guessed_type.includes('follower'))
+              const otherFiles = files.filter((f) => !f.guessed_type.includes('leader') && !f.guessed_type.includes('follower'))
+              return (
+                <>
+                  {followerFiles.length > 0 && <optgroup label="Follower">
+                    {followerFiles.map((f) => <option key={`${f.id}-${f.guessed_type}`} value={f.id}>{f.id}</option>)}
+                  </optgroup>}
+                  {leaderFiles.length > 0 && <optgroup label="Leader">
+                    {leaderFiles.map((f) => <option key={`${f.id}-${f.guessed_type}`} value={f.id}>{f.id}</option>)}
+                  </optgroup>}
+                  {otherFiles.length > 0 && <optgroup label="Other">
+                    {otherFiles.map((f) => <option key={`${f.id}-${f.guessed_type}`} value={f.id}>{f.id}</option>)}
+                  </optgroup>}
+                </>
+              )
+            })()}
           </select>
           <label>Arm Port</label>
           <select value={port} onChange={(e) => setPort(e.target.value)}>
@@ -341,12 +376,12 @@ export function CalibrateTab({ active }: CalibrateTabProps) {
                   className="btn-sm"
                   style={{ padding: '4px 8px', fontSize: 11 }}
                   value={fileFilter}
-                  onChange={(e) => setFileFilter(e.target.value as 'all' | ArmType)}
+                  onChange={(e) => setFileFilter(e.target.value)}
                 >
                   <option value="all">All Types</option>
-                  {ARM_TYPE_OPTIONS.map((opt) => (
-                    <option key={`filter-${opt.value}`} value={opt.value}>
-                      {opt.label}
+                  {armTypes.map((t) => (
+                    <option key={`filter-${t}`} value={t}>
+                      {t}
                     </option>
                   ))}
                 </select>
@@ -379,7 +414,7 @@ export function CalibrateTab({ active }: CalibrateTabProps) {
                         {gfiles.map((f) => (
                           <div key={`${f.id}-${f.guessed_type}`} className="device-item" style={{ cursor: 'pointer', marginBottom: 4 }} onClick={() => {
                             setId(f.id)
-                            if (isArmType(f.guessed_type)) setType(f.guessed_type)
+                            if (armTypes.includes(f.guessed_type)) setType(f.guessed_type)
                           }}>
                             <span className="dot green" />
                             <div style={{ flex: 1 }}>
@@ -395,7 +430,7 @@ export function CalibrateTab({ active }: CalibrateTabProps) {
                 ) : filteredFiles.map((f) => (
                     <div key={`${f.id}-${f.guessed_type}`} className="device-item" style={{ cursor: 'pointer', marginBottom: 4 }} onClick={() => {
                       setId(f.id)
-                      if (isArmType(f.guessed_type)) setType(f.guessed_type)
+                      if (armTypes.includes(f.guessed_type)) setType(f.guessed_type)
                     }}>
                       <span className="dot green" />
                       <div style={{ flex: 1 }}>

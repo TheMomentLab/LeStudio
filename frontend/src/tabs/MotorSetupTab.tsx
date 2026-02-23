@@ -3,6 +3,7 @@ import { ProcessButtons } from '../components/shared/ProcessButtons'
 import { useProcess } from '../hooks/useProcess'
 import { apiGet, apiPost } from '../lib/api'
 import { useLeStudioStore } from '../store'
+import type { RobotsResponse } from '../lib/types'
 
 interface MotorSetupTabProps {
   active: boolean
@@ -17,10 +18,14 @@ export function MotorSetupTab({ active }: MotorSetupTabProps) {
   const { stopProcess } = useProcess()
   const [type, setType] = useState('so101_follower')
   const [port, setPort] = useState('/dev/follower_arm_1')
+  const [armTypes, setArmTypes] = useState<string[]>(['so101_follower', 'so100_follower', 'so101_leader', 'so100_leader'])
 
   useEffect(() => {
     if (!active) return
-    apiGet('/api/robots').catch(() => undefined)
+    apiGet<RobotsResponse>('/api/robots').then((r) => {
+      const types = r.types ?? ['so101_follower']
+      if (types.length > 0) setArmTypes(types)
+    })
   }, [active])
 
   const start = async () => {
@@ -47,15 +52,16 @@ export function MotorSetupTab({ active }: MotorSetupTabProps) {
       <div className="section-header">
         <h2>Motor Setup</h2>
       </div>
+      <div className="quick-guide">
+        <h3>Motor Setup Guide</h3>
+        <p>Assigns unique IDs to each servo motor. Run once per arm — results are saved permanently to the firmware. If the console asks for keyboard input, type in the <strong>global console drawer</strong> at the bottom. After setup, proceed to <strong>Calibration</strong>.</p>
+      </div>
       <div className="two-col">
         <div className="card">
           <h3>Step 1: Connect Arm</h3>
           <label>Arm Role Type</label>
           <select value={type} onChange={(e) => setType(e.target.value)}>
-            <option value="so101_follower">Follower (SO101)</option>
-            <option value="so100_follower">Follower (SO100)</option>
-            <option value="so101_leader">Leader (SO101)</option>
-            <option value="so100_leader">Leader (SO100)</option>
+            {armTypes.map(t => <option key={t} value={t}>{t}</option>)}
           </select>
           <label>Arm Port</label>
           <select value={port} onChange={(e) => setPort(e.target.value)}>
@@ -68,26 +74,25 @@ export function MotorSetupTab({ active }: MotorSetupTabProps) {
               })
             )}
           </select>
-          <div className="info-box" style={{ marginTop: 12 }}>
-            ℹ️ Run once for each arm to assign motor IDs and set baudrate.<br />
-            If asked for keyboard input, use the global console input field.
-          </div>
           <div className="spacer" />
           <ProcessButtons running={running} onStart={start} onStop={stop} startLabel="▶ Start Setup" />
         </div>
         <div className="card">
           <h3>Connected Arms</h3>
           <div className="device-list">
-            {devices.arms.length === 0
-              ? '—'
-              : devices.arms.map((arm, idx) => (
-                  <div className="device-item" key={`${arm.device ?? 'arm'}-${idx}`}>
-                    <div>
-                      <div className="dname">{arm.symlink ?? arm.device}</div>
-                      <div className="dsub">{arm.path}</div>
-                    </div>
+            {devices.arms.length === 0 ? (
+              <div className="device-item">—</div>
+            ) : (
+              devices.arms.map((arm, idx) => (
+                <div className="device-item" key={`${arm.device ?? 'arm'}-${idx}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span className="dot green" />
+                    <div className="dname">{arm.symlink ?? arm.device}</div>
                   </div>
-                ))}
+                  <div className="dsub">{arm.path}</div>
+                </div>
+              ))
+            )}
           </div>
         </div>
       </div>
