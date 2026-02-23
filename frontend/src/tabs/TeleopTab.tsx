@@ -53,6 +53,7 @@ export function TeleopTab({ active }: TeleopTabProps) {
   const clearLog = useLeStudioStore((s) => s.clearLog)
   const appendLog = useLeStudioStore((s) => s.appendLog)
   const teleopLines = useLeStudioStore((s) => s.logLines.teleop ?? EMPTY_TELEOP_LINES)
+  const setActiveTab = useLeStudioStore((s) => s.setActiveTab)
 
   const [mode, setMode] = useState<'single' | 'bi'>('single')
   const [robotTypes, setRobotTypes] = useState<string[]>(['so101_follower'])
@@ -283,6 +284,7 @@ export function TeleopTab({ active }: TeleopTabProps) {
           <span
             id="teleop-loop-pill"
             className={`perf-pill ${!loopPerf ? 'idle' : loopPerf.hz >= 58 ? 'good' : loopPerf.hz >= 54 ? 'warn' : 'bad'}`}
+            title={loopPerf ? `Loop latency: ${loopPerf.ms.toFixed(2)}ms · ${loopPerf.hz}Hz (Good: ≥58Hz, Warn: 54–57Hz, Bad: <54Hz)` : 'Teleop loop latency — starts once teleop is running'}
           >
             {loopPerf ? `Loop: ${loopPerf.ms.toFixed(2)}ms (${loopPerf.hz}Hz)` : 'Loop: --'}
           </span>
@@ -412,7 +414,12 @@ export function TeleopTab({ active }: TeleopTabProps) {
 
         <div className="card">
           <h3>Step 2 — Camera Feeds</h3>
-          <div className="field-help">Required: verify mapped camera paths first.</div>
+          {Object.keys(mappedCameras).length === 0 && (
+            <div className="field-help">
+              No cameras mapped yet.{' '}
+              <button type="button" className="link-btn" onClick={() => setActiveTab('device-setup')}>→ Go to Mapping</button>
+            </div>
+          )}
           <div id="teleop-cameras" className="camera-cfg" style={{ marginTop: 16 }}>
             <MappedCameraRows mappedCameras={mappedCameras} />
           </div>

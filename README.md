@@ -1,21 +1,39 @@
 # LeStudio
 
-A comprehensive web-based GUI for setting up and operating [Hugging Face LeRobot](https://github.com/huggingface/lerobot) robot arms. This tool replaces the traditional CLI-heavy flow with a guided workbench for setup, operation, dataset management, training, and evaluation.
+A web-based GUI workbench for [Hugging Face LeRobot](https://github.com/huggingface/lerobot) — covering the full pipeline from hardware setup to policy evaluation. Replaces the CLI-heavy LeRobot workflow with a browser-based interface.
 
 ## Features
 
-- **Workbench Navigation**: Setup -> Operate -> Data -> ML flow with Guided/Advanced modes.
-- **Status**: Live device and process overview.
-- **Mapping**: Camera and arm udev assignment, rule preview/apply, and stream setting controls.
-- **Motor Setup**: Basic motor connectivity and setup commands.
-- **Calibration**: Real-time motor range visualization, lock/unlock, and calibration file actions.
-- **Teleop**: Multi-camera teleoperation with preflight checks and process logs.
-- **Record**: Dataset collection with episode controls, preflight checks, and keyboard shortcuts.
-- **Dataset**: Local dataset listing, details, cleanup, and Hub push workflows.
-- **Train**: `lerobot` training orchestration with preflight and metric/log streaming.
-- **Eval**: Policy evaluation run orchestration with live process output.
-- **Global Console Drawer**: Unified stdout/stderr stream and stdin input routing per process.
+### Hardware Setup & Ops
+- **Status**: Live device and process overview with real-time CPU/RAM/Disk/GPU monitoring.
+- **Mapping**: Camera and arm udev rule management — create, preview, apply, verify, and delete. Includes Arm Identify Wizard (disconnect/reconnect diff-based detection) and USB bandwidth monitoring (real-time fps/MB·s per feed with bus utilization bar).
+- **Motor Setup**: Motor connectivity and setup via `lerobot_setup_motors`.
+- **Calibration**: Calibration execution, file management, and delete.
+
+### Operation
+- **Teleop**: Multi-camera teleoperation with preflight checks and live camera feeds (SHM-shared during process — feed stays visible while teleop runs).
+- **Record**: Episode recording with keyboard bridge (next/abort from browser UI), resume support, and preflight checks.
+
+### Data
+- **Dataset**: Local dataset listing, episode details, quality check, and Hub push with progress tracking.
+- **Episode Replayer**: Multi-camera synchronized playback with timeline scrubbing.
+- **Episode Curation**: Per-episode delete, tag, and filter for data quality management.
+- **Hub Search**: Search and download datasets directly from Hugging Face Hub.
+
+### ML
+- **Train**: LeRobot training orchestration with CUDA preflight (auto-detects incompatible builds + one-click PyTorch reinstall), real-time loss/LR chart, ETA tracking, and hyperparameter presets (Quick Test / Standard / Full).
+- **Checkpoint Browser**: Scan local checkpoints and auto-link to Eval.
+- **Eval**: Policy evaluation with live process output and per-episode result tracking.
+
+### General
+- **Global Console Drawer**: Unified stdout/stderr stream and stdin routing per process.
+- **Error Translation**: CLI stderr patterns → user-friendly guidance messages.
 - **Profiles**: Save/load/import/export/delete full configuration profiles.
+- **Session History**: Timeline of recording, training, and evaluation events.
+- **Desktop Notifications**: Browser notifications on process completion or error.
+- **Guided/Advanced Modes**: Guided mode for step-by-step setup; Advanced mode unlocks all tabs.
+- **Dark/Light Theme**: CSS variable-based theme toggle.
+- **Responsive Layout**: Desktop sidebar, tablet icon rail, mobile drawer.
 
 ## Requirements
 
@@ -23,21 +41,15 @@ A comprehensive web-based GUI for setting up and operating [Hugging Face LeRobot
 - Linux (for `udev` rules and `/dev/video*` access)
 - `huggingface/lerobot` installed in your environment
 
-### Optional Dependencies and Permissions
+### Optional
 
-- **udev apply**: non-interactive `sudo` is recommended for one-click rule installation. Without it, Studio provides manual commands.
-- **Hub push**: `huggingface-cli` login and valid token are required.
-- **GPU checks/monitoring**: CUDA-enabled environment and `nvidia-smi` are needed for full Train diagnostics.
+- **udev apply**: passwordless `sudo` recommended for one-click rule installation. Without it, LeStudio provides manual commands to copy-paste.
+- **Hub push / download**: `huggingface-cli login` and a valid token are required.
+- **GPU monitoring / CUDA preflight**: CUDA environment and `nvidia-smi` required for full Train diagnostics.
 
 ## Installation
 
-You can install this tool directly via pip:
-
-```bash
-pip install lestudio
-```
-
-Or from source:
+Install from source:
 
 ```bash
 git clone https://github.com/TheMomentLab/lestudio.git
@@ -45,47 +57,49 @@ cd lestudio
 pip install -e .
 ```
 
-## Usage
+> PyPI package (`pip install lestudio`) coming with the OSS release.
 
-Once installed, simply run the setup command from your terminal. Make sure your `lerobot` conda environment (or equivalent) is activated so the tool can detect the `lerobot` package.
+## Usage
 
 ```bash
 lestudio
 ```
 
-By default, the server will start at `http://localhost:7860`. Open this URL in your web browser.
+The server starts at `http://localhost:7860` and opens a browser tab automatically (skipped on SSH sessions or headless environments).
 
 ### Command Line Options
 
-```text
-usage: lestudio [-h] [--port PORT] [--host HOST] [--lerobot-path LEROBOT_PATH] [--config-dir CONFIG_DIR] [--rules-path RULES_PATH]
+```
+usage: lestudio [-h] {serve,install-udev} ...
 
-LeStudio
+subcommands:
+  serve           Start the LeStudio web server (default when no subcommand given)
+  install-udev    Install udev rules via sudo (CLI alternative to the web UI)
 
-options:
-  -h, --help            show this help message and exit
+lestudio serve:
   --port PORT           Server port (default: 7860)
   --host HOST           Server host (default: 0.0.0.0)
-  --lerobot-path LEROBOT_PATH
-                        Path to lerobot source (auto-detected if installed)
-  --config-dir CONFIG_DIR
-                        Config directory (default: ~/.config/lestudio)
-  --rules-path RULES_PATH
-                        Path to udev rules file (default: /etc/udev/rules.d/99-lerobot.rules)
+  --lerobot-path PATH   Path to lerobot source (auto-detected if installed)
+  --config-dir DIR      Config directory (default: ~/.config/lestudio)
+  --rules-path PATH     udev rules file (default: /etc/udev/rules.d/99-lerobot.rules)
+  --no-browser          Do not open browser automatically
+  --headless            Alias for --no-browser
 ```
 
-## Setup Process Guide
+Flags can be passed without explicitly typing `serve` — `lestudio --port 8080` works the same as `lestudio serve --port 8080`.
 
-1. **Status**: Confirm cameras/arms are visible and process status is healthy.
-2. **Mapping**: Bind physical devices to stable symlinks (`top_cam_1`, `follower_arm_1`, etc.) and apply rules.
-3. **Motor Setup**: Run basic motor setup if needed for your hardware profile.
-4. **Calibration**: Perform follower/leader calibration and verify the generated files.
-5. **Teleop**: Validate motion control and camera feeds with preflight checks.
-6. **Record**: Capture episodes for your target task and dataset repo.
-7. **Dataset**: Inspect local datasets and optionally push to Hugging Face Hub.
-8. **Train**: Start training from recorded data and monitor logs/metrics.
-9. **Eval**: Run policy evaluation to close the setup -> data -> ML loop.
+## Workflow Guide
+
+1. **Status** — Confirm cameras and arms are visible and process status is healthy.
+2. **Mapping** — Bind devices to stable symlinks (`top_cam_1`, `follower_arm_1`, …) and apply udev rules.
+3. **Motor Setup** — Run motor setup if needed for your hardware.
+4. **Calibration** — Calibrate follower/leader arms and verify the generated files.
+5. **Teleop** — Validate motion and camera feeds with preflight checks.
+6. **Record** — Capture episodes for your target task.
+7. **Dataset** — Inspect episodes, curate data, and push to Hugging Face Hub.
+8. **Train** — Start training and monitor loss/metrics in real time.
+9. **Eval** — Run policy evaluation to close the loop.
 
 ## License
 
-This project is licensed under the Apache 2.0 License.
+Apache 2.0

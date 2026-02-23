@@ -733,6 +733,7 @@ select option { background: var(--bg3); }
 button:hover    { opacity: .85; }
 .btn-xs:hover    { background: var(--bg3); color: var(--text); }
 button:disabled { cursor: not-allowed; opacity: .6; }
+.link-btn       { background: none; border: none; padding: 0; color: var(--accent); font-size: inherit; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
 
 .episode-progress-card .ep-controls-row #record-start-btn.recording {
   background: color-mix(in srgb, var(--green) 72%, var(--bg3));

@@ -63,6 +63,7 @@ export function RecordTab({ active }: RecordTabProps) {
   const [robotDetails, setRobotDetails] = useState<Record<string, RobotDetail>>({})
 
   const devices = useLeStudioStore((s) => s.devices)
+  const setActiveTab = useLeStudioStore((s) => s.setActiveTab)
   const armPaths = useMemo(() => {
     const all = new Set<string>()
     devices.arms.forEach((arm) => {
@@ -333,13 +334,14 @@ export function RecordTab({ active }: RecordTabProps) {
       <div className="two-col">
         <div className="card">
           <h3>Step 1: Recording Plan</h3>
-          <label>Task Description</label>
+          <label>Task Description <span className="muted" style={{ fontSize: 11, fontWeight: 400 }}>(optional)</span></label>
           <input
             type="text"
             value={(config.record_task as string) ?? ''}
             onChange={(e) => update('record_task', e.target.value)}
             placeholder="Example: Pick up red block and place in left bin"
           />
+          <div className="field-help">Annotates the dataset. If blank, defaults to "task".</div>
           <label>Number of Episodes</label>
           <input type="number" min={1} value={totalEpisodes} onChange={(e) => update('record_episodes', Number(e.target.value))} />
           <div className="field-help">Start with 20-50 for first test run.</div>
@@ -479,7 +481,12 @@ export function RecordTab({ active }: RecordTabProps) {
 
         <div className="card">
           <h3>Step 3: Camera Feeds</h3>
-          <div className="field-help">Required: confirm mapped camera set for this recording.</div>
+          {Object.keys(mappedCameras).length === 0 && (
+            <div className="field-help">
+              No cameras mapped yet.{' '}
+              <button type="button" className="link-btn" onClick={() => setActiveTab('device-setup')}>→ Go to Mapping</button>
+            </div>
+          )}
           <MappedCameraRows mappedCameras={mappedCameras} />
           <details className="advanced-panel" style={{ marginTop: 12 }}>
             <summary>Advanced Stream Settings</summary>

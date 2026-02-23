@@ -299,7 +299,29 @@ export function DeviceSetupTab({ active }: DeviceSetupTabProps) {
       return
     }
 
-    const nextArmAssignments = { ...armAssignments, [identifiedArmSerial]: identifyRole }
+    const conflictEntry = Object.entries(armAssignments).find(
+      ([serial, val]) => val === identifyRole && serial !== identifiedArmSerial,
+    )
+    let nextArmAssignments: Record<string, string>
+
+    if (conflictEntry) {
+      const [conflictSerial] = conflictEntry
+      const conflictArm = devices.arms.find((a) => a.serial === conflictSerial)
+      const conflictDevice = conflictArm?.device ?? conflictSerial
+      const roleLabel = ARM_ROLE_OPTIONS.find((o) => o.value === identifyRole)?.label ?? identifyRole
+      const oldRole = armAssignments[identifiedArmSerial] ?? '(none)'
+      const oldLabel = ARM_ROLE_OPTIONS.find((o) => o.value === oldRole)?.label ?? oldRole
+
+      const confirmed = window.confirm(
+        `"${roleLabel}" is already assigned to /dev/${conflictDevice}.\n\nSwap roles?\n  /dev/${identifiedArmDevice}: ${oldLabel} \u2192 ${roleLabel}\n  /dev/${conflictDevice}: ${roleLabel} \u2192 ${oldLabel}`,
+      )
+      if (!confirmed) return
+
+      nextArmAssignments = { ...armAssignments, [identifiedArmSerial]: identifyRole, [conflictSerial]: oldRole }
+    } else {
+      nextArmAssignments = { ...armAssignments, [identifiedArmSerial]: identifyRole }
+    }
+
     setArmAssignments(nextArmAssignments)
 
     try {
@@ -692,7 +714,33 @@ export function DeviceSetupTab({ active }: DeviceSetupTabProps) {
                     value={(arm.serial && armAssignments[arm.serial]) ?? '(none)'}
                     onChange={(e) => {
                       if (!arm.serial) return
-                      const nextArmAssignments = { ...armAssignments, [arm.serial]: e.target.value }
+                      const newRole = e.target.value
+                      const oldRole = armAssignments[arm.serial] ?? '(none)'
+
+                      if (newRole !== '(none)') {
+                        const conflictEntry = Object.entries(armAssignments).find(
+                          ([serial, val]) => val === newRole && serial !== arm.serial,
+                        )
+                        if (conflictEntry) {
+                          const [conflictSerial] = conflictEntry
+                          const conflictArm = devices.arms.find((a) => a.serial === conflictSerial)
+                          const conflictDevice = conflictArm?.device ?? conflictSerial
+                          const newLabel = ARM_ROLE_OPTIONS.find((o) => o.value === newRole)?.label ?? newRole
+                          const oldLabel = ARM_ROLE_OPTIONS.find((o) => o.value === oldRole)?.label ?? oldRole
+
+                          const confirmed = window.confirm(
+                            `"${newLabel}" is already assigned to /dev/${conflictDevice}.\n\nSwap roles?\n  /dev/${arm.device ?? '?'}: ${oldLabel} \u2192 ${newLabel}\n  /dev/${conflictDevice}: ${newLabel} \u2192 ${oldLabel}`,
+                          )
+                          if (!confirmed) return
+
+                          const nextArmAssignments = { ...armAssignments, [arm.serial]: newRole, [conflictSerial]: oldRole }
+                          setArmAssignments(nextArmAssignments)
+                          scheduleRulesApply(cameraAssignments, nextArmAssignments)
+                          return
+                        }
+                      }
+
+                      const nextArmAssignments = { ...armAssignments, [arm.serial]: newRole }
                       setArmAssignments(nextArmAssignments)
                       scheduleRulesApply(cameraAssignments, nextArmAssignments)
                     }}
