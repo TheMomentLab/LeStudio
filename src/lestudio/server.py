@@ -1648,13 +1648,49 @@ def create_app(
             return JSONResponse(status_code=500, content={"detail": f"Failed to load dataset: {str(e)}"})
 
     @app.get("/api/datasets/{user}/{repo}/videos/{camera}/{chunk}/{file}")
-    def api_dataset_video(user: str, repo: str, camera: str, chunk: str, file: str):
-        # Serve the MP4 file directly for the browser to play
+    def api_dataset_video(request: Request, user: str, repo: str, camera: str, chunk: str, file: str):
+        # Serve MP4 with HTTP 206 Range support so browser <video> can seek freely
         video_path = Path.home() / ".cache" / "huggingface" / "lerobot" / user / repo / "videos" / camera / chunk / file
         if not video_path.exists():
             return Response(status_code=404, content="Video not found")
+        file_size = video_path.stat().st_size
+        range_header = request.headers.get("range")
+        if range_header:
+            try:
+                range_val = range_header.strip().lower().replace("bytes=", "")
+                start_str, end_str = range_val.split("-", 1)
+                start = int(start_str) if start_str else 0
+                end = int(end_str) if end_str else file_size - 1
+            except Exception:
+                return Response(status_code=416, headers={"Content-Range": f"bytes */{file_size}"})
+            start = max(0, min(start, file_size - 1))
+            end = max(start, min(end, file_size - 1))
+            chunk_size = end - start + 1
+            def _iter_file(path: Path, s: int, length: int, buf: int = 1 << 20):
+                with open(path, "rb") as fh:
+                    fh.seek(s)
+                    remaining = length
+                    while remaining > 0:
+                        data = fh.read(min(buf, remaining))
+                        if not data:
+                            break
+                        remaining -= len(data)
+                        yield data
+            headers = {
+                "Content-Range": f"bytes {start}-{end}/{file_size}",
+                "Accept-Ranges": "bytes",
+                "Content-Length": str(chunk_size),
+                "Content-Type": "video/mp4",
+            }
+            return StreamingResponse(
+                _iter_file(video_path, start, chunk_size),
+                status_code=206,
+                headers=headers,
+                media_type="video/mp4",
+            )
+        # Full response (first load - no Range header)
         from fastapi.responses import FileResponse
-        return FileResponse(video_path, media_type="video/mp4")
+        return FileResponse(video_path, media_type="video/mp4", headers={"Accept-Ranges": "bytes"})
 
     @app.delete("/api/datasets/{user}/{repo}")
     def api_dataset_delete(user: str, repo: str):

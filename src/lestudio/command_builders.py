@@ -26,8 +26,19 @@ def resolve_record_resume(cfg: dict) -> tuple[bool, bool]:
 
 
 def build_teleop_args(python_exe: str, cfg: dict) -> list[str]:
+    # Speed multiplier → max_relative_target (degrees per tick at 60fps)
+    # 1.0 = no limit, 0.5 ≈ 15 deg/tick, 0.25 ≈ 8, 0.1 ≈ 3
+    _SPEED_TO_MAX_REL: dict[str, float | None] = {
+        "1.0": None,
+        "0.75": 25.0,
+        "0.5": 15.0,
+        "0.25": 8.0,
+        "0.1": 3.0,
+    }
+    speed_key = str(cfg.get("teleop_speed", "0.5"))
+    max_rel = _SPEED_TO_MAX_REL.get(speed_key, 15.0)
     if cfg.get("robot_mode") == "bi":
-        return [
+        args = [
             python_exe,
             "-m",
             "lestudio.teleop_bridge",
@@ -39,7 +50,11 @@ def build_teleop_args(python_exe: str, cfg: dict) -> list[str]:
             f'--teleop.right_arm_config.port={cfg["right_leader_port"]}',
             "--display_data=false",
         ]
-    return [
+        if max_rel is not None:
+            args.append(f"--robot.left_arm_config.max_relative_target={max_rel}")
+            args.append(f"--robot.right_arm_config.max_relative_target={max_rel}")
+        return args
+    args = [
         python_exe,
         "-m",
         "lestudio.teleop_bridge",
@@ -51,6 +66,9 @@ def build_teleop_args(python_exe: str, cfg: dict) -> list[str]:
         f'--teleop.id={cfg.get("teleop_id", "my_so101_leader_1")}',
         "--display_data=false",
     ]
+    if max_rel is not None:
+        args.append(f"--robot.max_relative_target={max_rel}")
+    return args
 
 
 def build_record_args(python_exe: str, cfg: dict, resume_enabled: bool) -> list[str]:
