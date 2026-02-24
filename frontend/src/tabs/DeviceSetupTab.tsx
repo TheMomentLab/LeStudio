@@ -241,7 +241,7 @@ export function DeviceSetupTab({ active }: DeviceSetupTabProps) {
       clearRulesApplyTimer()
       rulesApplyTimerRef.current = window.setTimeout(() => {
         rulesApplyTimerRef.current = null
-        void applyRules(nextCameraAssignments, nextArmAssignments, true)
+        void applyRules(nextCameraAssignments, nextArmAssignments, false)
       }, delay)
     },
     [applyRules, clearRulesApplyTimer],
@@ -403,14 +403,29 @@ export function DeviceSetupTab({ active }: DeviceSetupTabProps) {
       exists: typeof row.exists === 'boolean' ? row.exists : null,
     }))
 
-    if (fromApiCamera.length > 0 || fromApiArm.length > 0) {
-      return { cameraRules: fromApiCamera, armRules: fromApiArm }
-    }
+    // Deduplicate by serial:symlink key to prevent duplicate rows from server
+    const deduplicatedArm = fromApiArm.filter((row, idx, arr) => {
+      const key = `${row.serial}:${row.symlink}`
+      return arr.findIndex((r) => `${r.serial}:${r.symlink}` === key) === idx
+    })
+    const deduplicatedCamera = fromApiCamera.filter((row, idx, arr) => {
+      const key = `${row.kernel}:${row.symlink}`
+      return arr.findIndex((r) => `${r.kernel}:${r.symlink}` === key) === idx
+    })
 
+    if (deduplicatedCamera.length > 0 || deduplicatedArm.length > 0) {
+      return { cameraRules: deduplicatedCamera, armRules: deduplicatedArm }
+    }
     return parseRulesFromText(rulesReadable?.content ?? '')
   }, [rulesReadable])
 
   const renderRulesTable = (title: string, portHeader: string, rows: Array<{ port: string; symlink: string; mode: string; exists?: boolean | null }>) => {
+    const symlinkCounts: Record<string, number> = {}
+    for (const row of rows) {
+      if (row.symlink && row.symlink !== '?') {
+        symlinkCounts[row.symlink] = (symlinkCounts[row.symlink] ?? 0) + 1
+      }
+    }
     return (
       <div className="rules-section">
         <div className="rules-section-title">{title}</div>
@@ -437,7 +452,14 @@ export function DeviceSetupTab({ active }: DeviceSetupTabProps) {
                     }}
                   >
                     <td style={{ padding: '8px 12px', fontFamily: 'var(--mono)' }}>{row.port}</td>
-                    <td style={{ padding: '8px 12px', fontFamily: 'var(--mono)', color: 'var(--text)', fontWeight: 600 }}>{row.symlink}</td>
+                    <td style={{ padding: '8px 12px', fontFamily: 'var(--mono)', color: 'var(--text)', fontWeight: 600 }}>
+                      {row.symlink}
+                      {(symlinkCounts[row.symlink] ?? 0) > 1 && (
+                        <span style={{ marginLeft: 6, fontSize: 10, fontFamily: 'sans-serif', padding: '1px 6px', borderRadius: 999, background: 'color-mix(in srgb, var(--yellow) 15%, transparent)', color: 'var(--yellow)', border: '1px solid color-mix(in srgb, var(--yellow) 35%, transparent)', fontWeight: 600 }}>
+                          ⚠ Duplicate
+                        </span>
+                      )}
+                    </td>
                     <td style={{ padding: '8px 12px', fontFamily: 'var(--mono)' }}>{formatModeDisplay(row.mode)}</td>
                     <td style={{ padding: '8px 12px' }}>{statusBadge(row.exists)}</td>
                   </tr>

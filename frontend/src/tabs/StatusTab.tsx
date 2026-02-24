@@ -126,12 +126,14 @@ export function StatusTab({ active }: StatusTabProps) {
     <section id="tab-status" className={`tab ${active ? 'active' : ''}`}>
       <div className="section-header">
         <h2>System Status</h2>
-        <span id="status-last-update" style={{ fontSize: 11, color: 'var(--text2)', marginLeft: 'auto' }}>
-          {lastUpdate ? `Last updated: ${lastUpdate}` : ''}
-        </span>
-        <button id="status-refresh-btn" onClick={refresh} className="btn-sm">
-          ↺ Refresh
-        </button>
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span id="status-last-update" style={{ fontSize: 11, color: 'var(--text2)' }}>
+            {lastUpdate ? `Last updated: ${lastUpdate}` : ''}
+          </span>
+          <button id="status-refresh-btn" onClick={refresh} className="btn-sm">
+            ↺ Refresh
+          </button>
+        </div>
       </div>
 
       <div className="status-grid">

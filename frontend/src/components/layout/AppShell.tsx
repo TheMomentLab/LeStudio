@@ -14,8 +14,7 @@ interface AppShellProps {
 export function AppShell({ children, wsConnected, theme, onToggleTheme }: AppShellProps) {
   const mobileSidebarOpen = useLeStudioStore((s) => s.mobileSidebarOpen)
   const setMobileSidebarOpen = useLeStudioStore((s) => s.setMobileSidebarOpen)
-  const uiMode = useLeStudioStore((s) => s.uiMode)
-  const setUiMode = useLeStudioStore((s) => s.setUiMode)
+
   const apiHealth = useLeStudioStore((s) => s.apiHealth)
   const apiSupport = useLeStudioStore((s) => s.apiSupport)
 
@@ -39,30 +38,13 @@ export function AppShell({ children, wsConnected, theme, onToggleTheme }: AppShe
           >
             ☰
           </button>
-          <img src="/logo.svg" alt="LeStudio Logo" className="logo" style={{ width: 32, height: 32 }} />
+          <svg className="logo" style={{ width: 32, height: 32, color: 'var(--text)' }} viewBox="0 0 100 100" fill="none" stroke="currentColor" strokeWidth={4} strokeLinecap="round" strokeLinejoin="round" aria-label="LeStudio Logo"><defs><mask id="planet-mask"><rect width="100" height="100" fill="white" /><path d="M 0,50 A 50,16 0 0,0 100,50" fill="none" stroke="black" strokeWidth={12} transform="rotate(-15 50 50)" /></mask></defs><circle cx="50" cy="50" r="34" mask="url(#planet-mask)" /><ellipse cx="50" cy="50" rx="48" ry="16" transform="rotate(-15 50 50)" /></svg>
           <h1>LeStudio</h1>
           <span className="beta-badge">BETA</span>
         </div>
         <div className="header-right">
           <ProfileSelector />
-          <div className="view-mode-toggle" title="UI mode">
-            <button
-              id="mode-guided-btn"
-              className={`mode-btn ${uiMode === 'guided' ? 'active' : ''}`}
-              type="button"
-              onClick={() => setUiMode('guided')}
-            >
-              Guided
-            </button>
-            <button
-              id="mode-advanced-btn"
-              className={`mode-btn ${uiMode === 'advanced' ? 'active' : ''}`}
-              type="button"
-              onClick={() => setUiMode('advanced')}
-            >
-              Advanced
-            </button>
-          </div>
+
           <button id="theme-toggle-btn" className="btn-xs" onClick={onToggleTheme} aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}>
             {theme === 'dark' ? '🌙' : '☀️'}
           </button>

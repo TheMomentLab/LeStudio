@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { DevicesResponse, LogLine, SidebarSignals, Toast, UiMode } from '../lib/types'
+import type { DevicesResponse, LogLine, SidebarSignals, Toast } from '../lib/types'
 
 interface LeStudioState {
   activeTab: string
@@ -9,7 +9,7 @@ interface LeStudioState {
   wsReady: boolean
   apiHealth: { resources: boolean; history: boolean }
   apiSupport: { resources: boolean; history: boolean }
-  uiMode: UiMode
+
   logLines: Record<string, LogLine[]>
   toasts: Toast[]
   sidebarSignals: SidebarSignals
@@ -22,7 +22,7 @@ interface LeStudioState {
   setWsReady: (ready: boolean) => void
   setApiHealth: (key: string, val: boolean) => void
   setApiSupport: (key: string, val: boolean) => void
-  setUiMode: (mode: UiMode) => void
+
   appendLog: (processName: string, text: string, kind: string) => void
   clearLog: (processName: string) => void
   addToast: (message: string, kind: string) => void
@@ -71,7 +71,7 @@ export const useLeStudioStore = create<LeStudioState>((set) => ({
   wsReady: false,
   apiHealth: { resources: true, history: true },
   apiSupport: { resources: true, history: true },
-  uiMode: 'guided',
+
   logLines: {},
   toasts: [],
   sidebarSignals: defaultSignals,
@@ -98,7 +98,7 @@ export const useLeStudioStore = create<LeStudioState>((set) => ({
         ? s.apiHealth
         : ({ ...s.apiHealth, [key]: true } as { resources: boolean; history: boolean }),
     })),
-  setUiMode: (mode) => set({ uiMode: mode }),
+
   appendLog: (processName, text, kind) =>
     set((s) => {
       const prev = s.logLines[processName] ?? []

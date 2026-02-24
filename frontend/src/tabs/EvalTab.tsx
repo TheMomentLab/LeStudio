@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ProcessButtons } from '../components/shared/ProcessButtons'
 import { useConfig } from '../hooks/useConfig'
 import { useProcess } from '../hooks/useProcess'
@@ -82,6 +82,18 @@ export function EvalTab({ active }: EvalTabProps) {
   const [elapsedTick, setElapsedTick] = useState(0)
   const processedLogsRef = useRef(0)
   const perEpisodeRewardRef = useRef<Record<number, number>>({})
+  const [preflightOk, setPreflightOk] = useState(true)
+  const [preflightAction, setPreflightAction] = useState('')
+  const [preflightReason, setPreflightReason] = useState('')
+
+  const refreshPreflight = useCallback(async () => {
+    const device = (config.eval_device as string) ?? 'cuda'
+    const res = await apiGet<{ ok: boolean; reason?: string; action?: string }>(`/api/train/preflight?device=${encodeURIComponent(device)}`)
+    setPreflightOk(!!res.ok)
+    setPreflightAction(res.action ?? '')
+    setPreflightReason(res.reason ?? '')
+    return !!res.ok
+  }, [config.eval_device])
 
   const totalEpisodes = Number(config.eval_episodes ?? 10)
   const progressTotal = targetEpisodes && targetEpisodes > 0 ? targetEpisodes : null
@@ -136,7 +148,8 @@ export function EvalTab({ active }: EvalTabProps) {
   useEffect(() => {
     if (!active) return
     loadCheckpoints()
-  }, [active])
+    refreshPreflight()
+  }, [active, refreshPreflight])
 
   useEffect(() => {
     if (!startedAtMs || endedAtMs) return
@@ -256,7 +269,7 @@ export function EvalTab({ active }: EvalTabProps) {
   const start = async () => {
     const cfg = {
       eval_policy_path: (config.eval_policy_path as string) ?? 'outputs/train/checkpoints/last/pretrained_model',
-      eval_repo_id: (config.eval_repo_id as string) ?? 'user/my-dataset',
+      eval_repo_id: (config.eval_repo_id as string) ?? '',
       eval_episodes: Number(config.eval_episodes ?? 10),
       eval_device: (config.eval_device as string) ?? 'cuda',
       eval_task: (config.eval_task as string) ?? '',
@@ -327,10 +340,11 @@ export function EvalTab({ active }: EvalTabProps) {
             placeholder="Path to trained policy/checkpoint"
             onChange={(e) => buildConfig({ eval_policy_path: e.target.value })}
           />
+          <div className="field-help">Auto-filled when you select a checkpoint above. Edit to use a custom path.</div>
           <label>Dataset Repo ID</label>
           <input
             type="text"
-            value={(config.eval_repo_id as string) ?? 'user/my-dataset'}
+            value={(config.eval_repo_id as string) ?? ''}
             placeholder="username/dataset"
             onChange={(e) => buildConfig({ eval_repo_id: e.target.value })}
           />

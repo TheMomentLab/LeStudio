@@ -355,6 +355,134 @@ export function TrainTab({ active }: TrainTabProps) {
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div className="card">
+          <h3>Configuration</h3>
+          <label>Policy Type</label>
+          <select value={(config.train_policy as string) ?? 'act'} onChange={(e) => buildConfig({ train_policy: e.target.value })}>
+            <option value="act">ACT (Action Chunking with Transformers)</option>
+            <option value="diffusion">Diffusion Policy</option>
+            <option value="tdmpc2">TD-MPC2</option>
+          </select>
+          <label>Dataset Source</label>
+          <div className="mode-toggle" style={{ marginLeft: 0, marginBottom: 8 }}>
+            <button className={`toggle ${source === 'local' ? 'active' : ''}`} onClick={() => setSource('local')}>
+              Local
+            </button>
+            <button className={`toggle ${source === 'hf' ? 'active' : ''}`} onClick={() => setSource('hf')}>
+              Hugging Face
+            </button>
+          </div>
+          {source === 'local' ? (
+            <>
+              <label>Local Dataset</label>
+              <select value={repoId} onChange={(e) => buildConfig({ train_repo_id: e.target.value })}>
+                {datasets.length === 0 ? <option value="__none__">No local datasets — record in Record tab first</option> : null}
+                {datasets.map((ds) => (
+                  <option key={ds.id} value={ds.id}>
+                    {ds.id}
+                  </option>
+                ))}
+              </select>
+              <div className="field-help" style={{ marginTop: 4 }}>Choose a dataset from local cache (`~/.cache/huggingface/lerobot`).</div>
+            </>
+          ) : (
+            <>
+              <label>Dataset Repo ID</label>
+              <input type="text" value={(config.train_repo_id as string) ?? 'user/my-dataset'} onChange={(e) => buildConfig({ train_repo_id: e.target.value })} />
+            </>
+          )}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, marginBottom: 4 }}>
+            <label style={{ margin: 0 }}>Training Steps</label>
+            <div style={{ display: 'flex', gap: 4 }}>
+              <button className="btn-xs" onClick={() => applyPreset('quick')}>
+                Quick (1K)
+              </button>
+              <button className="btn-xs" onClick={() => applyPreset('standard')}>
+                Standard (50K)
+              </button>
+              <button className="btn-xs" onClick={() => applyPreset('full')}>
+                Full (100K)
+              </button>
+            </div>
+          </div>
+          <input type="number" value={trainSteps} onChange={(e) => buildConfig({ train_steps: Number(e.target.value) })} />
+          <div className="advanced-only" style={{ marginTop: 8, padding: 10, border: '1px solid var(--border)', borderRadius: 6, background: 'color-mix(in srgb, var(--bg3) 60%, transparent)' }}>
+            <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 8, fontWeight: 600, letterSpacing: 0.2 }}>ADVANCED PARAMS</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <div>
+                <label style={{ marginBottom: 3 }}>Batch Size</label>
+                <input
+                  type="number"
+                  min={1}
+                  step={1}
+                  placeholder="default (64)"
+                  value={typeof config.train_batch_size === 'number' ? config.train_batch_size : ''}
+                  onChange={(e) => buildConfig({ train_batch_size: e.target.value.trim() ? Number(e.target.value) : undefined })}
+                />
+                <div className="field-help">Samples per gradient step.</div>
+              </div>
+              <div>
+                <label style={{ marginBottom: 3 }}>Learning Rate</label>
+                <input
+                  type="text"
+                  placeholder="default (1e-4)"
+                  value={(config.train_lr as string) ?? ''}
+                  onChange={(e) => buildConfig({ train_lr: e.target.value })}
+                />
+                <div className="field-help">e.g. 1e-4, 0.0001</div>
+              </div>
+            </div>
+          </div>
+          <label>Compute Device</label>
+          <select value={(config.train_device as string) ?? 'cuda'} onChange={(e) => buildConfig({ train_device: e.target.value })}>
+            <option value="cuda">CUDA (GPU)</option>
+            <option value="cpu">CPU</option>
+            <option value="mps">MPS (Apple Silicon)</option>
+          </select>
+          {!preflightOk ? (
+            <div id="train-device-warning" className="train-device-warning">
+              {preflightReason || 'Device preflight failed. Training is blocked.'}
+            </div>
+          ) : null}
+          {!preflightOk && preflightAction === 'install_torch_cuda' ? (
+            <div id="train-device-actions" style={{ marginTop: 6, display: 'flex', justifyContent: 'flex-end' }}>
+              <button id="train-install-btn" className="btn-sm" onClick={installCudaTorch}>
+                Install CUDA PyTorch (Nightly)
+              </button>
+            </div>
+          ) : null}
+          <div style={{ marginTop: 10, padding: 10, border: '1px solid var(--border)', borderRadius: 8, background: 'rgba(255,255,255,0.02)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+              <span style={{ fontSize: 12, color: 'var(--text2)' }}>Training Progress</span>
+              <span id="train-progress-status" style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: running ? 'rgba(34,197,94,0.18)' : !preflightOk ? 'rgba(248,81,73,0.18)' : 'rgba(148,163,184,0.18)', color: running ? '#86efac' : !preflightOk ? '#fca5a5' : 'var(--text2)' }}>
+                {running ? 'RUNNING' : !preflightOk ? 'BLOCKED' : 'IDLE'}
+              </span>
+            </div>
+            <div className="usb-bus-bar-track">
+              <div id="train-progress-fill" className="usb-bar-fill good" style={{ width: `${progress.progressPct}%` }} />
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, fontSize: 12, color: 'var(--text2)', gap: 10, flexWrap: 'wrap' }}>
+              <span>
+                Step: {progress.currentStep !== null ? progress.currentStep.toLocaleString() : '--'} / {progress.currentStep !== null && progress.totalSteps !== null ? (progress.totalSteps ?? trainSteps).toLocaleString() : '--'}
+              </span>
+              <span>Loss: {progress.latestLoss !== null ? progress.latestLoss.toFixed(4) : '--'}</span>
+              <span>ETA: {progress.etaText}</span>
+            </div>
+            <div style={{ marginTop: 8, border: '1px solid var(--border)', borderRadius: 6, padding: 8, background: 'var(--bg3)' }}>
+              <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 6 }}>Loss Trend</div>
+              <div style={{ position: 'relative' }}>
+                <canvas ref={lossCanvasRef} id="train-loss-canvas" width={560} height={200} style={{ width: '100%', height: 200, display: 'block' }} />
+                {progress.lossSeries.length === 0 && (
+                  <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text2)', fontSize: 12 }}>
+                    No data yet — loss values will appear here during training.
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+          <div className="spacer" />
+          <ProcessButtons running={running} onStart={start} onStop={stop} startLabel="▶ Start Training" disabled={!preflightOk || (source === 'local' && localRepoId === '__none__')} />
+        </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           <div className="card">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
@@ -433,129 +561,6 @@ export function TrainTab({ active }: TrainTabProps) {
               ) : null}
             </div>
           </div>
-        </div>
-
-        <div className="card">
-          <h3>Configuration</h3>
-          <label>Policy Type</label>
-          <select value={(config.train_policy as string) ?? 'act'} onChange={(e) => buildConfig({ train_policy: e.target.value })}>
-            <option value="act">ACT (Action Chunking with Transformers)</option>
-            <option value="diffusion">Diffusion Policy</option>
-            <option value="tdmpc2">TD-MPC2</option>
-          </select>
-          <label>Dataset Source</label>
-          <div className="mode-toggle" style={{ marginLeft: 0, marginBottom: 8 }}>
-            <button className={`toggle ${source === 'local' ? 'active' : ''}`} onClick={() => setSource('local')}>
-              Local
-            </button>
-            <button className={`toggle ${source === 'hf' ? 'active' : ''}`} onClick={() => setSource('hf')}>
-              Hugging Face
-            </button>
-          </div>
-          {source === 'local' ? (
-            <>
-              <label>Local Dataset</label>
-              <select value={repoId} onChange={(e) => buildConfig({ train_repo_id: e.target.value })}>
-                {datasets.length === 0 ? <option value="__none__">No local datasets — record in Record tab first</option> : null}
-                {datasets.map((ds) => (
-                  <option key={ds.id} value={ds.id}>
-                    {ds.id}
-                  </option>
-                ))}
-              </select>
-              <div className="field-help" style={{ marginTop: 4 }}>Choose a dataset from local cache (`~/.cache/huggingface/lerobot`).</div>
-            </>
-          ) : (
-            <>
-              <label>Dataset Repo ID</label>
-              <input type="text" value={(config.train_repo_id as string) ?? 'user/my-dataset'} onChange={(e) => buildConfig({ train_repo_id: e.target.value })} />
-            </>
-          )}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, marginBottom: 4 }}>
-            <label style={{ margin: 0 }}>Training Steps</label>
-            <div style={{ display: 'flex', gap: 4 }}>
-              <button className="btn-xs" onClick={() => applyPreset('quick')}>
-                Quick (1K)
-              </button>
-              <button className="btn-xs" onClick={() => applyPreset('standard')}>
-                Standard (50K)
-              </button>
-              <button className="btn-xs" onClick={() => applyPreset('full')}>
-                Full (100K)
-              </button>
-            </div>
-          </div>
-          <input type="number" value={trainSteps} onChange={(e) => buildConfig({ train_steps: Number(e.target.value) })} />
-
-          <div className="advanced-only" style={{ marginTop: 8, padding: 10, border: '1px solid var(--border)', borderRadius: 6, background: 'color-mix(in srgb, var(--bg3) 60%, transparent)' }}>
-            <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 8, fontWeight: 600, letterSpacing: 0.2 }}>ADVANCED PARAMS</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              <div>
-                <label style={{ marginBottom: 3 }}>Batch Size</label>
-                <input
-                  type="number"
-                  min={1}
-                  step={1}
-                  placeholder="default (64)"
-                  value={typeof config.train_batch_size === 'number' ? config.train_batch_size : ''}
-                  onChange={(e) => buildConfig({ train_batch_size: e.target.value.trim() ? Number(e.target.value) : undefined })}
-                />
-                <div className="field-help">Samples per gradient step.</div>
-              </div>
-              <div>
-                <label style={{ marginBottom: 3 }}>Learning Rate</label>
-                <input
-                  type="text"
-                  placeholder="default (1e-4)"
-                  value={(config.train_lr as string) ?? ''}
-                  onChange={(e) => buildConfig({ train_lr: e.target.value })}
-                />
-                <div className="field-help">e.g. 1e-4, 0.0001</div>
-              </div>
-            </div>
-          </div>
-          <label>Compute Device</label>
-          <select value={(config.train_device as string) ?? 'cuda'} onChange={(e) => buildConfig({ train_device: e.target.value })}>
-            <option value="cuda">CUDA (GPU)</option>
-            <option value="cpu">CPU</option>
-            <option value="mps">MPS (Apple Silicon)</option>
-          </select>
-          {!preflightOk ? (
-            <div id="train-device-warning" className="train-device-warning">
-              {preflightReason || 'Device preflight failed. Training is blocked.'}
-            </div>
-          ) : null}
-          {!preflightOk && preflightAction === 'install_torch_cuda' ? (
-            <div id="train-device-actions" style={{ marginTop: 6, display: 'flex', justifyContent: 'flex-end' }}>
-              <button id="train-install-btn" className="btn-sm" onClick={installCudaTorch}>
-                Install CUDA PyTorch (Nightly)
-              </button>
-            </div>
-          ) : null}
-          <div style={{ marginTop: 10, padding: 10, border: '1px solid var(--border)', borderRadius: 8, background: 'rgba(255,255,255,0.02)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-              <span style={{ fontSize: 12, color: 'var(--text2)' }}>Training Progress</span>
-              <span id="train-progress-status" style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: running ? 'rgba(34,197,94,0.18)' : !preflightOk ? 'rgba(248,81,73,0.18)' : 'rgba(148,163,184,0.18)', color: running ? '#86efac' : !preflightOk ? '#fca5a5' : 'var(--text2)' }}>
-                {running ? 'RUNNING' : !preflightOk ? 'BLOCKED' : 'IDLE'}
-              </span>
-            </div>
-            <div className="usb-bus-bar-track">
-              <div id="train-progress-fill" className="usb-bar-fill good" style={{ width: `${progress.progressPct}%` }} />
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, fontSize: 12, color: 'var(--text2)', gap: 10, flexWrap: 'wrap' }}>
-              <span>
-                Step: {progress.currentStep !== null ? progress.currentStep.toLocaleString() : '--'} / {progress.currentStep !== null && progress.totalSteps !== null ? (progress.totalSteps ?? trainSteps).toLocaleString() : '--'}
-              </span>
-              <span>Loss: {progress.latestLoss !== null ? progress.latestLoss.toFixed(4) : '--'}</span>
-              <span>ETA: {progress.etaText}</span>
-            </div>
-            <div style={{ marginTop: 8, border: '1px solid var(--border)', borderRadius: 6, padding: 8, background: 'var(--bg3)' }}>
-              <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 6 }}>Loss Trend</div>
-              <canvas ref={lossCanvasRef} id="train-loss-canvas" width={560} height={200} style={{ width: '100%', height: 200, display: 'block' }} />
-            </div>
-          </div>
-          <div className="spacer" />
-          <ProcessButtons running={running} onStart={start} onStop={stop} startLabel="▶ Start Training" disabled={!preflightOk} />
         </div>
       </div>
     </section>

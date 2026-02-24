@@ -1543,6 +1543,14 @@ def create_app(
                             info = json.loads(info_path.read_text())
                             mtime = info_path.stat().st_mtime
                             mdate = datetime.datetime.fromtimestamp(mtime).strftime('%Y-%m-%d %H:%M:%S')
+                            # Try info.json fields first, fallback to actual disk usage
+                            info_size = info.get("data_files_size_in_mb", 0) + info.get("video_files_size_in_mb", 0)
+                            if info_size == 0:
+                                try:
+                                    total_bytes = sum(f.stat().st_size for f in ds_dir.rglob('*') if f.is_file())
+                                    info_size = round(total_bytes / (1024 * 1024), 1)
+                                except Exception:
+                                    info_size = 0
                             datasets.append({
                                 "id": f"{user_dir.name}/{ds_dir.name}",
                                 "total_episodes": info.get("total_episodes", 0),
@@ -1550,7 +1558,7 @@ def create_app(
                                 "fps": info.get("fps", 30),
                                 "modified": mdate,
                                 "timestamp": mtime,
-                                "size_mb": info.get("data_files_size_in_mb", 0) + info.get("video_files_size_in_mb", 0)
+                                "size_mb": info_size
                             })
                         except Exception:
                             pass

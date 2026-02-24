@@ -175,30 +175,7 @@ h1 { font-size: 16px; font-weight: 600; letter-spacing: .3px; }
   margin: 4px 0;
 }
 
-.view-mode-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--bg3);
-}
 
-.mode-btn {
-  border: none;
-  background: transparent;
-  color: var(--text2);
-  border-radius: 999px;
-  padding: 4px 10px;
-  font-size: 11px;
-  cursor: pointer;
-}
-
-.mode-btn.active {
-  background: color-mix(in srgb, var(--accent) 18%, transparent);
-  color: var(--accent);
-}
 
 .toast-root {
   position: fixed;
@@ -499,8 +476,7 @@ main:has(#tab-record.active) {
 
   #theme-toggle-btn,
   .profile-more-btn,
-  .header-profile-controls .btn-xs,
-  .mode-btn {
+  .header-profile-controls .btn-xs {
     min-height: 30px;
   }
 

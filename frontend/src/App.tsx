@@ -22,8 +22,7 @@ function App() {
   const activeTab = useLeStudioStore((s) => s.activeTab)
   const wsReady = useLeStudioStore((s) => s.wsReady)
   const procStatus = useLeStudioStore((s) => s.procStatus)
-  const uiMode = useLeStudioStore((s) => s.uiMode)
-  const setUiMode = useLeStudioStore((s) => s.setUiMode)
+
   const setSidebarSignals = useLeStudioStore((s) => s.setSidebarSignals)
   const { loadConfig } = useConfig()
   const { refreshDevices } = useMappedCameras()
@@ -55,11 +54,7 @@ function App() {
         return
       }
 
-      if (e.ctrlKey && e.shiftKey && e.key === 'A') {
-        e.preventDefault()
-        setUiMode(uiMode === 'guided' ? 'advanced' : 'guided')
-        return
-      }
+
 
       if (e.code === 'Space') {
         if (activeTab === 'teleop') {
@@ -94,7 +89,7 @@ function App() {
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [activeTab, procStatus.record, setUiMode, uiMode])
+  }, [activeTab, procStatus.record])
 
   const toggleTheme = () => {
     const next: ThemeMode = theme === 'dark' ? 'light' : 'dark'
