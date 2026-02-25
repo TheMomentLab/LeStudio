@@ -9,11 +9,13 @@ interface LeStudioState {
   wsReady: boolean
   apiHealth: { resources: boolean; history: boolean }
   apiSupport: { resources: boolean; history: boolean }
+  hfUsername: string | null
 
   logLines: Record<string, LogLine[]>
   toasts: Toast[]
   sidebarSignals: SidebarSignals
   mobileSidebarOpen: boolean
+  consoleHeight: number
   setActiveTab: (tab: string) => void
   setConfig: (cfg: Record<string, unknown>) => void
   updateConfig: (partial: Record<string, unknown>) => void
@@ -29,6 +31,8 @@ interface LeStudioState {
   removeToast: (id: string) => void
   setSidebarSignals: (signals: Partial<SidebarSignals>) => void
   setMobileSidebarOpen: (open: boolean) => void
+  setHfUsername: (username: string | null) => void
+  setConsoleHeight: (height: number) => void
 }
 
 const MAX_LOG_LINES = 1200
@@ -76,6 +80,8 @@ export const useLeStudioStore = create<LeStudioState>((set) => ({
   toasts: [],
   sidebarSignals: defaultSignals,
   mobileSidebarOpen: false,
+  hfUsername: null,
+  consoleHeight: 170,
 
   setActiveTab: (tab) => {
     if (!VALID_TABS.has(tab)) return
@@ -118,6 +124,8 @@ export const useLeStudioStore = create<LeStudioState>((set) => ({
   removeToast: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
   setSidebarSignals: (signals) => set((s) => ({ sidebarSignals: { ...s.sidebarSignals, ...signals } })),
   setMobileSidebarOpen: (open) => set({ mobileSidebarOpen: open }),
+  setHfUsername: (username) => set({ hfUsername: username }),
+  setConsoleHeight: (height) => set({ consoleHeight: height }),
 }))
 
 export type { LeStudioState }

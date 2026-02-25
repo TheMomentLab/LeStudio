@@ -13,10 +13,11 @@ import { DeviceSetupTab } from './tabs/DeviceSetupTab'
 import { DatasetTab } from './tabs/DatasetTab'
 import { TrainTab } from './tabs/TrainTab'
 import { EvalTab } from './tabs/EvalTab'
-import { apiGet } from './lib/api'
+import { apiGet, apiPost } from './lib/api'
 import { useLeStudioStore } from './store'
 
 type ThemeMode = 'dark' | 'light'
+const DEFAULT_CTA_STYLE = 'default'
 
 function App() {
   const activeTab = useLeStudioStore((s) => s.activeTab)
@@ -24,6 +25,8 @@ function App() {
   const procStatus = useLeStudioStore((s) => s.procStatus)
 
   const setSidebarSignals = useLeStudioStore((s) => s.setSidebarSignals)
+  const setHfUsername = useLeStudioStore((s) => s.setHfUsername)
+  const updateConfig = useLeStudioStore((s) => s.updateConfig)
   const { loadConfig } = useConfig()
   const { refreshDevices } = useMappedCameras()
   const [theme, setTheme] = useState<ThemeMode>('dark')
@@ -35,15 +38,40 @@ function App() {
     const safeTheme = savedTheme === 'light' ? 'light' : 'dark'
     setTheme(safeTheme)
     document.documentElement.setAttribute('data-theme', safeTheme)
+    document.documentElement.setAttribute('data-cta-style', DEFAULT_CTA_STYLE)
     loadConfig()
     refreshDevices()
     apiGet<{ huggingface_cli?: boolean }>('/api/deps/status')
-      .then((res) => setSidebarSignals({ datasetMissingDep: !res.huggingface_cli }))
+      .then(() => setSidebarSignals({ datasetMissingDep: false }))
       .catch(() => undefined)
     apiGet<{ ok: boolean }>('/api/train/preflight?device=cuda')
       .then((res) => setSidebarSignals({ trainMissingDep: !res.ok }))
       .catch(() => setSidebarSignals({ trainMissingDep: true }))
-  }, [loadConfig, refreshDevices, setSidebarSignals])
+    apiGet<{ ok: boolean; username: string | null }>('/api/hf/whoami')
+      .then((res) => {
+        if (res.ok && res.username) {
+          setHfUsername(res.username)
+          /* Prefill repo_id fields that still have the generic default */
+          const cfg = useLeStudioStore.getState().config
+          const prefill: Record<string, string> = {}
+          const defaultPattern = /^user\//
+          if (defaultPattern.test((cfg.record_repo_id as string) ?? 'user/my-dataset')) {
+            prefill.record_repo_id = ((cfg.record_repo_id as string) ?? 'user/my-dataset').replace('user/', `${res.username}/`)
+          }
+          if (defaultPattern.test((cfg.eval_repo_id as string) ?? 'user/my-dataset')) {
+            prefill.eval_repo_id = ((cfg.eval_repo_id as string) ?? 'user/my-dataset').replace('user/', `${res.username}/`)
+          }
+          if (defaultPattern.test((cfg.train_repo_id as string) ?? 'user/my-dataset')) {
+            prefill.train_repo_id = ((cfg.train_repo_id as string) ?? 'user/my-dataset').replace('user/', `${res.username}/`)
+          }
+          if (Object.keys(prefill).length > 0) {
+            updateConfig(prefill)
+            apiPost('/api/config', { ...cfg, ...prefill }).catch(() => undefined)
+          }
+        }
+      })
+      .catch(() => undefined)
+  }, [loadConfig, refreshDevices, setSidebarSignals, setHfUsername, updateConfig])
 
   /* keyboard shortcuts */
   useEffect(() => {

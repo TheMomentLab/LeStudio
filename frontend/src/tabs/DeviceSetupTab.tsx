@@ -176,6 +176,7 @@ export function DeviceSetupTab({ active }: DeviceSetupTabProps) {
   const setDevices = useLeStudioStore((s) => s.setDevices)
   const addToast = useLeStudioStore((s) => s.addToast)
   const setSidebarSignals = useLeStudioStore((s) => s.setSidebarSignals)
+  const setActiveTab = useLeStudioStore((s) => s.setActiveTab)
   const [rulesStatus, setRulesStatus] = useState<RulesStatusResponse | null>(null)
   const [rulesReadable, setRulesReadable] = useState<UdevRulesResponse | null>(null)
   const [cameraAssignments, setCameraAssignments] = useState<Record<string, string>>({})
@@ -189,6 +190,9 @@ export function DeviceSetupTab({ active }: DeviceSetupTabProps) {
   const [identifiedArmDevice, setIdentifiedArmDevice] = useState('')
   const [identifiedArmKernel, setIdentifiedArmKernel] = useState('')
   const [identifyRole, setIdentifyRole] = useState('follower_arm_1')
+  const [rulesPanelOpen, setRulesPanelOpen] = useState(false)
+  const [applyState, setApplyState] = useState<'idle' | 'applying' | 'applied' | 'error'>('idle')
+  const [applyNote, setApplyNote] = useState('')
   const identifySnapshotRef = useRef<Array<{ device: string; serial: string; kernels: string }>>([])
   const identifyTimerRef = useRef<number | null>(null)
   const rulesApplyTimerRef = useRef<number | null>(null)
@@ -217,17 +221,25 @@ export function DeviceSetupTab({ active }: DeviceSetupTabProps) {
       }
 
       try {
+        setApplyState('applying')
+        setApplyNote('Applying mapping...')
         const res = await apiPost<{ ok: boolean; error?: string }>('/api/rules/apply', {
           assignments: nextCameraAssignments,
           arm_assignments: nextArmAssignments,
         })
         if (!res.ok) {
+          setApplyState('error')
+          setApplyNote(res.error ?? 'Failed to apply mapping')
           if (!silent) addToast(`Failed to apply mapping: ${res.error ?? 'unknown error'}`, 'error')
           return false
         }
+        setApplyState('applied')
+        setApplyNote('Mapping applied')
         if (!silent) addToast('Mapping rules applied.', 'success')
         return true
       } catch (err) {
+        setApplyState('error')
+        setApplyNote(String(err))
         if (!silent) addToast(`Failed to apply mapping: ${String(err)}`, 'error')
         return false
       }
@@ -346,6 +358,7 @@ export function DeviceSetupTab({ active }: DeviceSetupTabProps) {
     setDevices({ cameras: data.cameras ?? [], arms: data.arms ?? [] })
     setRulesStatus(rs)
     setRulesReadable(rulesData)
+    setRulesPanelOpen(!rs.rules_installed)
     setSidebarSignals({
       rulesNeedsInstall: !rs.rules_installed,
       rulesNeedsRoot: rs.needs_root_for_install,
@@ -365,6 +378,8 @@ export function DeviceSetupTab({ active }: DeviceSetupTabProps) {
       if (serial) nextArmMap[serial] = arm.symlink ?? '(none)'
     })
     setArmAssignments(nextArmMap)
+    setApplyState('idle')
+    setApplyNote('')
     autoApplyReadyRef.current = true
   }, [fetchRulesReadable, fetchRulesStatus, setDevices, setSidebarSignals])
 
@@ -418,6 +433,50 @@ export function DeviceSetupTab({ active }: DeviceSetupTabProps) {
     }
     return parseRulesFromText(rulesReadable?.content ?? '')
   }, [rulesReadable])
+
+  const cameraMappable = useMemo(
+    () => devices.cameras.filter((camera) => !!camera.kernels),
+    [devices.cameras],
+  )
+
+  const armMappable = useMemo(
+    () => devices.arms.filter((arm) => !!arm.serial),
+    [devices.arms],
+  )
+
+  const cameraAssignedCount = useMemo(
+    () => cameraMappable.filter((camera) => {
+      const key = camera.kernels ?? ''
+      const role = cameraAssignments[key] ?? '(none)'
+      return role !== '(none)'
+    }).length,
+    [cameraAssignments, cameraMappable],
+  )
+
+  const armAssignedCount = useMemo(
+    () => armMappable.filter((arm) => {
+      const key = arm.serial ?? ''
+      const role = armAssignments[key] ?? '(none)'
+      return role !== '(none)'
+    }).length,
+    [armAssignments, armMappable],
+  )
+
+  const hasCameraDuplicates = useMemo(
+    () => hasDuplicateRole(cameraAssignments),
+    [cameraAssignments],
+  )
+
+  const hasArmDuplicates = useMemo(
+    () => hasDuplicateRole(armAssignments),
+    [armAssignments],
+  )
+
+  const mappingComplete =
+    (cameraMappable.length === 0 || cameraAssignedCount === cameraMappable.length) &&
+    (armMappable.length === 0 || armAssignedCount === armMappable.length) &&
+    !hasCameraDuplicates &&
+    !hasArmDuplicates
 
   const renderRulesTable = (title: string, portHeader: string, rows: Array<{ port: string; symlink: string; mode: string; exists?: boolean | null }>) => {
     const symlinkCounts: Record<string, number> = {}
@@ -476,6 +535,9 @@ export function DeviceSetupTab({ active }: DeviceSetupTabProps) {
     <section id="tab-device-setup" className={`tab ${active ? 'active' : ''}`}>
       <div className="section-header">
         <h2>Device Mapping</h2>
+        <span className={`status-verdict ${mappingComplete ? 'ready' : 'warn'}`}>
+          {mappingComplete ? 'Mapping Ready' : 'Mapping Incomplete'}
+        </span>
         <button onClick={refresh} className="btn-sm">
           ↺ Refresh
         </button>
@@ -532,33 +594,74 @@ export function DeviceSetupTab({ active }: DeviceSetupTabProps) {
           </div>
         )}
 
-        {/* Current Active Rules — always shown */}
-        <div id="rules-advanced-panel" style={{ marginTop: 16, padding: 0 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text2)', marginBottom: 8, letterSpacing: '0.2px' }}>Current Active Rules</div>
-          <div className="rules-readable">
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, alignItems: 'start' }}>
-              {renderRulesTable(
-                'Camera Rules',
-                'USB PORT (KERNELS)',
-                cameraRules.map((row) => ({
-                  port: row.kernel ?? '?',
-                  symlink: row.symlink ?? '?',
-                  mode: row.mode ?? '?',
-                  exists: row.exists,
-                })),
-              )}
-              {renderRulesTable(
-                'ARM Rules',
-                'SERIAL',
-                armRules.map((row) => ({
-                  port: row.serial ?? '?',
-                  symlink: row.symlink ?? '?',
-                  mode: row.mode ?? '?',
-                  exists: row.exists,
-                })),
-              )}
+        <details className="advanced-panel" id="rules-advanced-panel" open={rulesPanelOpen} style={{ marginTop: 16, padding: 0 }}>
+          <summary onClick={(e) => { e.preventDefault(); setRulesPanelOpen((prev) => !prev) }}>
+            <span>Current Active Rules {rulesPanelOpen ? '▾' : '▸'}</span>
+            <span className="rules-summary-meta">{rulesPanelOpen ? 'Tap to hide details' : 'Tap to show details'}</span>
+          </summary>
+          {rulesPanelOpen ? (
+            <div className="rules-readable" style={{ marginTop: 10 }}>
+              <div className="mapping-rules-grid">
+                {renderRulesTable(
+                  'Camera Rules',
+                  'USB PORT (KERNELS)',
+                  cameraRules.map((row) => ({
+                    port: row.kernel ?? '?',
+                    symlink: row.symlink ?? '?',
+                    mode: row.mode ?? '?',
+                    exists: row.exists,
+                  })),
+                )}
+                {renderRulesTable(
+                  'ARM Rules',
+                  'SERIAL',
+                  armRules.map((row) => ({
+                    port: row.serial ?? '?',
+                    symlink: row.symlink ?? '?',
+                    mode: row.mode ?? '?',
+                    exists: row.exists,
+                  })),
+                )}
+              </div>
             </div>
+          ) : null}
+        </details>
+      </div>
+
+      <div className="card" style={{ marginTop: 0 }}>
+        <h3>Mapping Checklist</h3>
+        <div className="device-list">
+          <div className="device-item" style={{ justifyContent: 'space-between' }}>
+            <div className="dname">Camera roles</div>
+            <span className={`dbadge ${(cameraMappable.length > 0 && cameraAssignedCount === cameraMappable.length) ? 'badge-ok' : 'badge-warn'}`}>
+              {cameraAssignedCount}/{cameraMappable.length || 0}
+            </span>
           </div>
+          <div className="device-item" style={{ justifyContent: 'space-between' }}>
+            <div className="dname">Arm roles</div>
+            <span className={`dbadge ${(armMappable.length > 0 && armAssignedCount === armMappable.length) ? 'badge-ok' : 'badge-warn'}`}>
+              {armAssignedCount}/{armMappable.length || 0}
+            </span>
+          </div>
+          <div className="device-item" style={{ justifyContent: 'space-between' }}>
+            <div className="dname">Duplicate roles</div>
+            <span className={`dbadge ${(!hasCameraDuplicates && !hasArmDuplicates) ? 'badge-ok' : 'badge-err'}`}>
+              {(!hasCameraDuplicates && !hasArmDuplicates) ? 'none' : 'found'}
+            </span>
+          </div>
+          <div className="device-item" style={{ justifyContent: 'space-between' }}>
+            <div className="dname">Apply status</div>
+            <span className={`dbadge ${applyState === 'error' ? 'badge-err' : applyState === 'applied' ? 'badge-ok' : applyState === 'applying' ? 'badge-run' : 'badge-idle'}`}>
+              {applyState.toUpperCase()}
+            </span>
+          </div>
+          {applyNote ? <div className="dsub">{applyNote}</div> : null}
+          {mappingComplete && (
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 4 }}>
+              <button type="button" className="link-btn" onClick={() => setActiveTab('teleop')}>→ Proceed to Teleop</button>
+              <button type="button" className="link-btn" onClick={() => setActiveTab('record')}>→ Proceed to Record</button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -638,6 +741,9 @@ export function DeviceSetupTab({ active }: DeviceSetupTabProps) {
                         </option>
                       ))}
                     </select>
+                    {(() => { const role = cameraAssignments[camera.kernels ?? ''] ?? '(none)'; const label = CAMERA_ROLE_OPTIONS.find(o => o.value === role)?.label; return role !== '(none)' && label ? (
+                      <div style={{ marginTop: 8, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '3px 10px', borderRadius: 999, background: 'color-mix(in srgb, var(--green) 12%, transparent)', border: '1px solid color-mix(in srgb, var(--green) 35%, transparent)', color: 'var(--green)', fontSize: 11, fontWeight: 600 }}>✓ {label}</div>
+                    ) : null })()}
 
                     <div style={{ marginTop: 16, display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--text2)', background: 'var(--bg-app)', padding: 8, borderRadius: 4, border: '1px solid var(--border)' }}>
                       <span title="USB Port ID">
@@ -724,7 +830,7 @@ export function DeviceSetupTab({ active }: DeviceSetupTabProps) {
 
         <div id="device-arms-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 20 }}>
           {devices.arms.length === 0
-            ? 'Loading…'
+            ? <div style={{ color: 'var(--color-text-secondary, var(--text2))', fontStyle: 'italic', padding: '12px 0' }}>No arms detected. Connect a USB arm and click Refresh.</div>
             : devices.arms.map((arm, idx) => (
                 <div className="arm-card" key={`${arm.device ?? 'arm'}-${idx}`} style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.2)', border: '1px solid var(--border)', borderRadius: 8, padding: 14, background: 'var(--bg-card)' }}>
                   <div style={{ fontWeight: 600, marginBottom: 8 }}>/dev/{arm.device ?? '?'}</div>

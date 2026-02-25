@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { formatRobotType } from '../lib/format'
 import { MappedCameraRows } from '../components/shared/MappedCameraRows'
 import { ProcessButtons } from '../components/shared/ProcessButtons'
+import { getProcessConflict } from '../lib/processConflicts'
 import { RobotCapabilitiesCard } from '../components/shared/RobotCapabilitiesCard'
 import { useConfig } from '../hooks/useConfig'
 import { useMappedCameras } from '../hooks/useMappedCameras'
@@ -45,11 +47,14 @@ function buildSelectOptions(preferred: string[], values: string[], current: stri
 
 export function TeleopTab({ active }: TeleopTabProps) {
   const { config, buildConfig } = useConfig()
+  const buildConfigRef = useRef(buildConfig)
   const { mappedCameras, refreshDevices } = useMappedCameras()
   const { runPreflight, stopProcess } = useProcess()
   const devices = useLeStudioStore((s) => s.devices)
   const addToast = useLeStudioStore((s) => s.addToast)
   const running = useLeStudioStore((s) => !!s.procStatus.teleop)
+  const procStatus = useLeStudioStore((s) => s.procStatus)
+  const conflictReason = getProcessConflict('teleop', procStatus)
   const clearLog = useLeStudioStore((s) => s.clearLog)
   const appendLog = useLeStudioStore((s) => s.appendLog)
   const teleopLines = useLeStudioStore((s) => s.logLines.teleop ?? EMPTY_TELEOP_LINES)
@@ -67,6 +72,11 @@ export function TeleopTab({ active }: TeleopTabProps) {
   const [streamFps, setStreamFps] = useState('30')
   const [jpegQuality, setJpegQuality] = useState(70)
   const [pausedFeeds, setPausedFeeds] = useState<Record<string, boolean>>({})
+  const [step1Open, setStep1Open] = useState(false)
+
+  useEffect(() => {
+    buildConfigRef.current = buildConfig
+  }, [buildConfig])
 
   const loopPerf = (() => {
     for (let i = teleopLines.length - 1; i >= 0; i -= 1) {
@@ -84,6 +94,8 @@ export function TeleopTab({ active }: TeleopTabProps) {
 
   useEffect(() => {
     if (!active) return
+    setMode('single')
+    buildConfigRef.current({ robot_mode: 'single' })
     refreshDevices()
     apiGet<RobotsResponse>('/api/robots').then((r) => {
       setRobotTypes(r.types ?? ['so101_follower'])
@@ -103,14 +115,15 @@ export function TeleopTab({ active }: TeleopTabProps) {
         setFollowerIds(['my_so101_follower_1'])
         setLeaderIds(['my_so101_leader_1'])
       })
-  }, [active, refreshDevices])
+  }, [active, config.robot_type, refreshDevices])
 
   useEffect(() => {
     const robotMode = (config.robot_mode as string) ?? 'single'
     setMode(robotMode === 'bi' ? 'bi' : 'single')
   }, [config.robot_mode])
 
-  const selectedRobotType = (config.robot_type as string) ?? robotTypes[0] ?? 'so101_follower'
+  const selectedRobotType = (() => { const v = (config.robot_type as string) ?? ''; return (v && robotTypes.includes(v)) ? v : (robotTypes[0] ?? 'so101_follower') })()
+  const selectedTeleopType = (() => { const v = (config.teleop_type as string) ?? ''; return (v && teleopTypes.includes(v)) ? v : (teleopTypes[0] ?? 'so101_leader') })()
 
   useEffect(() => {
     if (!active) return
@@ -120,11 +133,11 @@ export function TeleopTab({ active }: TeleopTabProps) {
         setTeleopTypes(types)
         const currentTeleop = (config.teleop_type as string) ?? ''
         if (currentTeleop && !types.includes(currentTeleop) && types.length > 0) {
-          buildConfig({ teleop_type: types[0] })
+          buildConfigRef.current({ teleop_type: types[0] })
         }
       })
       .catch(() => setTeleopTypes(['so101_leader']))
-  }, [active, selectedRobotType])
+  }, [active, config.teleop_type, selectedRobotType])
 
   const selectedRobotDetail = robotDetails[selectedRobotType] ?? null
 
@@ -200,6 +213,11 @@ export function TeleopTab({ active }: TeleopTabProps) {
   }, [active])
 
   useEffect(() => {
+    if (!active) return
+    setStep1Open(window.innerWidth >= 1100)
+  }, [active])
+
+  useEffect(() => {
     setPausedFeeds((prev) => {
       const next: Record<string, boolean> = {}
       availableCameras.forEach((camera) => {
@@ -217,6 +235,31 @@ export function TeleopTab({ active }: TeleopTabProps) {
     }
   }, [streamResolution])
 
+  const mappedCameraCount = useMemo(
+    () => Object.values(mappedCameras).filter((path) => String(path ?? '').trim().length > 0).length,
+    [mappedCameras],
+  )
+
+  const camerasReady = mappedCameraCount > 0 && availableCameras.length > 0
+
+  const requiredArmPorts = useMemo(
+    () =>
+      mode === 'single'
+        ? [followerPort, leaderPort]
+        : [leftFollowerPort, rightFollowerPort, leftLeaderPort, rightLeaderPort],
+    [followerPort, leaderPort, leftFollowerPort, rightFollowerPort, leftLeaderPort, rightLeaderPort, mode],
+  )
+
+  const connectedArmPortSet = useMemo(() => new Set(armPaths), [armPaths])
+
+  const missingArmPorts = useMemo(
+    () => requiredArmPorts.filter((port) => !connectedArmPortSet.has(port)),
+    [connectedArmPortSet, requiredArmPorts],
+  )
+
+  const armsReady = missingArmPorts.length === 0
+  const teleopReady = armsReady && camerasReady && !conflictReason
+
   const streamSrc = (cameraPath: string) => {
     const cameraName = cameraPath.replace('/dev/', '')
     return `/stream/${encodeURIComponent(cameraName)}?codec=${streamCodec}&width=${feedResolution.width}&height=${feedResolution.height}&fps=${streamFps}&quality=${jpegQuality}`
@@ -225,8 +268,8 @@ export function TeleopTab({ active }: TeleopTabProps) {
   const getCfg = () => {
     const cfg: Record<string, unknown> = {
       robot_mode: mode,
-      robot_type: (config.robot_type as string) ?? robotTypes[0] ?? 'so101_follower',
-      teleop_type: (config.teleop_type as string) ?? teleopTypes[0] ?? 'so101_leader',
+      robot_type: selectedRobotType,
+      teleop_type: selectedTeleopType,
       follower_port: (config.follower_port as string) ?? '/dev/follower_arm_1',
       robot_id: (config.robot_id as string) ?? 'my_so101_follower_1',
       leader_port: (config.leader_port as string) ?? '/dev/leader_arm_1',
@@ -273,6 +316,7 @@ export function TeleopTab({ active }: TeleopTabProps) {
     <section id="tab-teleop" className={`tab ${active ? 'active' : ''}`}>
       <div className="section-header">
         <h2>Teleoperation</h2>
+        <span className={`status-verdict ${running || teleopReady ? 'ready' : 'warn'}`}>{running ? 'Teleop Active' : teleopReady ? 'Ready to Start' : 'Action Needed'}</span>
         <div className="mode-toggle">
           <label>Control Mode:</label>
           <button id="teleop-mode-single" className={`toggle ${mode === 'single' ? 'active' : ''}`} onClick={() => setModeAndConfig('single')}>
@@ -281,135 +325,163 @@ export function TeleopTab({ active }: TeleopTabProps) {
           <button id="teleop-mode-bi" className={`toggle ${mode === 'bi' ? 'active' : ''}`} onClick={() => setModeAndConfig('bi')}>
             Bi-Arm
           </button>
-          <span
-            id="teleop-loop-pill"
-            className={`perf-pill ${!loopPerf ? 'idle' : loopPerf.hz >= 58 ? 'good' : loopPerf.hz >= 54 ? 'warn' : 'bad'}`}
-            title={loopPerf ? `Loop latency: ${loopPerf.ms.toFixed(2)}ms · ${loopPerf.hz}Hz (Good: ≥58Hz, Warn: 54–57Hz, Bad: <54Hz)` : 'Teleop loop latency — starts once teleop is running'}
-          >
-            {loopPerf ? `Loop: ${loopPerf.ms.toFixed(2)}ms (${loopPerf.hz}Hz)` : 'Loop: --'}
-          </span>
+          {loopPerf && running && (
+            <span
+              id="teleop-loop-pill"
+              className={`perf-pill ${loopPerf.hz >= 58 ? 'good' : loopPerf.hz >= 54 ? 'warn' : 'bad'}`}
+              title={`Loop latency: ${loopPerf.ms.toFixed(2)}ms · ${loopPerf.hz}Hz (Good: ≥58Hz, Warn: 54–57Hz, Bad: <54Hz)`}
+            >
+              {`Loop: ${loopPerf.ms.toFixed(2)}ms (${loopPerf.hz}Hz)`}
+            </span>
+          )}
         </div>
       </div>
 
       <div className="two-col">
         <div className="card">
-          <h3>Step 1 — Arm Connections</h3>
-          <div className="field-help">Single Arm controls one leader + one follower. Bi-Arm controls left/right pairs.</div>
-          <div className="teleop-arm-grid">
-            <div className="form-field">
-              <label>Robot Type</label>
-              <select value={(config.robot_type as string) ?? robotTypes[0] ?? ''} onChange={(e) => update('robot_type', e.target.value)}>
-                {robotTypes.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
-              </select>
+          {!step1Open ? (
+            <div className="teleop-step-compact" style={{ marginBottom: 8 }}>
+              <div className="device-item" style={{ justifyContent: 'space-between', marginBottom: 6 }}>
+                <span className="dname">Step 1 Ready Summary</span>
+                <button type="button" className="btn-xs" onClick={() => setStep1Open(true)}>Show details</button>
+              </div>
+              <div className="dsub" style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                <span>Mode: {mode === 'single' ? 'Single Arm' : 'Bi-Arm'}</span>
+                <span>Robot: {formatRobotType(selectedRobotType)}</span>
+                <span>Teleop: {formatRobotType(selectedTeleopType)}</span>
+              </div>
+              <div className="dsub" style={{ marginTop: 4 }}>
+                Ports: {requiredArmPorts.join(', ')}
+              </div>
             </div>
-            <div className="form-field">
-              <label>Teleoperator Type</label>
-              <select value={(config.teleop_type as string) ?? teleopTypes[0] ?? ''} onChange={(e) => update('teleop_type', e.target.value)}>
-                {teleopTypes.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
-              </select>
+          ) : null}
+          <details
+            className="advanced-panel"
+            id="teleop-step1-panel"
+            open={step1Open}
+            onToggle={(e) => setStep1Open((e.currentTarget as HTMLDetailsElement).open)}
+          >
+            <summary>
+              <span>Step 1 — Arm Connections</span>
+              <span className="rules-summary-meta">{step1Open ? 'Collapse details' : 'Expand details'}</span>
+            </summary>
+            <div className="field-help" style={{ marginTop: 8 }}>Single Arm controls one leader + one follower. Bi-Arm controls left/right pairs.</div>
+            <div className="teleop-arm-grid">
+              <div className="form-field">
+                <label>Robot Type</label>
+                <select value={selectedRobotType} onChange={(e) => update('robot_type', e.target.value)}>
+                  {robotTypes.map((t) => (
+                    <option key={t} value={t}>
+                      {formatRobotType(t)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="form-field">
+                <label>Teleoperator Type</label>
+                <select value={selectedTeleopType} onChange={(e) => update('teleop_type', e.target.value)}>
+                  {teleopTypes.map((t) => (
+                    <option key={t} value={t}>
+                      {formatRobotType(t)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="form-field-full">
+                <RobotCapabilitiesCard
+                  capabilities={selectedRobotDetail?.capabilities ?? null}
+                  compatibleTeleops={selectedRobotDetail?.compatible_teleops ?? []}
+                />
+              </div>
+              {mode === 'single' ? (
+                <>
+                  <div className="form-field">
+                    <label>Follower Arm Port</label>
+                    <select value={followerPort} onChange={(e) => update('follower_port', e.target.value)}>
+                      {followerPortOptions.map((p) => (
+                        <option key={p} value={p}>
+                          {p}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="form-field">
+                    <label>Follower Arm ID</label>
+                    <select value={robotId} onChange={(e) => update('robot_id', e.target.value)}>
+                      {followerIdOptions.map((id) => (
+                        <option key={id} value={id}>
+                          {id}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="form-field">
+                    <label>Leader Arm Port</label>
+                    <select value={leaderPort} onChange={(e) => update('leader_port', e.target.value)}>
+                      {leaderPortOptions.map((p) => (
+                        <option key={p} value={p}>
+                          {p}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="form-field">
+                    <label>Leader Arm ID</label>
+                    <select value={teleopId} onChange={(e) => update('teleop_id', e.target.value)}>
+                      {leaderIdOptions.map((id) => (
+                        <option key={id} value={id}>
+                          {id}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="form-field">
+                    <label>Left Follower Arm Port</label>
+                    <select value={leftFollowerPort} onChange={(e) => update('left_follower_port', e.target.value)}>
+                      {leftFollowerPortOptions.map((p) => (
+                        <option key={p} value={p}>
+                          {p}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="form-field">
+                    <label>Right Follower Arm Port</label>
+                    <select value={rightFollowerPort} onChange={(e) => update('right_follower_port', e.target.value)}>
+                      {rightFollowerPortOptions.map((p) => (
+                        <option key={p} value={p}>
+                          {p}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="form-field">
+                    <label>Left Leader Arm Port</label>
+                    <select value={leftLeaderPort} onChange={(e) => update('left_leader_port', e.target.value)}>
+                      {leftLeaderPortOptions.map((p) => (
+                        <option key={p} value={p}>
+                          {p}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="form-field">
+                    <label>Right Leader Arm Port</label>
+                    <select value={rightLeaderPort} onChange={(e) => update('right_leader_port', e.target.value)}>
+                      {rightLeaderPortOptions.map((p) => (
+                        <option key={p} value={p}>
+                          {p}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </>
+              )}
             </div>
-            <div className="form-field-full">
-              <RobotCapabilitiesCard
-                capabilities={selectedRobotDetail?.capabilities ?? null}
-                compatibleTeleops={selectedRobotDetail?.compatible_teleops ?? []}
-              />
-            </div>
-            {mode === 'single' ? (
-              <>
-                <div className="form-field">
-                  <label>Follower Arm Port</label>
-                  <select value={followerPort} onChange={(e) => update('follower_port', e.target.value)}>
-                    {followerPortOptions.map((p) => (
-                      <option key={p} value={p}>
-                        {p}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="form-field">
-                  <label>Follower Arm ID</label>
-                  <select value={robotId} onChange={(e) => update('robot_id', e.target.value)}>
-                    {followerIdOptions.map((id) => (
-                      <option key={id} value={id}>
-                        {id}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="form-field">
-                  <label>Leader Arm Port</label>
-                  <select value={leaderPort} onChange={(e) => update('leader_port', e.target.value)}>
-                    {leaderPortOptions.map((p) => (
-                      <option key={p} value={p}>
-                        {p}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="form-field">
-                  <label>Leader Arm ID</label>
-                  <select value={teleopId} onChange={(e) => update('teleop_id', e.target.value)}>
-                    {leaderIdOptions.map((id) => (
-                      <option key={id} value={id}>
-                        {id}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="form-field">
-                  <label>Left Follower Arm Port</label>
-                  <select value={leftFollowerPort} onChange={(e) => update('left_follower_port', e.target.value)}>
-                    {leftFollowerPortOptions.map((p) => (
-                      <option key={p} value={p}>
-                        {p}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="form-field">
-                  <label>Right Follower Arm Port</label>
-                  <select value={rightFollowerPort} onChange={(e) => update('right_follower_port', e.target.value)}>
-                    {rightFollowerPortOptions.map((p) => (
-                      <option key={p} value={p}>
-                        {p}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="form-field">
-                  <label>Left Leader Arm Port</label>
-                  <select value={leftLeaderPort} onChange={(e) => update('left_leader_port', e.target.value)}>
-                    {leftLeaderPortOptions.map((p) => (
-                      <option key={p} value={p}>
-                        {p}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="form-field">
-                  <label>Right Leader Arm Port</label>
-                  <select value={rightLeaderPort} onChange={(e) => update('right_leader_port', e.target.value)}>
-                    {rightLeaderPortOptions.map((p) => (
-                      <option key={p} value={p}>
-                        {p}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </>
-            )}
-          </div>
+          </details>
         </div>
 
         <div className="card">
@@ -468,6 +540,21 @@ export function TeleopTab({ active }: TeleopTabProps) {
 
         <div className="episode-progress-card">
           <div className="ep-card-title">Teleop Control</div>
+          <div className="device-list" style={{ marginBottom: 10 }}>
+            <div className="device-item" style={{ justifyContent: 'space-between' }}>
+              <span className="dname">Arms connected</span>
+              <span className={`dbadge ${armsReady ? 'badge-ok' : 'badge-warn'}`}>{armsReady ? 'ready' : `missing ${missingArmPorts.length}`}</span>
+            </div>
+            {!armsReady ? <div className="dsub">Missing ports: {missingArmPorts.join(', ')}</div> : null}
+            <div className="device-item" style={{ justifyContent: 'space-between' }}>
+              <span className="dname">Camera feeds</span>
+              <span className={`dbadge ${camerasReady ? 'badge-ok' : 'badge-warn'}`}>{availableCameras.length}/{mappedCameraCount || 0}</span>
+            </div>
+            <div className="device-item" style={{ justifyContent: 'space-between' }}>
+              <span className="dname">Process conflicts</span>
+              <span className={`dbadge ${conflictReason ? 'badge-err' : 'badge-ok'}`}>{conflictReason ? `${conflictReason} running` : 'none'}</span>
+            </div>
+          </div>
           <div id="teleop-feeds" className="feed-grid">
             {active && availableCameras.length ? (
               availableCameras.map((camera) => (
@@ -505,6 +592,7 @@ export function TeleopTab({ active }: TeleopTabProps) {
             )}
           </div>
           <div className="ep-actions-panel">
+          {running && (
             <div
               className="safety-banner"
               style={{
@@ -526,9 +614,14 @@ export function TeleopTab({ active }: TeleopTabProps) {
                 Unexpected movement → press <b>Stop</b> immediately. Keep hands clear.
               </span>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+          )}
+          {!running && teleopLines.length > 0 && (
+            <button type="button" className="link-btn" style={{ marginBottom: 8 }} onClick={() => setActiveTab('record')}>→ Proceed to Record</button>
+          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <label style={{ fontSize: 11, color: 'var(--text2)', minWidth: 48 }}>Speed:</label>
-              <select value={(config.teleop_speed as string) ?? '0.5'} onChange={(e) => update('teleop_speed', e.target.value)}>
+              <select value={(config.teleop_speed as string) ?? '0.5'} onChange={(e) => update('teleop_speed', e.target.value)} style={{ minWidth: 130 }}>
                 <option value="0.1">0.1x (slow)</option>
                 <option value="0.25">0.25x</option>
                 <option value="0.5">0.5x (default)</option>
@@ -536,9 +629,10 @@ export function TeleopTab({ active }: TeleopTabProps) {
                 <option value="1.0">1.0x (full)</option>
               </select>
             </div>
-            <ProcessButtons running={running} onStart={start} onStop={stop} startLabel="▶ Start Teleop" />
+            <ProcessButtons running={running} onStart={start} onStop={stop} startLabel="▶ Start Teleop" conflictReason={conflictReason} disabled={!armsReady || !camerasReady} />
           </div>
         </div>
+      </div>
       </div>
     </section>
   )

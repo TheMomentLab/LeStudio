@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { apiGet, apiPost } from '../lib/api'
 import type { ArmDevice, CameraDevice, DevicesResponse } from '../lib/types'
 import { useLeStudioStore } from '../store'
@@ -64,11 +64,48 @@ function armSubtitle(arm: ArmDevice): string {
   return `/dev/${arm.device ?? '?'}`
 }
 
+function summarizeHistoryMeta(meta?: Record<string, unknown>): string {
+  if (!meta) return ''
+  const parts = Object.entries(meta)
+    .filter(([, value]) => value !== null && value !== undefined && String(value).trim() !== '')
+    .slice(0, 3)
+    .map(([key, value]) => `${key}: ${String(value)}`)
+  return parts.join(' · ')
+}
+
+const HISTORY_TYPE_MAP: Record<string, string> = {
+  teleop_start: 'Teleop Started',
+  teleop_end: 'Teleop Ended',
+  record_start: 'Recording Started',
+  record_end: 'Recording Ended',
+  calibrate_start: 'Calibration Started',
+  calibrate_end: 'Calibration Ended',
+  train_start: 'Training Started',
+  train_end: 'Training Ended',
+  eval_start: 'Eval Started',
+  eval_end: 'Eval Ended',
+  motor_setup_start: 'Motor Setup Started',
+  motor_setup_end: 'Motor Setup Ended',
+}
+
+function formatHistoryType(raw: string): string {
+  return HISTORY_TYPE_MAP[raw] ?? raw.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
+function formatHistoryTs(raw: string): string {
+  try {
+    const d = new Date(raw)
+    if (Number.isNaN(d.getTime())) return raw
+    return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+  } catch { return raw }
+}
+
 export function StatusTab({ active }: StatusTabProps) {
   const devices = useLeStudioStore((s) => s.devices)
   const setDevices = useLeStudioStore((s) => s.setDevices)
   const procStatus = useLeStudioStore((s) => s.procStatus)
   const addToast = useLeStudioStore((s) => s.addToast)
+  const setActiveTab = useLeStudioStore((s) => s.setActiveTab)
   const [resources, setResources] = useState<ResourcesResponse | null>(null)
   const [resourcesError, setResourcesError] = useState(false)
   const [history, setHistory] = useState<HistoryEntry[]>([])
@@ -95,24 +132,51 @@ export function StatusTab({ active }: StatusTabProps) {
     setHistory(Array.isArray(data.entries) ? data.entries : [])
   }, [])
 
+  const refreshAll = useCallback(async () => {
+    await Promise.allSettled([refresh(), refreshResources(), refreshHistory()])
+  }, [refresh, refreshHistory, refreshResources])
+
   const clearHistory = useCallback(async () => {
+    const confirmed = window.confirm('Clear all session history entries? This cannot be undone.')
+    if (!confirmed) return
     await apiPost('/api/history/clear', {})
     addToast('History cleared', 'info')
     await refreshHistory()
   }, [addToast, refreshHistory])
 
+  const runningProcess = useMemo(() => {
+    const processOrder: Array<{ key: string; label: string; tab: string }> = [
+      { key: 'teleop', label: 'Teleop', tab: 'teleop' },
+      { key: 'record', label: 'Record', tab: 'record' },
+      { key: 'calibrate', label: 'Calibrate', tab: 'calibrate' },
+      { key: 'motor_setup', label: 'Motor Setup', tab: 'motor-setup' },
+      { key: 'train', label: 'Train', tab: 'train' },
+      { key: 'eval', label: 'Eval', tab: 'eval' },
+    ]
+    return processOrder.find((proc) => !!procStatus[proc.key]) ?? null
+  }, [procStatus])
+
+  const readinessIssues = useMemo(() => {
+    const issues: string[] = []
+    if (devices.cameras.length === 0) issues.push('No camera detected')
+    if (devices.arms.length === 0) issues.push('No arm port detected')
+    if (resourcesError) issues.push('System resources unavailable')
+    if (runningProcess) issues.push(`${runningProcess.label} is running`)
+    return issues
+  }, [devices.arms.length, devices.cameras.length, resourcesError, runningProcess])
+
+  const readyForOperation = readinessIssues.length === 0
+
   useEffect(() => {
     if (!active) return
-    refresh()
-    refreshResources()
-    refreshHistory()
+    refreshAll()
     const rId = window.setInterval(refreshResources, 5000)
     const hId = window.setInterval(refreshHistory, 30000)
     return () => {
       window.clearInterval(rId)
       window.clearInterval(hId)
     }
-  }, [active, refresh, refreshHistory, refreshResources])
+  }, [active, refreshAll, refreshHistory, refreshResources])
 
   useEffect(() => {
     if (!active || resources !== null) return
@@ -126,22 +190,51 @@ export function StatusTab({ active }: StatusTabProps) {
     <section id="tab-status" className={`tab ${active ? 'active' : ''}`}>
       <div className="section-header">
         <h2>System Status</h2>
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span className={`status-verdict ${readyForOperation ? 'ready' : 'warn'}`}>
+          {readyForOperation ? 'Ready' : 'Action Needed'}
+        </span>
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
           <span id="status-last-update" style={{ fontSize: 11, color: 'var(--text2)' }}>
             {lastUpdate ? `Last updated: ${lastUpdate}` : ''}
           </span>
-          <button id="status-refresh-btn" onClick={refresh} className="btn-sm">
-            ↺ Refresh
+          <button id="status-refresh-btn" onClick={refreshAll} className="btn-sm">
+            ↺ Refresh All
           </button>
         </div>
       </div>
+
+      {!readyForOperation ? (
+        <div className="status-issues">
+          <div className="dsub">{readinessIssues.join(' · ')}</div>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            {(devices.cameras.length === 0 || devices.arms.length === 0) ? (
+              <button type="button" className="link-btn" onClick={() => setActiveTab('device-setup')}>
+                → Go to Mapping
+              </button>
+            ) : null}
+            {runningProcess ? (
+              <button type="button" className="link-btn" onClick={() => setActiveTab(runningProcess.tab)}>
+                → Open {runningProcess.label}
+              </button>
+            ) : null}
+            {resourcesError ? (
+              <button type="button" className="link-btn" onClick={() => void refreshResources()}>
+                → Retry Resources
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
 
       <div className="status-grid">
         <div className="card">
           <h3>📷 Cameras</h3>
           <div id="status-cameras" className="device-list">
             {devices.cameras.length === 0 ? (
-              <div className="device-item" style={{ color: 'var(--text2)', fontSize: 12 }}>No cameras detected. Connect a USB camera and click <strong>Refresh</strong>.</div>
+              <div className="device-item" style={{ color: 'var(--text2)', fontSize: 12, flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
+                <span>No cameras detected. Connect a USB camera and click <strong>Refresh</strong>.</span>
+                <button type="button" className="link-btn" onClick={() => setActiveTab('device-setup')}>→ Go to Mapping</button>
+              </div>
             ) : (
               devices.cameras.map((camera, idx) => (
                 <div className="device-item" key={`${camera.device ?? 'cam'}-${idx}`}>
@@ -163,7 +256,10 @@ export function StatusTab({ active }: StatusTabProps) {
           <h3>🦾 Arm Ports</h3>
           <div id="status-arms" className="device-list">
             {devices.arms.length === 0 ? (
-              <div className="device-item" style={{ color: 'var(--text2)', fontSize: 12 }}>No arm ports detected. Connect an arm via USB and click <strong>Refresh</strong>.</div>
+              <div className="device-item" style={{ color: 'var(--text2)', fontSize: 12, flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
+                <span>No arm ports detected. Connect an arm via USB and click <strong>Refresh</strong>.</span>
+                <button type="button" className="link-btn" onClick={() => setActiveTab('device-setup')}>→ Go to Mapping</button>
+              </div>
             ) : (
               devices.arms.map((arm, idx) => (
                 <div className="device-item" key={`${arm.device ?? 'arm'}-${idx}`}>
@@ -184,12 +280,19 @@ export function StatusTab({ active }: StatusTabProps) {
         <div className="card">
           <h3>⚡ Processes</h3>
           <div id="status-procs" className="device-list">
-            {['teleop', 'record', 'calibrate', 'motor_setup', 'train', 'eval'].map((name) => {
-              const running = !!procStatus[name]
+            {[
+              { key: 'teleop', label: 'Teleop' },
+              { key: 'record', label: 'Record' },
+              { key: 'calibrate', label: 'Calibrate' },
+              { key: 'motor_setup', label: 'Motor Setup' },
+              { key: 'train', label: 'Train' },
+              { key: 'eval', label: 'Eval' },
+            ].map(({ key, label }) => {
+              const running = !!procStatus[key]
               return (
-                <div className="device-item" key={name}>
+                <div className="device-item" key={key}>
                   <span className={`dot ${running ? 'green pulse' : 'gray'}`} />
-                  <div className="dname">{name}</div>
+                  <div className="dname">{label}</div>
                   <span className={`dbadge ${running ? 'badge-run' : 'badge-idle'}`}>{running ? 'running' : 'idle'}</span>
                 </div>
               )
@@ -270,7 +373,7 @@ export function StatusTab({ active }: StatusTabProps) {
         <div className="card" style={{ gridColumn: '1 / -1' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
             <h3 style={{ margin: 0 }}>📋 Session History</h3>
-            <button className="btn-sm" onClick={clearHistory} style={{ fontSize: 10 }}>
+            <button className="btn-sm" onClick={clearHistory} style={{ fontSize: 10, color: 'var(--red)', borderColor: 'color-mix(in srgb, var(--red) 40%, var(--border))' }}>
               Clear
             </button>
           </div>
@@ -278,14 +381,18 @@ export function StatusTab({ active }: StatusTabProps) {
             {history.length === 0 ? (
               <div className="device-item">No session events yet. Start calibration, recording, training, or eval to see history here.</div>
             ) : (
-              [...history].reverse().map((entry, idx) => (
-                <div className="device-item" key={`${entry.ts}-${idx}`}>
-                  <div>
-                    <div className="dname">{entry.type}</div>
-                    <div className="dsub">{entry.ts}</div>
+              [...history].reverse().map((entry, idx) => {
+                const metaSummary = summarizeHistoryMeta(entry.meta)
+                return (
+                  <div className="device-item" key={`${entry.ts}-${idx}`}>
+                    <div>
+                      <div className="dname">{formatHistoryType(entry.type)}</div>
+                      <div className="dsub">{formatHistoryTs(entry.ts)}</div>
+                      {metaSummary ? <div className="dsub">{metaSummary}</div> : null}
+                    </div>
                   </div>
-                </div>
-              ))
+                )
+              })
             )}
           </div>
         </div>

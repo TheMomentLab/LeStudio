@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { ProcessButtons } from '../components/shared/ProcessButtons'
+import { getProcessConflict } from '../lib/processConflicts'
 import { useProcess } from '../hooks/useProcess'
 import { apiGet, apiPost } from '../lib/api'
 import { useLeStudioStore } from '../store'
@@ -11,15 +12,20 @@ interface MotorSetupTabProps {
 
 export function MotorSetupTab({ active }: MotorSetupTabProps) {
   const running = useLeStudioStore((s) => !!s.procStatus.motor_setup)
+  const procStatus = useLeStudioStore((s) => s.procStatus)
+  const conflictReason = getProcessConflict('motor_setup', procStatus)
   const devices = useLeStudioStore((s) => s.devices)
+  const setActiveTab = useLeStudioStore((s) => s.setActiveTab)
   const addToast = useLeStudioStore((s) => s.addToast)
   const appendLog = useLeStudioStore((s) => s.appendLog)
   const clearLog = useLeStudioStore((s) => s.clearLog)
   const { stopProcess } = useProcess()
   const [type, setType] = useState('so101_follower')
-  const [port, setPort] = useState('/dev/follower_arm_1')
+  const [port, setPort] = useState('')
+  const [hasRun, setHasRun] = useState(false)
   const [armTypes, setArmTypes] = useState<string[]>(['so101_follower', 'so100_follower', 'so101_leader', 'so100_leader'])
 
+  // Fetch available arm types on tab activation
   useEffect(() => {
     if (!active) return
     apiGet<RobotsResponse>('/api/robots').then((r) => {
@@ -27,6 +33,17 @@ export function MotorSetupTab({ active }: MotorSetupTabProps) {
       if (types.length > 0) setArmTypes(types)
     })
   }, [active])
+
+  // Auto-select port matching the current arm type keyword (follower/leader)
+  useEffect(() => {
+    if (devices.arms.length === 0) return
+    const keyword = type.includes('follower') ? 'follower' : type.includes('leader') ? 'leader' : ''
+    const match = keyword
+      ? devices.arms.find((a) => (a.symlink ?? a.device ?? '').toLowerCase().includes(keyword))
+      : undefined
+    const best = match ?? devices.arms[0]
+    setPort(best.path ?? `/dev/${best.device ?? 'ttyUSB0'}`)
+  }, [devices.arms, type])
 
   const start = async () => {
     clearLog('motor_setup')
@@ -40,6 +57,7 @@ export function MotorSetupTab({ active }: MotorSetupTabProps) {
       return
     }
     addToast('Motor setup started', 'success')
+    setHasRun(true)
   }
 
   const stop = async () => {
@@ -51,6 +69,9 @@ export function MotorSetupTab({ active }: MotorSetupTabProps) {
     <section id="tab-motor-setup" className={`tab ${active ? 'active' : ''}`}>
       <div className="section-header">
         <h2>Motor Setup</h2>
+        <span className={`status-verdict ${running ? 'ready' : !conflictReason && devices.arms.length > 0 ? 'ready' : 'warn'}`}>
+          {running ? 'Running' : !conflictReason && devices.arms.length > 0 ? 'Ready' : 'Action Needed'}
+        </span>
       </div>
       <div className="quick-guide">
         <h3>Motor Setup Guide</h3>
@@ -74,14 +95,15 @@ export function MotorSetupTab({ active }: MotorSetupTabProps) {
               })
             )}
           </select>
+          {!port && devices.arms.length === 0 && <p style={{ color: 'var(--color-warn)', fontSize: '0.85rem', margin: '4px 0 8px' }}>No arm port detected. Connect an arm to begin.</p>}
           <div className="spacer" />
-          <ProcessButtons running={running} onStart={start} onStop={stop} startLabel="▶ Start Setup" />
+          <ProcessButtons running={running} onStart={start} onStop={stop} startLabel="▶ Start Setup" conflictReason={conflictReason} />
         </div>
         <div className="card">
           <h3>Connected Arms</h3>
           <div className="device-list">
             {devices.arms.length === 0 ? (
-              <div className="device-item">—</div>
+              <div className="device-item" style={{ color: 'var(--color-text-secondary)', fontStyle: 'italic' }}>No arms detected. Connect a USB arm and refresh.</div>
             ) : (
               devices.arms.map((arm, idx) => (
                 <div className="device-item" key={`${arm.device ?? 'arm'}-${idx}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -95,6 +117,12 @@ export function MotorSetupTab({ active }: MotorSetupTabProps) {
             )}
           </div>
         </div>
+      {!running && hasRun && (
+        <div className="card" style={{ marginTop: 12, textAlign: 'center' }}>
+          <p style={{ margin: '0 0 8px', color: 'var(--color-text-secondary)' }}>Motor setup complete? Continue to calibration.</p>
+          <button type="button" className="link-btn" onClick={() => setActiveTab('calibrate')}>→ Proceed to Calibration</button>
+        </div>
+      )}
       </div>
     </section>
   )

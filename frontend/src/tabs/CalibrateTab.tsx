@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { formatRobotType } from '../lib/format'
 import { ProcessButtons } from '../components/shared/ProcessButtons'
+import { getProcessConflict } from '../lib/processConflicts'
 import { useProcess } from '../hooks/useProcess'
 import { apiDelete, apiGet, apiPost } from '../lib/api'
 import { useLeStudioStore } from '../store'
@@ -27,11 +29,14 @@ function truncatePath(fullPath: string): string {
 
 export function CalibrateTab({ active }: CalibrateTabProps) {
   const running = useLeStudioStore((s) => !!s.procStatus.calibrate)
+  const procStatus = useLeStudioStore((s) => s.procStatus)
+  const conflictReason = getProcessConflict('calibrate', procStatus)
   const addToast = useLeStudioStore((s) => s.addToast)
   const appendLog = useLeStudioStore((s) => s.appendLog)
   const clearLog = useLeStudioStore((s) => s.clearLog)
   const devices = useLeStudioStore((s) => s.devices)
   const calibrateLines = useLeStudioStore((s) => s.logLines.calibrate ?? EMPTY_CAL_LINES)
+  const setActiveTab = useLeStudioStore((s) => s.setActiveTab)
   const { stopProcess } = useProcess()
   const [type, setType] = useState('so101_follower')
   const [id, setId] = useState('my_arm_1')
@@ -46,6 +51,7 @@ export function CalibrateTab({ active }: CalibrateTabProps) {
   const [identifyResult, setIdentifyResult] = useState('')
   const identifyPollTimer = useRef<number | null>(null)
   const identifySnapshot = useRef<Set<string> | null>(null)
+  const identifyAutoOpenedRef = useRef(false)
   const filteredFiles = fileFilter === 'all' ? files : files.filter((f) => f.guessed_type === fileFilter)
   const [armTypes, setArmTypes] = useState<string[]>(DEFAULT_ARM_TYPES)
 
@@ -181,6 +187,18 @@ export function CalibrateTab({ active }: CalibrateTabProps) {
     checkFile()
   }, [active, checkFile, refreshFiles])
 
+  useEffect(() => {
+    if (!active) {
+      identifyAutoOpenedRef.current = false
+      return
+    }
+    if (identifyAutoOpenedRef.current) return
+    if (devices.arms.length !== 1) {
+      setShowIdentifyPanel(true)
+      identifyAutoOpenedRef.current = true
+    }
+  }, [active, devices.arms.length])
+
 
   useEffect(() => {
     if (!active) return
@@ -223,6 +241,9 @@ export function CalibrateTab({ active }: CalibrateTabProps) {
     <section id="tab-calibrate" className={`tab ${active ? 'active' : ''}`}>
       <div className="section-header">
         <h2>Calibration</h2>
+        <span className={`status-verdict ${!conflictReason && devices.arms.length > 0 ? 'ready' : 'warn'}`}>
+          {running ? 'Running' : !conflictReason && devices.arms.length > 0 ? 'Ready' : 'Action Needed'}
+        </span>
       </div>
       <div className="two-col">
         <div className="card">
@@ -231,7 +252,7 @@ export function CalibrateTab({ active }: CalibrateTabProps) {
           <select value={type} onChange={(e) => setType(e.target.value)}>
             {armTypes.map((t) => (
               <option key={t} value={t}>
-                {t}
+                {formatRobotType(t)}
               </option>
             ))}
           </select>
@@ -269,10 +290,24 @@ export function CalibrateTab({ active }: CalibrateTabProps) {
               })
             )}
           </select>
+          <div className="field-help" style={{ marginTop: 6 }}>
+            Not sure which arm this port belongs to?{' '}
+            <button
+              type="button"
+              className="link-btn"
+              onClick={() => {
+                setShowIdentifyPanel(true)
+                const panel = document.getElementById('arm-identify-panel')
+                panel?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+              }}
+            >
+              Open Identify Wizard
+            </button>
+          </div>
           <div className="info-box" style={{ marginTop: 12 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
               <span style={{ fontWeight: 600, color: 'var(--text)' }}>Calibration File</span>
-              <span id="cal-file-status" className={`dbadge ${fileStatus === 'Found' ? 'badge-ok' : 'badge-warn'}`}>
+              <span id="cal-file-status" className={`dbadge ${fileStatus === 'Found' ? 'badge-ok' : 'badge-err'}`}>
                 {fileStatus}
               </span>
             </div>
@@ -280,8 +315,16 @@ export function CalibrateTab({ active }: CalibrateTabProps) {
               {fileMeta}
             </div>
           </div>
+          {fileStatus === 'Found' && !running ? (
+            <div className="field-help" style={{ marginTop: 8 }}>
+              Calibration file exists.{' '}
+              <button type="button" className="link-btn" onClick={() => setActiveTab('teleop')}>→ Proceed to Teleop</button>
+            </div>
+          ) : null}
           <div className="spacer" />
-          <ProcessButtons running={running} onStart={start} onStop={stop} startLabel="▶ Start Calibration" />
+          <div className="calibrate-inline-controls">
+            <ProcessButtons running={running} onStart={start} onStop={stop} startLabel="▶ Start Calibration" conflictReason={conflictReason} />
+          </div>
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -298,9 +341,14 @@ export function CalibrateTab({ active }: CalibrateTabProps) {
                   })
                 }}
               >
-                🔍 Identify Arm
+                {showIdentifyPanel ? 'Hide Identify' : '🔍 Identify Arm'}
               </button>
             </div>
+            {!showIdentifyPanel && devices.arms.length > 1 ? (
+              <div className="field-help" style={{ marginBottom: 10 }}>
+                Multiple arms detected. Run Identify Wizard to map the correct arm before calibration.
+              </div>
+            ) : null}
             <div
               id="arm-identify-panel"
               style={{
@@ -353,7 +401,9 @@ export function CalibrateTab({ active }: CalibrateTabProps) {
             </div>
             <div className="device-list">
               {devices.arms.length === 0 ? (
-                <div className="device-item">—</div>
+                <div className="device-item">
+                  <span className="dsub">No arms detected. Connect a USB arm to see it here.</span>
+                </div>
               ) : (
                 devices.arms.map((arm, idx) => (
                   <div className="device-item" key={`${arm.device ?? 'arm'}-${idx}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -368,7 +418,7 @@ export function CalibrateTab({ active }: CalibrateTabProps) {
             </div>
           </div>
 
-          <div className="card" style={{ marginBottom: 0, maxHeight: 280, overflowY: 'auto' }}>
+          <div className="card" style={{ marginBottom: 0 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
               <h3 style={{ marginBottom: 0 }}>Existing Files</h3>
               <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -412,7 +462,7 @@ export function CalibrateTab({ active }: CalibrateTabProps) {
                       <div key={gtype}>
                         <div style={{ fontSize: 10, color: 'var(--text2)', margin: '12px 0 6px 4px', textTransform: 'uppercase', letterSpacing: '0.8px', fontWeight: 600 }}>{gtype}</div>
                         {gfiles.map((f) => (
-                          <div key={`${f.id}-${f.guessed_type}`} className="device-item" style={{ cursor: 'pointer', marginBottom: 4 }} onClick={() => {
+                          <div key={`${f.id}-${f.guessed_type}`} className={`device-item${f.id === id ? ' selected' : ''}`} style={{ cursor: 'pointer', marginBottom: 4 }} onClick={() => {
                             setId(f.id)
                             if (armTypes.includes(f.guessed_type)) setType(f.guessed_type)
                           }}>
@@ -428,7 +478,7 @@ export function CalibrateTab({ active }: CalibrateTabProps) {
                     ))}
                   </>
                 ) : filteredFiles.map((f) => (
-                    <div key={`${f.id}-${f.guessed_type}`} className="device-item" style={{ cursor: 'pointer', marginBottom: 4 }} onClick={() => {
+                    <div key={`${f.id}-${f.guessed_type}`} className={`device-item${f.id === id ? ' selected' : ''}`} style={{ cursor: 'pointer', marginBottom: 4 }} onClick={() => {
                       setId(f.id)
                       if (armTypes.includes(f.guessed_type)) setType(f.guessed_type)
                     }}>
@@ -445,7 +495,11 @@ export function CalibrateTab({ active }: CalibrateTabProps) {
         </div>
       </div>
 
-      <div className="card" id="cal-live-table" style={{ maxWidth: 480 }}>
+      <div className="calibrate-mobile-controls" role="group" aria-label="Calibration controls">
+        <ProcessButtons running={running} onStart={start} onStop={stop} startLabel="▶ Start Calibration" conflictReason={conflictReason} />
+      </div>
+
+      <div className="card" id="cal-live-table">
         <h3>Live Motor Ranges</h3>
         {motorRows.length === 0 ? (
           <div id="cal-motor-placeholder" className="muted" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>

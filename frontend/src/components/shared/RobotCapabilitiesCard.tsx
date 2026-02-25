@@ -54,11 +54,11 @@ export function RobotCapabilitiesCard({ capabilities, compatibleTeleops }: Robot
         </div>
       )}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: compatibleTeleops.length ? 8 : 0 }}>
-        <CapBadge label={`Arm${capabilities.arm_count > 1 ? ` \u00d7${capabilities.arm_count}` : ''}`} active={capabilities.has_arm} />
-        <CapBadge label="Mobile Base" active={capabilities.has_mobile_base} />
-        <CapBadge label="Cameras" active={capabilities.has_cameras} />
-        <CapBadge label="Remote" active={capabilities.is_remote} />
-        <CapBadge label="Keyboard" active={capabilities.has_keyboard_teleop} />
+        {capabilities.has_arm && <CapBadge label={`Arm${capabilities.arm_count > 1 ? ` ×${capabilities.arm_count}` : ''}`} active={true} />}
+        {capabilities.has_mobile_base && <CapBadge label="Mobile Base" active={true} />}
+        {capabilities.has_cameras && <CapBadge label="Cameras" active={true} />}
+        {capabilities.is_remote && <CapBadge label="Remote" active={true} />}
+        {capabilities.has_keyboard_teleop && <CapBadge label="Keyboard" active={true} />}
         <CapBadge label={capabilities.connection_type.toUpperCase()} active={true} />
       </div>
       {compatibleTeleops.length > 0 && (

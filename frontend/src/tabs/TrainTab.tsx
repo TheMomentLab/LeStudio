@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ProcessButtons } from '../components/shared/ProcessButtons'
+import { getProcessConflict } from '../lib/processConflicts'
 import { useConfig } from '../hooks/useConfig'
 import { useProcess } from '../hooks/useProcess'
 import { apiGet, apiPost } from '../lib/api'
@@ -61,13 +62,20 @@ function formatEta(seconds: number | null): string {
 
 export function TrainTab({ active }: TrainTabProps) {
   const running = useLeStudioStore((s) => !!s.procStatus.train || !!s.procStatus.train_install)
+  const installing = useLeStudioStore((s) => !!s.procStatus.train_install)
+  const procStatus = useLeStudioStore((s) => s.procStatus)
+  const conflictReason = getProcessConflict('train', procStatus)
+  const prevInstallingRef = useRef(false)
 
   const trainLogs = useLeStudioStore((s) => s.logLines.train ?? EMPTY_TRAIN_LINES)
   const { config, buildConfig } = useConfig()
-  const { stopProcess, runPreflight } = useProcess()
+  const { stopProcess } = useProcess()
   const appendLog = useLeStudioStore((s) => s.appendLog)
   const addToast = useLeStudioStore((s) => s.addToast)
   const setSidebarSignals = useLeStudioStore((s) => s.setSidebarSignals)
+  const setActiveTab = useLeStudioStore((s) => s.setActiveTab)
+  const hfUsername = useLeStudioStore((s) => s.hfUsername)
+  const defaultRepoId = `${hfUsername ?? 'user'}/my-dataset`
   const [source, setSource] = useState<'local' | 'hf'>('local')
   const [datasets, setDatasets] = useState<DatasetListItem[]>([])
   const [gpuStatus, setGpuStatus] = useState<GpuStatusResponse | null>(null)
@@ -78,6 +86,10 @@ export function TrainTab({ active }: TrainTabProps) {
   const [preflightAction, setPreflightAction] = useState('')
   const [preflightReason, setPreflightReason] = useState('')
   const [preflightOk, setPreflightOk] = useState(true)
+  const [preflightCommand, setPreflightCommand] = useState('')
+  const [oomDetected, setOomDetected] = useState(false)
+  const retryPendingRef = useRef(false)
+  const [starting, setStarting] = useState(false)
   const lossCanvasRef = useRef<HTMLCanvasElement | null>(null)
 
   const trainSteps = Number(config.train_steps ?? 100000)
@@ -175,10 +187,11 @@ export function TrainTab({ active }: TrainTabProps) {
 
   const refreshPreflight = useCallback(async () => {
     const device = (config.train_device as string) ?? 'cuda'
-    const res = await apiGet<{ ok: boolean; reason?: string; action?: string }>(`/api/train/preflight?device=${encodeURIComponent(device)}`)
+    const res = await apiGet<{ ok: boolean; reason?: string; action?: string; command?: string }>(`/api/train/preflight?device=${encodeURIComponent(device)}`)
     setPreflightOk(!!res.ok)
     setPreflightAction(res.action ?? '')
     setPreflightReason(res.reason ?? '')
+    setPreflightCommand(res.command ?? '')
     setSidebarSignals({ trainMissingDep: !res.ok })
     return !!res.ok
   }, [config.train_device, setSidebarSignals])
@@ -192,6 +205,21 @@ export function TrainTab({ active }: TrainTabProps) {
         return
       }
       addToast('CUDA PyTorch install started', 'info')
+    } catch (e) {
+      appendLog('train', `[ERROR] ${e instanceof Error ? e.message : 'Installer request failed.'}`, 'error')
+    }
+  }
+
+  const runPreflightFix = async () => {
+    if (!preflightCommand) return
+    appendLog('train', `[INFO] Running: ${preflightCommand}`, 'info')
+    try {
+      const res = await apiPost<{ ok: boolean; error?: string }>('/api/train/install_torchcodec_fix', { command: preflightCommand })
+      if (!res.ok) {
+        appendLog('train', `[ERROR] ${res.error ?? 'Failed to start installer.'}`, 'error')
+        return
+      }
+      addToast('Fix installer started — check console for progress', 'info')
     } catch (e) {
       appendLog('train', `[ERROR] ${e instanceof Error ? e.message : 'Installer request failed.'}`, 'error')
     }
@@ -215,6 +243,23 @@ export function TrainTab({ active }: TrainTabProps) {
     return () => window.clearInterval(timer)
   }, [active, refreshGpu])
 
+  // preflight 실패 시 주기적 재체크 (설치 완료 자동 감지)
+  useEffect(() => {
+    if (!active || preflightOk) return
+    const timer = window.setInterval(() => {
+      refreshPreflight()
+    }, 5000)
+    return () => window.clearInterval(timer)
+  }, [active, preflightOk, refreshPreflight])
+
+  // OOM 감지: 로그에서 OutOfMemoryError 패턴 매칭
+  useEffect(() => {
+    if (running) { setOomDetected(false); return }
+    const last20 = trainLogs.slice(-20)
+    const hasOom = last20.some((l) => /OutOfMemoryError|CUDA out of memory/i.test(l.text))
+    if (hasOom) setOomDetected(true)
+  }, [trainLogs, running])
+
   useEffect(() => {
     if (!active || gpuStatus !== null) return
     const timer = window.setTimeout(() => {
@@ -230,6 +275,14 @@ export function TrainTab({ active }: TrainTabProps) {
     }, 10000)
     return () => window.clearTimeout(timer)
   }, [active, checkpointsLoading])
+
+  useEffect(() => {
+    if (prevInstallingRef.current && !installing) {
+      refreshPreflight()
+    }
+    prevInstallingRef.current = installing
+  }, [installing, refreshPreflight])
+
 
   useEffect(() => {
     const canvas = lossCanvasRef.current
@@ -299,43 +352,66 @@ export function TrainTab({ active }: TrainTabProps) {
     ctx.strokeRect(padL, padT, innerW, innerH)
   }, [progress.lossSeries])
 
-  const repoId = source === 'local' ? localRepoId : ((config.train_repo_id as string) ?? 'user/my-dataset')
+  const repoId = source === 'local' ? localRepoId : ((config.train_repo_id as string) ?? defaultRepoId)
+  const noLocalDataset = source === 'local' && localRepoId === '__none__'
+  const trainReady = preflightOk && !noLocalDataset && !conflictReason
+  const startDisabled = starting || !trainReady
+
+  const reduceAndRetry = async () => {
+    const current = Number(config.train_batch_size) || 8
+    const next = Math.max(1, Math.floor(current / 2))
+    await buildConfig({ train_batch_size: next })
+    setOomDetected(false)
+    appendLog('train', `[INFO] Batch size reduced: ${current} → ${next}. Retrying...`, 'info')
+    retryPendingRef.current = true
+  }
 
   const start = async () => {
     if (source === 'local' && repoId === '__none__') {
       appendLog('train', '[ERROR] No local dataset found. Switch to Hugging Face or create a local dataset first.', 'error')
       return
     }
-
-    const cfg = {
-      train_policy: (config.train_policy as string) ?? 'act',
-      train_repo_id: repoId,
-      train_steps: Number(config.train_steps ?? 100000),
-      train_device: (config.train_device as string) ?? 'cuda',
-      train_batch_size: Number(config.train_batch_size ?? 0) || undefined,
-      train_lr: (config.train_lr as string) || undefined,
+    setStarting(true)
+    try {
+      const cfg = {
+        train_policy: (config.train_policy as string) ?? 'act',
+        train_repo_id: repoId,
+        train_steps: Number(config.train_steps ?? 100000),
+        train_device: (config.train_device as string) ?? 'cuda',
+        train_batch_size: Number(config.train_batch_size ?? 0) || undefined,
+        train_lr: (config.train_lr as string) || undefined,
+      }
+      await buildConfig({ ...cfg, train_dataset_source: source })
+      const preflight = await refreshPreflight()
+      if (!preflight) {
+        appendLog('train', '[ERROR] Device compatibility check failed.', 'error')
+        return
+      }
+      const res = await apiPost<{ ok: boolean; error?: string }>('/api/train/start', cfg)
+      if (!res.ok) {
+        appendLog('train', `[ERROR] ${res.error ?? 'failed to start train'}`, 'error')
+        return
+      }
+      addToast('Training started', 'success')
+      refreshCheckpoints()
+    } finally {
+      setStarting(false)
     }
-    await buildConfig({ ...cfg, train_dataset_source: source })
-    const preflight = await refreshPreflight()
-    if (!preflight) {
-      appendLog('train', '[ERROR] Device compatibility check failed.', 'error')
-      return
-    }
-    const ok = await runPreflight(cfg as Record<string, unknown>, 'train')
-    if (!ok) return
-    const res = await apiPost<{ ok: boolean; error?: string }>('/api/train/start', cfg)
-    if (!res.ok) {
-      appendLog('train', `[ERROR] ${res.error ?? 'failed to start train'}`, 'error')
-      return
-    }
-    addToast('Training started', 'success')
-    refreshCheckpoints()
   }
 
   const stop = async () => {
     await stopProcess('train')
     addToast('Training stop requested', 'info')
   }
+
+  // OOM reduce & retry: config 반영 후 자동 재시작
+  useEffect(() => {
+    if (retryPendingRef.current && !running) {
+      retryPendingRef.current = false
+      start()
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [config.train_batch_size])
 
   const applyPreset = (preset: 'quick' | 'standard' | 'full') => {
     const steps = preset === 'quick' ? 1000 : preset === 'standard' ? 50000 : 100000
@@ -346,6 +422,9 @@ export function TrainTab({ active }: TrainTabProps) {
     <section id="tab-train" className={`tab ${active ? 'active' : ''}`}>
       <div className="section-header">
         <h2>Train Policy</h2>
+        <span className={`status-verdict ${running || trainReady ? 'ready' : 'warn'}`}>
+          {running ? 'Running' : trainReady ? 'Ready to Start' : 'Action Needed'}
+        </span>
       </div>
 
 
@@ -374,6 +453,17 @@ export function TrainTab({ active }: TrainTabProps) {
           </div>
           {source === 'local' ? (
             <>
+              {datasets.length === 0 && (
+                <div className="info-banner warn" style={{ marginBottom: 8, padding: '10px 14px', borderRadius: 8, background: 'color-mix(in srgb, var(--yellow) 12%, transparent)', border: '1px solid color-mix(in srgb, var(--yellow) 30%, transparent)', fontSize: 12, color: 'var(--yellow)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 16 }}>⚠️</span>
+                  <span>No local datasets found. Record episodes in the <strong>Record</strong> tab first, or switch to <strong>Hugging Face</strong> source above.</span>
+                  <div style={{ display: 'flex', gap: 6, marginLeft: 'auto', flexWrap: 'wrap' }}>
+                    <button type="button" className="btn-xs" onClick={() => setActiveTab('record')}>Go to Record</button>
+                    <button type="button" className="btn-xs" onClick={() => setActiveTab('dataset')}>Open Dataset</button>
+                    <button type="button" className="btn-xs" onClick={() => { setSource('hf'); buildConfig({ train_dataset_source: 'hf' }) }}>Use Hugging Face</button>
+                  </div>
+                </div>
+              )}
               <label>Local Dataset</label>
               <select value={repoId} onChange={(e) => buildConfig({ train_repo_id: e.target.value })}>
                 {datasets.length === 0 ? <option value="__none__">No local datasets — record in Record tab first</option> : null}
@@ -388,51 +478,53 @@ export function TrainTab({ active }: TrainTabProps) {
           ) : (
             <>
               <label>Dataset Repo ID</label>
-              <input type="text" value={(config.train_repo_id as string) ?? 'user/my-dataset'} onChange={(e) => buildConfig({ train_repo_id: e.target.value })} />
+              <input type="text" value={(config.train_repo_id as string) ?? defaultRepoId} onChange={(e) => buildConfig({ train_repo_id: e.target.value })} />
             </>
           )}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, marginBottom: 4 }}>
             <label style={{ margin: 0 }}>Training Steps</label>
             <div style={{ display: 'flex', gap: 4 }}>
-              <button className="btn-xs" onClick={() => applyPreset('quick')}>
+              <button className={`btn-xs${trainSteps === 1000 ? ' active' : ''}`} onClick={() => applyPreset('quick')}>
                 Quick (1K)
               </button>
-              <button className="btn-xs" onClick={() => applyPreset('standard')}>
+              <button className={`btn-xs${trainSteps === 50000 ? ' active' : ''}`} onClick={() => applyPreset('standard')}>
                 Standard (50K)
               </button>
-              <button className="btn-xs" onClick={() => applyPreset('full')}>
+              <button className={`btn-xs${trainSteps === 100000 ? ' active' : ''}`} onClick={() => applyPreset('full')}>
                 Full (100K)
               </button>
             </div>
           </div>
           <input type="number" value={trainSteps} onChange={(e) => buildConfig({ train_steps: Number(e.target.value) })} />
-          <div className="advanced-only" style={{ marginTop: 8, padding: 10, border: '1px solid var(--border)', borderRadius: 6, background: 'color-mix(in srgb, var(--bg3) 60%, transparent)' }}>
-            <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 8, fontWeight: 600, letterSpacing: 0.2 }}>ADVANCED PARAMS</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              <div>
-                <label style={{ marginBottom: 3 }}>Batch Size</label>
-                <input
-                  type="number"
-                  min={1}
-                  step={1}
-                  placeholder="default (64)"
-                  value={typeof config.train_batch_size === 'number' ? config.train_batch_size : ''}
-                  onChange={(e) => buildConfig({ train_batch_size: e.target.value.trim() ? Number(e.target.value) : undefined })}
-                />
-                <div className="field-help">Samples per gradient step.</div>
-              </div>
-              <div>
-                <label style={{ marginBottom: 3 }}>Learning Rate</label>
-                <input
-                  type="text"
-                  placeholder="default (1e-4)"
-                  value={(config.train_lr as string) ?? ''}
-                  onChange={(e) => buildConfig({ train_lr: e.target.value })}
-                />
-                <div className="field-help">e.g. 1e-4, 0.0001</div>
+          <details className="advanced-panel" style={{ marginTop: 8 }}>
+            <summary>Advanced Params</summary>
+            <div style={{ marginTop: 8, padding: 10, border: '1px solid var(--border)', borderRadius: 6, background: 'color-mix(in srgb, var(--bg3) 60%, transparent)' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                <div>
+                  <label style={{ marginBottom: 3 }}>Batch Size</label>
+                  <input
+                    type="number"
+                    min={1}
+                    step={1}
+                    placeholder="default (64)"
+                    value={typeof config.train_batch_size === 'number' ? config.train_batch_size : ''}
+                    onChange={(e) => buildConfig({ train_batch_size: e.target.value.trim() ? Number(e.target.value) : undefined })}
+                  />
+                  <div className="field-help">Samples per gradient step.</div>
+                </div>
+                <div>
+                  <label style={{ marginBottom: 3 }}>Learning Rate</label>
+                  <input
+                    type="text"
+                    placeholder="default (1e-4)"
+                    value={(config.train_lr as string) ?? ''}
+                    onChange={(e) => buildConfig({ train_lr: e.target.value })}
+                  />
+                  <div className="field-help">e.g. 1e-4, 0.0001</div>
+                </div>
               </div>
             </div>
-          </div>
+          </details>
           <label>Compute Device</label>
           <select value={(config.train_device as string) ?? 'cuda'} onChange={(e) => buildConfig({ train_device: e.target.value })}>
             <option value="cuda">CUDA (GPU)</option>
@@ -445,9 +537,18 @@ export function TrainTab({ active }: TrainTabProps) {
             </div>
           ) : null}
           {!preflightOk && preflightAction === 'install_torch_cuda' ? (
-            <div id="train-device-actions" style={{ marginTop: 6, display: 'flex', justifyContent: 'flex-end' }}>
-              <button id="train-install-btn" className="btn-sm" onClick={installCudaTorch}>
+            <div id="train-device-actions" className="recovery-action" style={{ marginTop: 8 }}>
+              <div className="field-help" style={{ marginBottom: 6 }}>Recommended next step to unblock training:</div>
+              <button id="train-install-btn" className="btn-primary" onClick={installCudaTorch}>
                 Install CUDA PyTorch (Nightly)
+              </button>
+            </div>
+          ) : null}
+          {!preflightOk && preflightCommand && preflightAction !== 'install_torch_cuda' ? (
+            <div id="train-device-actions" className="recovery-action" style={{ marginTop: 8 }}>
+              <div className="field-help" style={{ marginBottom: 6 }}>Recommended next step to unblock training:</div>
+              <button className="btn-primary" onClick={runPreflightFix}>
+                Run Fix
               </button>
             </div>
           ) : null}
@@ -468,22 +569,22 @@ export function TrainTab({ active }: TrainTabProps) {
               <span>Loss: {progress.latestLoss !== null ? progress.latestLoss.toFixed(4) : '--'}</span>
               <span>ETA: {progress.etaText}</span>
             </div>
-            <div style={{ marginTop: 8, border: '1px solid var(--border)', borderRadius: 6, padding: 8, background: 'var(--bg3)' }}>
-              <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 6 }}>Loss Trend</div>
-              <div style={{ position: 'relative' }}>
-                <canvas ref={lossCanvasRef} id="train-loss-canvas" width={560} height={200} style={{ width: '100%', height: 200, display: 'block' }} />
-                {progress.lossSeries.length === 0 && (
-                  <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text2)', fontSize: 12 }}>
-                    No data yet — loss values will appear here during training.
-                  </div>
-                )}
+            {running && (
+              <div style={{ marginTop: 8, border: '1px solid var(--border)', borderRadius: 6, padding: 8, background: 'var(--bg3)' }}>
+                <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 6 }}>Loss Trend</div>
+                <div style={{ position: 'relative' }}>
+                  <canvas ref={lossCanvasRef} id="train-loss-canvas" width={560} height={200} style={{ width: '100%', height: 200, display: 'block' }} />
+                  {progress.lossSeries.length === 0 && (
+                    <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text2)', fontSize: 12 }}>
+                      No data yet — loss values will appear here during training.
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
+            )}
           </div>
-          <div className="spacer" />
-          <ProcessButtons running={running} onStart={start} onStop={stop} startLabel="▶ Start Training" disabled={!preflightOk || (source === 'local' && localRepoId === '__none__')} />
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        <div className="train-info-grid">
           <div className="card">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
               <h3 style={{ margin: 0 }}>Checkpoints</h3>
@@ -563,6 +664,20 @@ export function TrainTab({ active }: TrainTabProps) {
           </div>
         </div>
       </div>
+      {oomDetected && !running ? (
+        <div className="train-device-warning" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, width: '100%', maxWidth: 600 }}>
+          <span>GPU out of memory. Current batch size: {Number(config.train_batch_size) || 8}. Reduce to {Math.max(1, Math.floor((Number(config.train_batch_size) || 8) / 2))} and retry?</span>
+          <button className="btn-sm" style={{ flexShrink: 0 }} onClick={reduceAndRetry}>
+            Reduce &amp; Retry
+          </button>
+        </div>
+      ) : null}
+      <ProcessButtons running={running || starting} onStart={start} onStop={stop} startLabel={starting ? '⏳ Starting...' : '▶ Start Training'} disabled={startDisabled} conflictReason={conflictReason} />
+      {!running && checkpoints.length > 0 && (
+        <div className="workflow-cta" style={{ marginTop: 12 }}>
+          <button className="btn-sm" onClick={() => setActiveTab('eval')}>→ Proceed to Eval</button>
+        </div>
+      )}
     </section>
   )
 }

@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { formatRobotType } from '../lib/format'
 import { MappedCameraRows } from '../components/shared/MappedCameraRows'
 import { RobotCapabilitiesCard } from '../components/shared/RobotCapabilitiesCard'
 import { useConfig } from '../hooks/useConfig'
@@ -7,6 +8,7 @@ import { useProcess } from '../hooks/useProcess'
 import { apiGet, apiPost } from '../lib/api'
 import { useLeStudioStore } from '../store'
 import type { LogLine, RobotDetail, RobotsResponse, TeleopsResponse } from '../lib/types'
+import { getProcessConflict } from '../lib/processConflicts'
 
 
 interface RecordTabProps {
@@ -42,12 +44,17 @@ const uniq = (items: string[]) => [...new Set(items.map((s) => s.trim()).filter(
 
 export function RecordTab({ active }: RecordTabProps) {
   const { config, buildConfig } = useConfig()
+  const buildConfigRef = useRef(buildConfig)
   const { mappedCameras, refreshDevices } = useMappedCameras()
   const { runPreflight, stopProcess, sendProcessInput } = useProcess()
   const running = useLeStudioStore((s) => !!s.procStatus.record)
+  const procStatus = useLeStudioStore((s) => s.procStatus)
+  const conflictReason = getProcessConflict('record', procStatus)
   const clearLog = useLeStudioStore((s) => s.clearLog)
   const appendLog = useLeStudioStore((s) => s.appendLog)
   const addToast = useLeStudioStore((s) => s.addToast)
+  const hfUsername = useLeStudioStore((s) => s.hfUsername)
+  const defaultRepoId = `${hfUsername ?? 'user'}/my-dataset`
   const [mode, setMode] = useState<'single' | 'bi'>('single')
   const [episodesDone, setEpisodesDone] = useState(0)
   const [followerArmIds, setFollowerArmIds] = useState<string[]>(['my_so101_follower_1'])
@@ -61,6 +68,10 @@ export function RecordTab({ active }: RecordTabProps) {
   const [robotTypes, setRobotTypes] = useState<string[]>(['so101_follower'])
   const [teleopTypes, setTeleopTypes] = useState<string[]>(['so101_leader'])
   const [robotDetails, setRobotDetails] = useState<Record<string, RobotDetail>>({})
+
+  useEffect(() => {
+    buildConfigRef.current = buildConfig
+  }, [buildConfig])
 
   const devices = useLeStudioStore((s) => s.devices)
   const setActiveTab = useLeStudioStore((s) => s.setActiveTab)
@@ -100,6 +111,8 @@ export function RecordTab({ active }: RecordTabProps) {
 
   useEffect(() => {
     if (!active) return
+    setMode('single')
+    buildConfigRef.current({ robot_mode: 'single' })
     refreshDevices()
     const loadCalibrationFiles = async () => {
       try {
@@ -130,7 +143,7 @@ export function RecordTab({ active }: RecordTabProps) {
     })
     const currentRobotType = (config.robot_type as string) || 'so101_follower'
     apiGet<TeleopsResponse>(`/api/teleops?robot_type=${encodeURIComponent(currentRobotType)}`).then((r) => setTeleopTypes(r.types ?? ['so101_leader']))
-  }, [active])
+  }, [active, config.robot_type])
 
   useEffect(() => {
     if (!active) return
@@ -173,7 +186,8 @@ export function RecordTab({ active }: RecordTabProps) {
   }, [config.robot_mode])
 
 
-  const selectedRobotType = (config.robot_type as string) ?? robotTypes[0] ?? 'so101_follower'
+  const selectedRobotType = (() => { const v = (config.robot_type as string) ?? ''; return (v && robotTypes.includes(v)) ? v : (robotTypes[0] ?? 'so101_follower') })()
+  const selectedTeleopType = (() => { const v = (config.teleop_type as string) ?? ''; return (v && teleopTypes.includes(v)) ? v : (teleopTypes[0] ?? 'so101_leader') })()
 
   useEffect(() => {
     if (!active) return
@@ -183,11 +197,11 @@ export function RecordTab({ active }: RecordTabProps) {
         setTeleopTypes(types)
         const currentTeleop = (config.teleop_type as string) ?? ''
         if (currentTeleop && !types.includes(currentTeleop) && types.length > 0) {
-          buildConfig({ teleop_type: types[0] })
+          buildConfigRef.current({ teleop_type: types[0] })
         }
       })
       .catch(() => setTeleopTypes(['so101_leader']))
-  }, [active, selectedRobotType])
+  }, [active, config.teleop_type, selectedRobotType])
 
   const selectedRobotDetail = robotDetails[selectedRobotType] ?? null
 
@@ -205,8 +219,8 @@ export function RecordTab({ active }: RecordTabProps) {
 
   const getCfg = () => ({
     robot_mode: mode,
-    robot_type: (config.robot_type as string) ?? 'so101_follower',
-    teleop_type: (config.teleop_type as string) ?? 'so101_leader',
+    robot_type: selectedRobotType,
+    teleop_type: selectedTeleopType,
     follower_port: (config.follower_port as string) ?? '/dev/follower_arm_1',
     robot_id: (config.robot_id as string) ?? 'my_so101_follower_1',
     leader_port: (config.leader_port as string) ?? '/dev/leader_arm_1',
@@ -217,7 +231,7 @@ export function RecordTab({ active }: RecordTabProps) {
     right_leader_port: (config.right_leader_port as string) ?? '/dev/leader_arm_2',
     record_task: (config.record_task as string) ?? '',
     record_episodes: Number(config.record_episodes ?? 50),
-    record_repo_id: (config.record_repo_id as string) ?? 'user/my-dataset',
+    record_repo_id: (config.record_repo_id as string) ?? defaultRepoId,
     record_resume: Boolean(config.record_resume),
     cameras: mappedCameras,
   })
@@ -232,7 +246,7 @@ export function RecordTab({ active }: RecordTabProps) {
     }
   }, [streamResolution])
 
-  const repoId = (config.record_repo_id as string) ?? 'user/my-dataset'
+  const repoId = (config.record_repo_id as string) ?? defaultRepoId
   const repoError = useMemo(() => {
     const repo = repoId.trim()
     if (!repo) return 'Repo ID is required'
@@ -316,10 +330,73 @@ export function RecordTab({ active }: RecordTabProps) {
   const totalEpisodes = Number(config.record_episodes ?? 50)
   const pct = Math.max(0, Math.min(100, totalEpisodes > 0 ? (episodesDone / totalEpisodes) * 100 : 0))
 
+  const mappedCameraCount = useMemo(
+    () => Object.values(mappedCameras).filter((path) => String(path ?? '').trim().length > 0).length,
+    [mappedCameras],
+  )
+
+  const requiredArmPorts = useMemo(
+    () =>
+      mode === 'single'
+        ? [
+            (config.follower_port as string) ?? '/dev/follower_arm_1',
+            (config.leader_port as string) ?? '/dev/leader_arm_1',
+          ]
+        : [
+            (config.left_follower_port as string) ?? '/dev/follower_arm_1',
+            (config.right_follower_port as string) ?? '/dev/follower_arm_2',
+            (config.left_leader_port as string) ?? '/dev/leader_arm_1',
+            (config.right_leader_port as string) ?? '/dev/leader_arm_2',
+          ],
+    [
+      config.follower_port,
+      config.leader_port,
+      config.left_follower_port,
+      config.right_follower_port,
+      config.left_leader_port,
+      config.right_leader_port,
+      mode,
+    ],
+  )
+
+  const connectedArmPortSet = useMemo(() => new Set(armPaths), [armPaths])
+
+  const missingArmPorts = useMemo(
+    () => requiredArmPorts.filter((port) => !connectedArmPortSet.has(port)),
+    [connectedArmPortSet, requiredArmPorts],
+  )
+
+  const armsReady = missingArmPorts.length === 0
+  const camerasReady = mappedCameraCount > 0
+  const planReady = !repoError && totalEpisodes > 0
+  const recordReady = planReady && camerasReady && armsReady && !conflictReason
+
+  const guardHint = conflictReason
+    ? `${conflictReason} is running`
+    : repoError
+      ? repoError
+      : !camerasReady
+        ? 'Map at least one camera in Mapping before recording.'
+        : !armsReady
+          ? `Connect required arm ports: ${missingArmPorts.join(', ')}`
+          : ''
+
+  const latestRecordEvent = useMemo(() => {
+    for (let i = recordLines.length - 1; i >= 0; i -= 1) {
+      const text = String(recordLines[i]?.text ?? '').replace(/\s+/g, ' ').trim()
+      if (!text) continue
+      return text.length > 140 ? `${text.slice(0, 140)}...` : text
+    }
+    return ''
+  }, [recordLines])
+
   return (
     <section id="tab-record" className={`tab ${active ? 'active' : ''}`}>
       <div className="section-header">
         <h2>Record Dataset</h2>
+        <span className={`status-verdict ${running || recordReady ? 'ready' : 'warn'}`}>
+          {running ? 'Recording' : recordReady ? 'Ready to Start' : 'Action Needed'}
+        </span>
         <div className="mode-toggle">
           <label>Recording Mode:</label>
           <button id="record-mode-single" className={`toggle ${mode === 'single' ? 'active' : ''}`} onClick={() => { setMode('single'); buildConfig({ robot_mode: 'single' }) }}>
@@ -334,14 +411,16 @@ export function RecordTab({ active }: RecordTabProps) {
       <div className="two-col">
         <div className="card">
           <h3>Step 1: Recording Plan</h3>
-          <label>Task Description <span className="muted" style={{ fontSize: 11, fontWeight: 400 }}>(optional)</span></label>
-          <input
-            type="text"
-            value={(config.record_task as string) ?? ''}
-            onChange={(e) => update('record_task', e.target.value)}
-            placeholder="Example: Pick up red block and place in left bin"
-          />
-          <div className="field-help">Annotates the dataset. If blank, defaults to "task".</div>
+          <div className="device-list" style={{ marginBottom: 10 }}>
+            <div className="device-item" style={{ justifyContent: 'space-between' }}>
+              <span className="dname">Episode target</span>
+              <span className={`dbadge ${totalEpisodes > 0 ? 'badge-ok' : 'badge-err'}`}>{Math.max(0, totalEpisodes)}</span>
+            </div>
+            <div className="device-item" style={{ justifyContent: 'space-between' }}>
+              <span className="dname">Repo ID</span>
+              <span className={`dbadge ${repoError ? 'badge-err' : 'badge-ok'}`}>{repoError ? 'invalid' : 'ok'}</span>
+            </div>
+          </div>
           <label>Number of Episodes</label>
           <input type="number" min={1} value={totalEpisodes} onChange={(e) => update('record_episodes', Number(e.target.value))} />
           <div className="field-help">Start with 20-50 for first test run.</div>
@@ -349,7 +428,7 @@ export function RecordTab({ active }: RecordTabProps) {
           <input
             type="text"
             value={repoId}
-            placeholder="Example: yourname/my-dataset"
+            placeholder={hfUsername ? `${hfUsername}/my-dataset` : 'yourname/my-dataset'}
             onChange={(e) => update('record_repo_id', e.target.value)}
             style={repoError ? { borderColor: 'var(--red)' } : undefined}
           />
@@ -380,23 +459,31 @@ export function RecordTab({ active }: RecordTabProps) {
             </label>
             Prevents crash when the target dataset folder already exists.
           </div>
+          <label>Task Description <span className="muted" style={{ fontSize: 11, fontWeight: 400 }}>(optional)</span></label>
+          <input
+            type="text"
+            value={(config.record_task as string) ?? ''}
+            onChange={(e) => update('record_task', e.target.value)}
+            placeholder="Example: Pick up red block and place in left bin"
+          />
+          <div className="field-help">Annotates the dataset. If blank, defaults to "task".</div>
         </div>
 
         <div className="card">
           <h3>Step 2: Device Setup</h3>
           <label>Robot Type</label>
-          <select value={(config.robot_type as string) ?? robotTypes[0] ?? ''} onChange={(e) => update('robot_type', e.target.value)}>
+          <select value={selectedRobotType} onChange={(e) => update('robot_type', e.target.value)}>
             {robotTypes.map((t) => (
               <option key={t} value={t}>
-                {t}
+                {formatRobotType(t)}
               </option>
             ))}
           </select>
           <label>Teleoperator Type</label>
-          <select value={(config.teleop_type as string) ?? teleopTypes[0] ?? ''} onChange={(e) => update('teleop_type', e.target.value)}>
+          <select value={selectedTeleopType} onChange={(e) => update('teleop_type', e.target.value)}>
             {teleopTypes.map((t) => (
               <option key={t} value={t}>
-                {t}
+                {formatRobotType(t)}
               </option>
             ))}
           </select>
@@ -585,25 +672,40 @@ export function RecordTab({ active }: RecordTabProps) {
         </div>
       </div>
       <div className="record-sticky-controls">
+        <div className="record-run-summary">
+          <span className={`dbadge ${running ? 'badge-run' : recordReady ? 'badge-ok' : 'badge-err'}`}>
+            {running ? 'RECORDING' : recordReady ? 'READY' : 'BLOCKED'}
+          </span>
+          <span className="record-run-text">
+            {running ? `${episodesDone}/${totalEpisodes} episodes` : guardHint || 'Ready to start recording'}
+          </span>
+          {latestRecordEvent ? <span className="record-run-last">Last: {latestRecordEvent}</span> : null}
+          {!running && episodesDone > 0 && (
+            <button type="button" className="link-btn" onClick={() => setActiveTab('dataset')}>→ Go to Dataset</button>
+          )}
+        </div>
         <div className="ep-controls-row" id="record-ep-controls">
           {!running && (
-            <button className="btn-primary" onClick={start}>▶ Start Recording</button>
+            <>
+              <button className="btn-primary" onClick={start} disabled={!recordReady}>▶ Start Recording</button>
+            </>
           )}
           {running && (
             <button className="btn-danger" onClick={stop}>■ Force Stop</button>
           )}
-          <button className="btn-sm record-ep-action" disabled={!running} onClick={() => sendKey('right')}>
-            ✓ Save →
-          </button>
-          <button className="btn-sm record-ep-action record-ep-discard" disabled={!running} onClick={() => sendKey('left')}>
-            ✗ Discard ←
-          </button>
-          <button className="btn-sm record-ep-action record-ep-end" disabled={!running} onClick={() => sendKey('escape')}>
-            ⏹ End (Esc)
-          </button>
-        </div>
-        <div id="record-ep-guard" className="ep-guard-msg" style={{ display: running ? 'none' : 'block' }}>
-          Start recording first. During capture: Save (→), Discard (←), End (Esc).
+          {running && (
+            <>
+              <button className="btn-sm record-ep-action" onClick={() => sendKey('right')}>
+                ✓ Save →
+              </button>
+              <button className="btn-sm record-ep-action record-ep-discard" onClick={() => sendKey('left')}>
+                ✗ Discard ←
+              </button>
+              <button className="btn-sm record-ep-action record-ep-end" onClick={() => sendKey('escape')}>
+                ⏹ End (Esc)
+              </button>
+            </>
+          )}
         </div>
       </div>
       </section>

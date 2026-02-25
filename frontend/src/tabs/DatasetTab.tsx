@@ -93,6 +93,7 @@ const parseDatasetId = (id: string): { user: string; repo: string } | null => {
 
 export function DatasetTab({ active }: DatasetTabProps) {
   const addToast = useLeStudioStore((s) => s.addToast)
+  const setActiveTab = useLeStudioStore((s) => s.setActiveTab)
   const [datasets, setDatasets] = useState<DatasetListItem[]>([])
   const [selected, setSelected] = useState<DatasetDetail | null>(null)
   const [selectedEpisode, setSelectedEpisode] = useState<number>(0)
@@ -117,6 +118,7 @@ export function DatasetTab({ active }: DatasetTabProps) {
   const [hubDownloadProgress, setHubDownloadProgress] = useState(0)
   const [hubDownloadNote, setHubDownloadNote] = useState('')
   const [hubDownloadJobId, setHubDownloadJobId] = useState('')
+  const [lastHubDownloadRepoId, setLastHubDownloadRepoId] = useState('')
   const [isPlaying, setIsPlaying] = useState(false)
   const [playbackSpeed, setPlaybackSpeed] = useState(1)
   const [currentTime, setCurrentTime] = useState(0)
@@ -247,6 +249,21 @@ export function DatasetTab({ active }: DatasetTabProps) {
     return selected.episodes.find((ep) => ep.episode_index === selectedEpisode) ?? null
   }, [selected, selectedEpisode])
 
+  const latestDatasetId = useMemo(() => {
+    if (!datasets.length) return ''
+    const latest = [...datasets].sort((a, b) => (Number(b.timestamp ?? 0) - Number(a.timestamp ?? 0)))[0]
+    return latest?.id ?? ''
+  }, [datasets])
+
+  const episodeTimeBounds = useMemo(() => {
+    if (!selectedEpisodeData || !selected?.cameras[0]) return { from: 0, to: null }
+    const cam = selected.cameras[0]
+    const meta = selectedEpisodeData.video_files?.[cam]
+    return {
+      from: meta?.from_timestamp ?? 0,
+      to: meta?.to_timestamp ?? null,
+    }
+  }, [selectedEpisodeData, selected?.cameras])
   useEffect(() => {
     if (filteredEpisodes.length === 0) return
     if (!filteredEpisodes.some((ep) => ep.episode_index === selectedEpisode)) {
@@ -386,6 +403,7 @@ export function DatasetTab({ active }: DatasetTabProps) {
   const downloadHubDataset = async (repoId: string) => {
     const confirmed = window.confirm(`Download dataset "${repoId}" from HuggingFace Hub?\n\nLarge datasets may take several minutes.`)
     if (!confirmed) return
+    setLastHubDownloadRepoId(repoId)
     setHubDownloadVisible(true)
     setHubDownloadStatus('queued')
     setHubDownloadProgress(0)
@@ -440,38 +458,28 @@ export function DatasetTab({ active }: DatasetTabProps) {
       setIsPlaying(false)
       return
     }
+    const epFrom = episodeTimeBounds.from
+    if (videos[0].currentTime < epFrom) {
+      videos.forEach((v) => { v.currentTime = epFrom })
+    }
     videos.forEach((video) => {
       video.playbackRate = playbackSpeed
-      void video.play().catch(() => {
-        setIsPlaying(false)
-      })
+      void video.play().catch(() => { setIsPlaying(false) })
     })
     setIsPlaying(true)
   }
 
-  const stepFrame = (direction: number) => {
-    const videos = getAllVideos()
-    if (videos.length === 0) return
-    videos.forEach((video) => video.pause())
-    setIsPlaying(false)
-    const fps = Math.max(1, Number(selected?.fps ?? 30))
-    const step = direction * (1 / fps)
-    const nextTime = Math.max(0, Math.min(duration || Number.POSITIVE_INFINITY, currentTime + step))
-    videos.forEach((video) => {
-      const maxTime = Number.isFinite(video.duration) ? video.duration : nextTime
-      video.currentTime = Math.max(0, Math.min(maxTime, nextTime))
-    })
-    setCurrentTime(nextTime)
-  }
 
   const handleScrub = (value: number) => {
-    const nextTime = Math.max(0, Math.min(duration || Number.POSITIVE_INFINITY, value))
+    const epFrom = episodeTimeBounds.from
+    const clampedRel = Math.max(0, Math.min(duration || Number.POSITIVE_INFINITY, value))
+    const absTime = epFrom + clampedRel
     const videos = getAllVideos()
     videos.forEach((video) => {
-      const maxTime = Number.isFinite(video.duration) ? video.duration : nextTime
-      video.currentTime = Math.max(0, Math.min(maxTime, nextTime))
+      const maxTime = Number.isFinite(video.duration) ? video.duration : absTime
+      video.currentTime = Math.max(0, Math.min(maxTime, absTime))
     })
-    setCurrentTime(nextTime)
+    setCurrentTime(clampedRel)
   }
 
   const handleSpeedChange = (speed: number) => {
@@ -490,14 +498,33 @@ export function DatasetTab({ active }: DatasetTabProps) {
       setDuration(0)
       return
     }
+    const { from: epFrom, to: epTo } = episodeTimeBounds
     videos.forEach((video) => {
       video.playbackRate = playbackSpeed
     })
     const primary = videos[0]
+    const seekToEpisodeStart = () => {
+      if (epFrom > 0) {
+        primary.currentTime = epFrom
+        videos.slice(1).forEach((v) => { v.currentTime = epFrom })
+      }
+    }
     const syncFromPrimary = () => {
-      setCurrentTime(primary.currentTime || 0)
-      setDuration(Number.isFinite(primary.duration) ? primary.duration : 0)
+      const raw = primary.currentTime || 0
+      const relTime = Math.max(0, raw - epFrom)
+      const epDuration = epTo !== null
+        ? Math.max(0, epTo - epFrom)
+        : (Number.isFinite(primary.duration) ? Math.max(0, primary.duration - epFrom) : 0)
+      setCurrentTime(relTime)
+      setDuration(epDuration)
       setIsPlaying(!primary.paused && !primary.ended)
+    }
+    const clampToEpisodeEnd = () => {
+      if (epTo !== null && primary.currentTime >= epTo) {
+        primary.pause()
+        videos.slice(1).forEach((v) => v.pause())
+        setIsPlaying(false)
+      }
     }
     const syncAcrossVideos = () => {
       const target = primary.currentTime || 0
@@ -507,32 +534,45 @@ export function DatasetTab({ active }: DatasetTabProps) {
         }
       })
     }
+    primary.addEventListener('loadedmetadata', seekToEpisodeStart)
     primary.addEventListener('loadedmetadata', syncFromPrimary)
     primary.addEventListener('durationchange', syncFromPrimary)
     primary.addEventListener('timeupdate', syncFromPrimary)
     primary.addEventListener('timeupdate', syncAcrossVideos)
+    primary.addEventListener('timeupdate', clampToEpisodeEnd)
     primary.addEventListener('play', syncFromPrimary)
     primary.addEventListener('pause', syncFromPrimary)
     primary.addEventListener('ended', syncFromPrimary)
     syncFromPrimary()
     return () => {
+      primary.removeEventListener('loadedmetadata', seekToEpisodeStart)
       primary.removeEventListener('loadedmetadata', syncFromPrimary)
       primary.removeEventListener('durationchange', syncFromPrimary)
       primary.removeEventListener('timeupdate', syncFromPrimary)
       primary.removeEventListener('timeupdate', syncAcrossVideos)
+      primary.removeEventListener('timeupdate', clampToEpisodeEnd)
       primary.removeEventListener('play', syncFromPrimary)
       primary.removeEventListener('pause', syncFromPrimary)
       primary.removeEventListener('ended', syncFromPrimary)
     }
-  }, [selected?.dataset_id, selectedEpisode, selected?.cameras, playbackSpeed])
+  }, [selected?.dataset_id, selectedEpisode, selected?.cameras, playbackSpeed, episodeTimeBounds])
 
   const hubCard = (
     <div className="card" style={{ marginTop: 16, marginBottom: 16 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
         <h3 style={{ margin: 0 }}>HuggingFace Hub</h3>
-        <span className={`dbadge ${hubStatusClass}`} id="hub-search-status">
-          {hubStatusText}
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {hubStatusText !== 'Ready' && (
+            <span className={`dbadge ${hubStatusClass}`} id="hub-search-status">
+              {hubStatusText}
+            </span>
+          )}
+          {hubStatusClass === 'badge-err' ? (
+            <button className="btn-xs" onClick={() => void searchHub()}>
+              Retry Search
+            </button>
+          ) : null}
+        </div>
       </div>
       <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
         <input
@@ -601,6 +641,13 @@ export function DatasetTab({ active }: DatasetTabProps) {
         <div id="hub-dl-note" className="muted" style={{ fontSize: 11, marginTop: 6 }}>
           {hubDownloadNote}
         </div>
+        {hubDownloadStatus === 'error' && lastHubDownloadRepoId ? (
+          <div style={{ marginTop: 8, display: 'flex', justifyContent: 'flex-end' }}>
+            <button className="btn-xs" onClick={() => void downloadHubDataset(lastHubDownloadRepoId)}>
+              Retry Download
+            </button>
+          </div>
+        ) : null}
       </div>
     </div>
   )
@@ -609,6 +656,9 @@ export function DatasetTab({ active }: DatasetTabProps) {
     <section id="tab-dataset" className={`tab ${active ? 'active' : ''}`}>
       <div className="section-header">
         <h2>Dataset Viewer</h2>
+        <span className={`status-verdict ${selected ? 'ready' : datasets.length > 0 ? 'warn' : 'warn'}`}>
+          {selected ? `${selected.total_episodes} Episodes` : datasets.length > 0 ? `${datasets.length} Datasets` : 'No Datasets'}
+        </span>
         <button onClick={refreshList} className="btn-sm">
           ↺ Refresh List
         </button>
@@ -684,6 +734,16 @@ export function DatasetTab({ active }: DatasetTabProps) {
               <div className="dataset-empty-icon">📂</div>
               <div className="dataset-empty-title">No dataset selected</div>
               <div className="dataset-empty-hint">Select a dataset from the list to view details and replay episodes.</div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center', marginTop: 8 }}>
+                {latestDatasetId ? (
+                  <button className="btn-sm" onClick={() => void loadDataset(latestDatasetId)}>
+                    Select Latest Dataset
+                  </button>
+                ) : null}
+                <button className="btn-sm" onClick={() => setActiveTab('record')}>
+                  Go to Record
+                </button>
+              </div>
             </div>
           ) : (
             <div id="dataset-detail-view" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -727,6 +787,13 @@ export function DatasetTab({ active }: DatasetTabProps) {
                 <div id="ds-push-note" className="muted" style={{ fontSize: 11, marginTop: 6 }}>
                   {pushStatus.note}
                 </div>
+                {pushStatus.status === 'error' ? (
+                  <div style={{ marginTop: 8, display: 'flex', justifyContent: 'flex-end' }}>
+                    <button className="btn-xs" onClick={() => void pushToHub(selected.dataset_id)}>
+                      Retry Push
+                    </button>
+                  </div>
+                ) : null}
               </div>
 
               <div id="ds-quality-panel" style={{ display: quality ? 'block' : 'none', border: '1px solid var(--border)', borderRadius: 8, padding: 10, background: 'var(--bg3)' }}>
@@ -760,6 +827,12 @@ export function DatasetTab({ active }: DatasetTabProps) {
                 </div>
               </div>
 
+              {quality && quality.score >= 60 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+                  <button type="button" className="link-btn" onClick={() => setActiveTab('train')}>→ Proceed to Train</button>
+                </div>
+              )}
+
               <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
                 <label>Episode:</label>
                 <select id="ds-ep-select" value={selectedEpisode} onChange={(e) => setSelectedEpisode(Number(e.target.value))} style={{ flex: 1, minWidth: 160 }}>
@@ -769,6 +842,14 @@ export function DatasetTab({ active }: DatasetTabProps) {
                     </option>
                   ))}
                 </select>
+                <span className={`dbadge ${
+                  (tags[String(selectedEpisode)] ?? 'untagged') === 'good' ? 'badge-ok'
+                    : (tags[String(selectedEpisode)] ?? 'untagged') === 'bad' ? 'badge-err'
+                    : (tags[String(selectedEpisode)] ?? 'untagged') === 'review' ? 'badge-warn'
+                    : 'badge-idle'
+                }`}>
+                  {tags[String(selectedEpisode)] ?? 'untagged'}
+                </span>
                 <select id="ds-tag-filter" value={filter} onChange={(e) => setFilter(e.target.value as TagFilter)}>
                   <option value="all">All episodes</option>
                   <option value="good">👍 Good</option>
@@ -794,10 +875,11 @@ export function DatasetTab({ active }: DatasetTabProps) {
                       <div key={cam} style={{ background: 'var(--bg-app)', border: '1px solid var(--border)', borderRadius: 6, overflow: 'hidden' }}>
                         <div style={{ padding: '6px 10px', fontSize: 11, fontFamily: 'var(--mono)', borderBottom: '1px solid var(--border)', background: 'rgba(0,0,0,0.2)' }}>{cam}</div>
                         <video
+                          key={`${cam}-ep${selectedEpisode}`}
                           className="ds-video"
                           src={`/api/datasets/${encodeURIComponent(parsed.user)}/${encodeURIComponent(parsed.repo)}/videos/${encodeURIComponent(cam)}/${encodeURIComponent(chunk)}/${encodeURIComponent(file)}`}
-                          controls
                           preload="metadata"
+                          playsInline
                           style={{ width: '100%', display: 'block' }}
                         />
                       </div>
@@ -837,13 +919,21 @@ export function DatasetTab({ active }: DatasetTabProps) {
                   </span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8 }}>
-                  <button className="btn-sm" title="Previous frame" onClick={() => stepFrame(-1)}>
+                  <button className="btn-sm" title="Previous episode" onClick={() => {
+                    const eps = filteredEpisodes
+                    const idx = eps.findIndex((ep) => ep.episode_index === selectedEpisode)
+                    if (idx > 0) setSelectedEpisode(eps[idx - 1].episode_index)
+                  }}>
                     ⏮
                   </button>
                   <button id="ds-play-btn" className="btn-sm" style={{ minWidth: 74 }} onClick={togglePlay}>
                     {isPlaying ? '⏸ Pause' : '▶ Play'}
                   </button>
-                  <button className="btn-sm" title="Next frame" onClick={() => stepFrame(1)}>
+                  <button className="btn-sm" title="Next episode" onClick={() => {
+                    const eps = filteredEpisodes
+                    const idx = eps.findIndex((ep) => ep.episode_index === selectedEpisode)
+                    if (idx >= 0 && idx < eps.length - 1) setSelectedEpisode(eps[idx + 1].episode_index)
+                  }}>
                     ⏭
                   </button>
                   <select

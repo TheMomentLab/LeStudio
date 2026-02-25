@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ProcessButtons } from '../components/shared/ProcessButtons'
+import { getProcessConflict } from '../lib/processConflicts'
 import { useConfig } from '../hooks/useConfig'
 import { useProcess } from '../hooks/useProcess'
 import { apiGet, apiPost } from '../lib/api'
@@ -61,11 +62,15 @@ function parseSuccess(rawValue: string) {
 
 export function EvalTab({ active }: EvalTabProps) {
   const running = useLeStudioStore((s) => !!s.procStatus.eval)
+  const procStatus = useLeStudioStore((s) => s.procStatus)
+  const conflictReason = getProcessConflict('eval', procStatus)
   const evalLogLines = useLeStudioStore((s) => s.logLines.eval ?? EMPTY_EVAL_LINES)
   const { config, buildConfig } = useConfig()
   const { stopProcess } = useProcess()
   const appendLog = useLeStudioStore((s) => s.appendLog)
   const addToast = useLeStudioStore((s) => s.addToast)
+  const setActiveTab = useLeStudioStore((s) => s.setActiveTab)
+  const hfUsername = useLeStudioStore((s) => s.hfUsername)
   const [checkpoints, setCheckpoints] = useState<CheckpointItem[]>([])
   const [progressStatus, setProgressStatus] = useState<EvalProgressStatus>('idle')
   const [doneEpisodes, setDoneEpisodes] = useState(0)
@@ -83,21 +88,62 @@ export function EvalTab({ active }: EvalTabProps) {
   const processedLogsRef = useRef(0)
   const perEpisodeRewardRef = useRef<Record<number, number>>({})
   const [preflightOk, setPreflightOk] = useState(true)
-  const [preflightAction, setPreflightAction] = useState('')
+
   const [preflightReason, setPreflightReason] = useState('')
+  const [preflightAction, setPreflightAction] = useState('')
+  const [preflightCommand, setPreflightCommand] = useState('')
+  const [lastMetricUpdateMs, setLastMetricUpdateMs] = useState<number | null>(null)
 
   const refreshPreflight = useCallback(async () => {
     const device = (config.eval_device as string) ?? 'cuda'
-    const res = await apiGet<{ ok: boolean; reason?: string; action?: string }>(`/api/train/preflight?device=${encodeURIComponent(device)}`)
+    const res = await apiGet<{ ok: boolean; reason?: string; action?: string; command?: string }>(`/api/train/preflight?device=${encodeURIComponent(device)}`)
     setPreflightOk(!!res.ok)
-    setPreflightAction(res.action ?? '')
     setPreflightReason(res.reason ?? '')
+    setPreflightAction(res.action ?? '')
+    setPreflightCommand(res.command ?? '')
     return !!res.ok
   }, [config.eval_device])
+
+  const installCudaTorch = async () => {
+    appendLog('eval', '[INFO] Starting PyTorch CUDA installer from GUI...', 'info')
+    try {
+      const res = await apiPost<{ ok: boolean; error?: string }>('/api/train/install_pytorch', { nightly: true, cuda_tag: 'cu128' })
+      if (!res.ok) {
+        appendLog('eval', `[ERROR] ${res.error ?? 'Failed to start CUDA installer.'}`, 'error')
+        return
+      }
+      addToast('CUDA PyTorch install started', 'info')
+    } catch (e) {
+      appendLog('eval', `[ERROR] ${e instanceof Error ? e.message : 'Installer request failed.'}`, 'error')
+    }
+  }
+
+  const runPreflightFix = async () => {
+    if (!preflightCommand) return
+    appendLog('eval', `[INFO] Running: ${preflightCommand}`, 'info')
+    try {
+      const res = await apiPost<{ ok: boolean; error?: string }>('/api/train/install_torchcodec_fix', { command: preflightCommand })
+      if (!res.ok) {
+        appendLog('eval', `[ERROR] ${res.error ?? 'Failed to start installer.'}`, 'error')
+        return
+      }
+      addToast('Fix installer started — check console for progress', 'info')
+    } catch (e) {
+      appendLog('eval', `[ERROR] ${e instanceof Error ? e.message : 'Installer request failed.'}`, 'error')
+    }
+  }
 
   const totalEpisodes = Number(config.eval_episodes ?? 10)
   const progressTotal = targetEpisodes && targetEpisodes > 0 ? targetEpisodes : null
   const progressPct = Math.max(0, Math.min(100, progressTotal ? (doneEpisodes / progressTotal) * 100 : 0))
+  const repoId = (config.eval_repo_id as string) ?? ''
+  const repoError = useMemo(() => {
+    const repo = repoId.trim()
+    if (!repo) return 'Dataset Repo ID is required'
+    if (!/^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/.test(repo)) return 'Dataset Repo ID must be username/dataset format.'
+    return ''
+  }, [repoId])
+  const evalReady = preflightOk && !repoError && !conflictReason
 
   const progressStatusStyle = useMemo(() => {
     const map: Record<EvalProgressStatus, { label: string; bg: string; color: string }> = {
@@ -172,6 +218,8 @@ export function EvalTab({ active }: EvalTabProps) {
         setHadError(true)
         setProgressStatus('error')
       }
+
+      setLastMetricUpdateMs(lineItem.ts ?? Date.now())
 
       const epTotalMatch = line.match(/(?:^|\s)(?:n_episodes|episodes)\s*[:=]\s*([0-9]+)/i)
         || line.match(/episode\s*\d+\s*\/\s*([0-9]+)/i)
@@ -266,11 +314,11 @@ export function EvalTab({ active }: EvalTabProps) {
     }
   }, [running, startedAtMs, endedAtMs, doneEpisodes])
 
-  const start = async () => {
+  const start = async (episodesOverride?: number) => {
     const cfg = {
       eval_policy_path: (config.eval_policy_path as string) ?? 'outputs/train/checkpoints/last/pretrained_model',
-      eval_repo_id: (config.eval_repo_id as string) ?? '',
-      eval_episodes: Number(config.eval_episodes ?? 10),
+      eval_repo_id: repoId,
+      eval_episodes: Number(episodesOverride ?? Number(config.eval_episodes ?? 10)),
       eval_device: (config.eval_device as string) ?? 'cuda',
       eval_task: (config.eval_task as string) ?? '',
     }
@@ -278,8 +326,8 @@ export function EvalTab({ active }: EvalTabProps) {
       appendLog('eval', '[ERROR] Policy path is required.', 'error')
       return
     }
-    if (!/^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/.test(cfg.eval_repo_id)) {
-      appendLog('eval', '[ERROR] Dataset Repo ID must be username/dataset format.', 'error')
+    if (repoError) {
+      appendLog('eval', `[ERROR] ${repoError}`, 'error')
       return
     }
     resetEvalState('starting')
@@ -299,6 +347,12 @@ export function EvalTab({ active }: EvalTabProps) {
     addToast('Eval started', 'success')
   }
 
+  const rerunQuickEval = async () => {
+    if (running) return
+    await buildConfig({ eval_episodes: 3 })
+    await start(3)
+  }
+
   const stop = async () => {
     await stopProcess('eval')
     setEndedAtMs(Date.now())
@@ -310,6 +364,9 @@ export function EvalTab({ active }: EvalTabProps) {
     <section id="tab-eval" className={`tab ${active ? 'active' : ''}`}>
       <div className="section-header">
         <h2>Evaluate Policy</h2>
+        <span className={`status-verdict ${running || evalReady ? 'ready' : 'warn'}`}>
+          {running ? 'Running' : evalReady ? 'Ready to Start' : 'Action Needed'}
+        </span>
       </div>
 
       <div className="quick-guide">
@@ -344,10 +401,12 @@ export function EvalTab({ active }: EvalTabProps) {
           <label>Dataset Repo ID</label>
           <input
             type="text"
-            value={(config.eval_repo_id as string) ?? ''}
-            placeholder="username/dataset"
+            value={repoId}
+            placeholder={hfUsername ? `${hfUsername}/my-dataset` : 'username/dataset'}
             onChange={(e) => buildConfig({ eval_repo_id: e.target.value })}
+            style={repoError ? { borderColor: 'var(--red)' } : undefined}
           />
+          {repoError ? <div className="ep-guard-hint" style={{ marginTop: 4 }}>{repoError}</div> : null}
           <label>Episodes</label>
           <input type="number" min={1} value={totalEpisodes} onChange={(e) => buildConfig({ eval_episodes: Number(e.target.value) })} />
           <label>Compute Device</label>
@@ -356,6 +415,27 @@ export function EvalTab({ active }: EvalTabProps) {
             <option value="cpu">CPU</option>
             <option value="mps">MPS (Apple Silicon)</option>
           </select>
+          {!preflightOk ? (
+            <div id="eval-device-warning" className="train-device-warning">
+              {preflightReason || 'Device preflight failed. Evaluation is blocked.'}
+            </div>
+          ) : null}
+          {!preflightOk && preflightAction === 'install_torch_cuda' ? (
+            <div id="eval-device-actions" className="recovery-action" style={{ marginTop: 8 }}>
+              <div className="field-help" style={{ marginBottom: 6 }}>Recommended next step to unblock evaluation:</div>
+              <button className="btn-primary" onClick={installCudaTorch}>
+                Install CUDA PyTorch (Nightly)
+              </button>
+            </div>
+          ) : null}
+          {!preflightOk && preflightCommand && preflightAction !== 'install_torch_cuda' ? (
+            <div id="eval-device-actions" className="recovery-action" style={{ marginTop: 8 }}>
+              <div className="field-help" style={{ marginBottom: 6 }}>Recommended next step to unblock evaluation:</div>
+              <button className="btn-primary" onClick={runPreflightFix}>
+                Run Fix
+              </button>
+            </div>
+          ) : null}
           <label>Task (Optional)</label>
           <input
             type="text"
@@ -384,37 +464,54 @@ export function EvalTab({ active }: EvalTabProps) {
             <div className="usb-bus-bar-track">
               <div id="eval-progress-fill" className="usb-bar-fill good" style={{ width: `${progressPct}%` }} />
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, fontSize: 12, color: 'var(--text2)', gap: 10, flexWrap: 'wrap' }}>
-              <span id="eval-progress-episodes">Episodes: {doneEpisodes || '--'} / {progressTotal || '--'}</span>
-              <span id="eval-progress-reward">Reward: {formatReward(meanReward)}</span>
-              <span id="eval-progress-success">Success: {formatSuccess(successRate)}</span>
-            </div>
+            {progressStatus !== 'idle' && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, fontSize: 12, color: 'var(--text2)', gap: 10, flexWrap: 'wrap' }}>
+                <span id="eval-progress-episodes">Episodes: {doneEpisodes || '--'} / {progressTotal || '--'}</span>
+                <span id="eval-progress-reward">Reward: {formatReward(meanReward)}</span>
+                <span id="eval-progress-success">Success: {formatSuccess(successRate)}</span>
+              </div>
+            )}
           </div>
 
-          <div style={{ marginTop: 10, padding: 10, border: '1px solid var(--border)', borderRadius: 8, background: 'rgba(255,255,255,0.02)' }}>
-            <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 8 }}>Evaluation Summary</div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, fontSize: 11, color: 'var(--text2)' }}>
-              <span id="eval-summary-confidence" className="dbadge" style={{ display: 'none' }} />
-              <span id="eval-summary-time">
-                Start {formatClock(startedAtMs)} · Elapsed {formatElapsed(startedAtMs, endedAtMs, elapsedTick)} · End {formatClock(endedAtMs)}
-              </span>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, fontSize: 12, color: 'var(--text2)' }}>
-              <div id="eval-summary-final-reward">Final Reward: {formatReward(finalReward)}</div>
-              <div id="eval-summary-final-success">Final Success: {formatSuccess(finalSuccess)}</div>
-              <div id="eval-summary-best">
-                Best Episode: {bestEpisode ? `#${bestEpisode.ep} (${bestEpisode.reward.toFixed(4)})` : '--'}
+          {progressStatus !== 'idle' && (
+            <div style={{ marginTop: 10, padding: 10, border: '1px solid var(--border)', borderRadius: 8, background: 'rgba(255,255,255,0.02)' }}>
+              <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 8 }}>Evaluation Summary</div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, fontSize: 11, color: 'var(--text2)' }}>
+                <span id="eval-summary-confidence" className="dbadge" style={{ display: 'none' }} />
+                <span id="eval-summary-time">
+                  Start {formatClock(startedAtMs)} · Elapsed {formatElapsed(startedAtMs, endedAtMs, elapsedTick)} · End {formatClock(endedAtMs)} · Update {formatClock(lastMetricUpdateMs)}
+                </span>
               </div>
-              <div id="eval-summary-worst">
-                Worst Episode: {worstEpisode ? `#${worstEpisode.ep} (${worstEpisode.reward.toFixed(4)})` : '--'}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, fontSize: 12, color: 'var(--text2)' }}>
+                <div id="eval-summary-final-reward">Final Reward: {formatReward(finalReward)}</div>
+                <div id="eval-summary-final-success">Final Success: {formatSuccess(finalSuccess)}</div>
+                <div id="eval-summary-best">
+                  Best Episode: {bestEpisode ? `#${bestEpisode.ep} (${bestEpisode.reward.toFixed(4)})` : '--'}
+                </div>
+                <div id="eval-summary-worst">
+                  Worst Episode: {worstEpisode ? `#${worstEpisode.ep} (${worstEpisode.reward.toFixed(4)})` : '--'}
+                </div>
+              </div>
+              <div style={{ marginTop: 10, display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                <button className="btn-xs" onClick={() => void rerunQuickEval()} disabled={running || !evalReady}>
+                  Re-run 3 Episodes
+                </button>
+                <button className="btn-xs" onClick={() => setActiveTab('train')}>
+                  Go to Train
+                </button>
+                {(progressStatus === 'completed' || progressStatus === 'stopped') && (
+                  <button className="btn-xs" onClick={() => setActiveTab('record')}>
+                    ↻ Record New Data
+                  </button>
+                )}
               </div>
             </div>
-          </div>
+          )}
 
-          <div className="spacer" />
-          <ProcessButtons running={running} onStart={start} onStop={stop} startLabel="▶ Start Eval" />
         </div>
       </div>
+
+      <ProcessButtons running={running} onStart={() => void start()} onStop={stop} startLabel="▶ Start Eval" disabled={!evalReady} conflictReason={conflictReason} />
     </section>
   )
 }
