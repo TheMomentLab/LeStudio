@@ -46,7 +46,7 @@ export function ProfileSelector() {
 
   const applySelected = async (name: string) => {
     try {
-      const res = await apiGet<Record<string, unknown>>(`/api/profiles/${encodeURIComponent(name)}`)
+      const res = await apiGet<import('../../lib/types').LeStudioConfig>(`/api/profiles/${encodeURIComponent(name)}`)
       if (res) {
         setConfig(res)
         setActiveProfile(name)

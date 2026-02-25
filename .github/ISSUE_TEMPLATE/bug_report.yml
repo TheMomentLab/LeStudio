@@ -1,0 +1,86 @@
+name: Bug Report
+description: Create a report to help us improve LeStudio
+title: '[Bug]: '
+labels: ['bug', 'triage']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to fill out this bug report!
+        Please review the [Troubleshooting Guide](https://github.com/TheMomentLab/lestudio/blob/main/docs/troubleshooting.md) first to see if your issue (especially camera/udev permissions) is already covered.
+
+  - type: input
+    id: version
+    attributes:
+      label: LeStudio Version
+      description: What version of LeStudio are you using? (e.g., from `git rev-parse HEAD` or pip version)
+      placeholder: "e.g., v0.1.0 or commit hash"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating System
+      description: What OS are you running the server on? (Note: Windows is generally not supported for udev rules)
+      options:
+        - Ubuntu 22.04
+        - Ubuntu 20.04
+        - Debian 12
+        - macOS (Client Only)
+        - Windows (Client Only)
+        - Other (please specify below)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: robot_type
+    attributes:
+      label: Robot Type
+      description: Which robot are you trying to control?
+      options:
+        - SO-100
+        - SO-101
+        - Aloha
+        - Koch
+        - Reach
+        - Custom Robot
+        - No Robot (UI/General issue)
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: A clear and concise description of what the bug is.
+      placeholder: "When I click 'Start Teleop', the cameras do not appear and the console shows..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: How can we reproduce the problem? Please provide as much detail as possible.
+      value: |
+        1. Go to '...'
+        2. Click on '....'
+        3. Scroll down to '....'
+        4. See error
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Logs (Global Console Output)
+      description: Copy and paste the relevant log output from the bottom console drawer. Use code blocks (` ``` `).
+      render: shell
+
+  - type: textarea
+    id: udev_output
+    attributes:
+      label: Device & Udev Status (Optional)
+      description: If this is a hardware/camera mapping issue, please run `ls -l /dev | grep video` or provide your applied udev rules.
+      render: shell

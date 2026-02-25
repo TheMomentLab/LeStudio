@@ -1,0 +1,96 @@
+"""Config and profile management helpers."""
+from __future__ import annotations
+
+import json
+import re
+from pathlib import Path
+
+DEFAULT_CONFIG = {
+    "robot_mode":          "single",
+    "follower_port":       "/dev/follower_arm_1",
+    "leader_port":         "/dev/leader_arm_1",
+    "robot_id":            "my_so101_follower_1",
+    "teleop_id":           "my_so101_leader_1",
+    "left_follower_port":  "/dev/follower_arm_1",
+    "right_follower_port": "/dev/follower_arm_2",
+    "left_leader_port":    "/dev/leader_arm_1",
+    "right_leader_port":   "/dev/leader_arm_2",
+    "left_robot_id":       "my_so101_follower_1",
+    "right_robot_id":      "my_so101_follower_2",
+    "left_teleop_id":      "my_so101_leader_1",
+    "right_teleop_id":     "my_so101_leader_2",
+    "cameras": {
+        "wrist_1": "/dev/wrist_cam_1",
+        "top_1":   "/dev/top_cam_1",
+        "top_2":   "/dev/top_cam_2",
+    },
+    "camera_settings": {
+        "codec":        "MJPG",
+        "width":        640,
+        "height":       480,
+        "fps":          30,
+        "jpeg_quality": 70,
+    },
+    "record_task":     "",
+    "record_episodes": 50,
+    "record_repo_id":  "user/my-dataset",
+    "record_resume":   False,
+    "profile_name":    "default",
+    "train_dataset_source": "local",
+    "process_view_url": "",
+    "eval_policy_path": "outputs/train/checkpoints/last/pretrained_model",
+    "eval_repo_id": "user/my-dataset",
+    "eval_episodes": 10,
+    "eval_device": "cuda",
+    "eval_task": "",
+}
+
+
+def _load_config(config_path: Path) -> dict:
+    if config_path.exists():
+        try:
+            content = config_path.read_text().strip()
+            if content:
+                return {**DEFAULT_CONFIG, **json.loads(content)}
+        except (json.JSONDecodeError, Exception):
+            pass
+    return DEFAULT_CONFIG.copy()
+
+
+def _save_config(config_path: Path, cfg: dict):
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    config_path.write_text(json.dumps(cfg, indent=2))
+
+
+def _is_valid_profile_name(name: str) -> bool:
+    return re.fullmatch(r"[A-Za-z0-9._-]+", name or "") is not None
+
+
+def _profile_path(profiles_dir: Path, name: str) -> Path:
+    return profiles_dir / f"{name}.json"
+
+
+def _list_profiles(profiles_dir: Path) -> list[str]:
+    if not profiles_dir.exists():
+        return []
+    names = []
+    for p in profiles_dir.glob("*.json"):
+        if p.is_file():
+            names.append(p.stem)
+    return sorted(names)
+
+
+def _load_profile(profiles_dir: Path, name: str) -> dict | None:
+    path = _profile_path(profiles_dir, name)
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text())
+    except Exception:
+        return None
+    return {**DEFAULT_CONFIG, **data}
+
+
+def _save_profile(profiles_dir: Path, name: str, cfg: dict):
+    profiles_dir.mkdir(parents=True, exist_ok=True)
+    _profile_path(profiles_dir, name).write_text(json.dumps(cfg, indent=2))

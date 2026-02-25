@@ -49,3 +49,18 @@ lestudio = ["static/**"]
 
 [tool.pytest.ini_options]
 addopts = "--ignore=src/lerobot"
+
+
+[tool.ruff]
+line-length = 119
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "UP", "B"]
+ignore = ["E501"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"

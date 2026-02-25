@@ -83,6 +83,28 @@ def test_normalize_console_command_behaviors():
         server._normalize_console_command("/py", " ")
 
 
+def test_normalize_console_command_allowlist():
+    # Allowed: pip download
+    args, _ = server._normalize_console_command("/py", "pip download torch")
+    assert args[:4] == ["/py", "-m", "pip", "download"]
+
+    # Allowed: mamba install
+    args, _ = server._normalize_console_command("/py", "mamba install numpy")
+    assert args[:3] == ["mamba", "install", "-y"]
+
+    # Blocked: arbitrary binary
+    with pytest.raises(ValueError, match="not allowed"):
+        server._normalize_console_command("/py", "vim /etc/passwd")
+
+    # Blocked: pip list (not in pip subcommand allowlist)
+    with pytest.raises(ValueError, match="not allowed"):
+        server._normalize_console_command("/py", "pip list")
+
+    # Blocked: conda run (not in conda subcommand allowlist)
+    with pytest.raises(ValueError, match="not allowed"):
+        server._normalize_console_command("/py", "conda run rm -rf /")
+
+
 def test_cuda_tag_to_toolkit_version():
     assert server._cuda_tag_to_toolkit_version("cu128") == "12.8"
     assert server._cuda_tag_to_toolkit_version("cu121") == "12.1"

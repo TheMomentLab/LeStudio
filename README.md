@@ -80,7 +80,7 @@ subcommands:
 
 lestudio serve:
   --port PORT           Server port (default: 7860)
-  --host HOST           Server host (default: 0.0.0.0)
+  --host HOST           Server host (default: 127.0.0.1)
   --lerobot-path PATH   Path to lerobot source (auto-detected if installed)
   --config-dir DIR      Config directory (default: ~/.config/lestudio)
   --rules-path PATH     udev rules file (default: /etc/udev/rules.d/99-lerobot.rules)
@@ -89,6 +89,44 @@ lestudio serve:
 ```
 
 Flags can be passed without explicitly typing `serve` — `lestudio --port 8080` works the same as `lestudio serve --port 8080`.
+
+### Network & CORS
+
+- Default bind is local-only: `127.0.0.1`.
+- To expose on LAN, use: `lestudio serve --host 0.0.0.0`.
+- Default CORS allows localhost origins only (`localhost` / `127.0.0.1`).
+
+You can override CORS with environment variables:
+
+```bash
+# Comma-separated explicit allowlist
+export LESTUDIO_CORS_ORIGINS="http://localhost:7860,https://studio.example.com"
+
+# Optional regex override (used when explicit origins are not set)
+export LESTUDIO_CORS_ORIGIN_REGEX='^https://(localhost|127\\.0\\.0\\.1)(:\\d+)?$'
+```
+
+For development compatibility only, `LESTUDIO_CORS_ORIGINS="*"` is supported but not recommended for shared networks.
+
+## Development
+
+Backend checks:
+
+```bash
+python3 -m compileall -q src/lestudio
+python3 -m pytest -q
+```
+
+Frontend checks:
+
+```bash
+cd frontend
+npm ci
+npm run lint
+npm run build
+```
+
+CI runs these checks in GitHub Actions: `.github/workflows/ci.yml`.
 
 ## Workflow Guide
 

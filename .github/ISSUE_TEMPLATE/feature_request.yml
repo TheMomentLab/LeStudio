@@ -1,0 +1,42 @@
+name: Feature Request
+description: Suggest an idea or enhancement for LeStudio
+title: '[Feature]: '
+labels: ['enhancement', 'triage']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for your interest in improving LeStudio!
+        Please ensure your feature request aligns with the core goal: providing a web GUI workbench for Hugging Face LeRobot.
+
+  - type: textarea
+    id: use_case
+    attributes:
+      label: Use Case / Problem Statement
+      description: What is the problem or workflow pain point you are trying to solve?
+      placeholder: "It's currently frustrating to [do X] because..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: Describe the feature or change you'd like to see in the UI/backend.
+      placeholder: "I would like a button that does..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Have you tried any workarounds?
+      placeholder: "Currently, I manually run the CLI command..."
+
+  - type: checkboxes
+    id: pr_willingness
+    attributes:
+      label: Contribution
+      options:
+        - label: I am willing to submit a Pull Request to implement this feature.

@@ -420,7 +420,7 @@ export function TrainTab({ active }: TrainTabProps) {
         train_steps: Number(config.train_steps ?? 100000),
         train_device: (config.train_device as string) ?? 'cuda',
         train_batch_size: trainBatchSize,
-        train_lr: (config.train_lr as string) || undefined,
+        train_lr: (config.train_lr as string | undefined) || undefined,
       }
       await buildConfig({ ...cfg, train_dataset_source: source })
       const preflight = await refreshPreflight()
@@ -594,7 +594,7 @@ export function TrainTab({ active }: TrainTabProps) {
                   <input
                     type="text"
                     placeholder="default (1e-4)"
-                    value={(config.train_lr as string) ?? ''}
+                    value={(config.train_lr as string | undefined) ?? ''}
                     onChange={(e) => buildConfig({ train_lr: e.target.value })}
                   />
                   <div className="field-help">e.g. 1e-4, 0.0001</div>

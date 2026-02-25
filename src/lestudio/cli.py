@@ -1,4 +1,5 @@
 import argparse
+import importlib.util
 import os
 import re
 import socket
@@ -23,12 +24,17 @@ def find_lerobot_src() -> Path | None:
             return candidate.parent
 
     try:
-        import lerobot
+        spec = importlib.util.find_spec("lerobot")
+        if spec is None:
+            return None
 
-        module_file = getattr(lerobot, "__file__", None)
-        if isinstance(module_file, str) and module_file:
-            return Path(module_file).parent.parent  # return src/ not src/lerobot/
-    except ImportError:
+        if spec.submodule_search_locations:
+            pkg_dir = Path(next(iter(spec.submodule_search_locations)))
+            return pkg_dir.parent
+
+        if spec.origin:
+            return Path(spec.origin).parent.parent
+    except Exception:
         pass
 
     return None
@@ -134,20 +140,25 @@ def command_serve(args):
     config_dir = resolve_config_dir(args.config_dir)
 
     from lestudio.server import create_app
+    from lestudio._auth import generate_token
     import uvicorn
 
+    token = generate_token()
     app = create_app(
         lerobot_src=lerobot_src,
         config_dir=config_dir,
         rules_path=args.rules_path,
+        session_token=token,
     )
 
-    print(f"🤖  LeStudio v{_version()}")
+    print(f"\U0001f916  LeStudio v{_version()}")
     print(f"    lerobot: {lerobot_src}")
     print(f"    config:  {config_dir}")
     print(f"    Open (Local):   http://localhost:{args.port}")
     if args.host == "0.0.0.0":
-        print(f"    Open (Network): http://{get_local_ip()}:{args.port}")
+        local_ip = get_local_ip()
+        print(f"    Open (Network): http://{local_ip}:{args.port}")
+        print(f"    Token (Network auth): {token}")
     print("\n")
 
     if not args.no_browser and not args.headless:
@@ -219,7 +230,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     serve = sub.add_parser("serve", help="Run LeStudio web server")
     serve.add_argument("--port", type=int, default=7860, help="Server port (default: 7860)")
-    serve.add_argument("--host", default="0.0.0.0", help="Server host (default: 0.0.0.0)")
+    serve.add_argument("--host", default="127.0.0.1", help="Server host (default: 127.0.0.1)")
     serve.add_argument("--lerobot-path", type=Path, default=None, help="Path to lerobot source (auto-detected if installed)")
     serve.add_argument("--config-dir", type=Path, default=None, help="Config directory (default: ~/.config/lestudio)")
     serve.add_argument("--rules-path", type=Path, default=DEFAULT_RULES_PATH, help="Path to udev rules file")

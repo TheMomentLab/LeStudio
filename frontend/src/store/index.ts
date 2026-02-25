@@ -1,9 +1,9 @@
 import { create } from 'zustand'
-import type { DevicesResponse, LogLine, SidebarSignals, Toast } from '../lib/types'
+import type { DevicesResponse, LeStudioConfig, LogLine, SidebarSignals, Toast } from '../lib/types'
 
 interface LeStudioState {
   activeTab: string
-  config: Record<string, unknown>
+  config: LeStudioConfig
   procStatus: Record<string, boolean>
   devices: DevicesResponse
   wsReady: boolean
@@ -17,8 +17,8 @@ interface LeStudioState {
   mobileSidebarOpen: boolean
   consoleHeight: number
   setActiveTab: (tab: string) => void
-  setConfig: (cfg: Record<string, unknown>) => void
-  updateConfig: (partial: Record<string, unknown>) => void
+  setConfig: (cfg: LeStudioConfig) => void
+  updateConfig: (partial: Partial<LeStudioConfig>) => void
   setProcStatus: (status: Record<string, boolean>) => void
   setDevices: (devices: DevicesResponse) => void
   setWsReady: (ready: boolean) => void
@@ -69,7 +69,7 @@ const defaultSignals: SidebarSignals = {
 
 export const useLeStudioStore = create<LeStudioState>((set) => ({
   activeTab: loadInitialActiveTab(),
-  config: {},
+  config: {} as LeStudioConfig,
   procStatus: {},
   devices: { cameras: [], arms: [] },
   wsReady: false,
