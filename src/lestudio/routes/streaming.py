@@ -5,6 +5,7 @@ import asyncio
 import queue
 import shutil
 import subprocess
+import time
 from pathlib import Path
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -26,6 +27,10 @@ from lestudio._streaming import (
 )
 from lestudio.routes._state import AppState
 
+# 모듈 레벨 캐시 변수
+_lerobot_cache_size: float | None = None
+_lerobot_cache_ts: float = 0.0
+_LEROBOT_CACHE_TTL = 60.0  # 레로보트 HF 캐시 크기: 60초마다 재계산
 
 def create_router(state: AppState) -> APIRouter:
     router = APIRouter()
@@ -90,6 +95,43 @@ def create_router(state: AppState) -> APIRouter:
             },
         )
 
+    # --- Snapshot endpoint: single JPEG frame for JS polling ---
+    # Unlike /stream/, this does NOT keep HTTP connections open,
+    # so the browser page-load spinner completes normally.
+    @router.get("/api/camera/snapshot/{video_name}")
+    async def snapshot_camera(video_name: str):
+        import os
+        from fastapi.responses import Response
+        from lestudio._streaming import snapshot_get_frame
+
+        # During teleop/record: read from shared memory (fastest path)
+        shm_path = f"/dev/shm/lerobot_cam_{video_name}.jpg"
+        use_shm = state.proc_mgr.is_running("record") or state.proc_mgr.is_running("teleop")
+        if use_shm and os.path.exists(shm_path):
+            try:
+                with open(shm_path, "rb") as f:
+                    frame = f.read()
+                if frame:
+                    return Response(content=frame, media_type="image/jpeg",
+                                    headers={"Cache-Control": "no-store"})
+            except Exception:
+                pass
+
+        # Normal path: use streamer pool
+        frame = snapshot_get_frame(f"/dev/{video_name}", state.config_path)
+        if frame:
+            return Response(content=frame, media_type="image/jpeg",
+                            headers={"Cache-Control": "no-store"})
+
+        # Streamer just opened -- wait up to 3s for first frame
+        for _ in range(30):
+            await asyncio.sleep(0.1)
+            frame = snapshot_get_frame(f"/dev/{video_name}", state.config_path)
+            if frame:
+                return Response(content=frame, media_type="image/jpeg",
+                                headers={"Cache-Control": "no-store"})
+
+        return Response(status_code=503)
     # ─── Camera Stats ──────────────────────────────────────────────────────────
     @router.get("/api/camera/stats")
     def api_camera_stats():
@@ -141,17 +183,27 @@ def create_router(state: AppState) -> APIRouter:
     @router.get("/api/system/resources")
     def api_system_resources():
         try:
-            cpu_pct = psutil.cpu_percent(interval=0.2)
+            global _lerobot_cache_size, _lerobot_cache_ts
+            # cpu_percent(interval=None): 논블로킹 — 이전 호출 이후 델타를 즉시 반환.
+            # 첫 호출은 0.0을 반환하지만 폴링 구조상 문제없음. 단일 호출만 사용.
+            cpu_pct = psutil.cpu_percent(interval=None)
             vm = psutil.virtual_memory()
             du = shutil.disk_usage(Path.home())
             hf_cache = Path.home() / ".cache" / "huggingface" / "lerobot"
-            lerobot_du = None
-            if hf_cache.exists():
+            lerobot_du = _lerobot_cache_size
+            now = time.monotonic()
+            if hf_cache.exists() and (now - _lerobot_cache_ts > _LEROBOT_CACHE_TTL or _lerobot_cache_size is None):
                 try:
                     lerobot_bytes = sum(f.stat().st_size for f in hf_cache.rglob('*') if f.is_file())
-                    lerobot_du = round(lerobot_bytes / 1024 / 1024, 1)
+                    _lerobot_cache_size = round(lerobot_bytes / 1024 / 1024, 1)
+                    _lerobot_cache_ts = now
+                    lerobot_du = _lerobot_cache_size
                 except Exception:
                     pass
+            elif not hf_cache.exists():
+                _lerobot_cache_size = None
+                _lerobot_cache_ts = 0.0
+                lerobot_du = None
             return {
                 "ok": True,
                 "cpu_percent": round(cpu_pct, 1),

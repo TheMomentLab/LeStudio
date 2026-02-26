@@ -122,6 +122,50 @@ _preview_lock = threading.Lock()
 _rerun_server_proc: Optional[subprocess.Popen] = None
 _rerun_server_lock = threading.Lock()
 
+# --- Snapshot pool: keeps streamers alive between polling requests ---
+# TTL-based: streamer closes 3s after last request
+_snapshot_pool: dict[str, float] = {}  # real_path -> last_request_time
+_SNAPSHOT_TTL = 3.0
+
+
+def snapshot_get_frame(video_path: str, config_path: Path) -> bytes | None:
+    """Return the latest JPEG frame for snapshot polling.
+    Keeps the streamer alive across requests via TTL so the camera
+    is not opened/closed on every poll.
+    """
+    if _cameras_locked:
+        return None
+    real_path = os.path.realpath(video_path)
+    now = time.monotonic()
+    with _streamers_lock:
+        # Clean up expired snapshot clients
+        expired = [p for p, ts in _snapshot_pool.items() if now - ts > _SNAPSHOT_TTL]
+        for p in expired:
+            del _snapshot_pool[p]
+            if p in _streamers:
+                _streamers[p].clients -= 1
+                if _streamers[p].clients <= 0:
+                    _streamers[p].stop()
+                    del _streamers[p]
+
+        # Keep pool/streamer registry consistent even after process start/stop cycles.
+        held_by_snapshot = real_path in _snapshot_pool
+        streamer = _streamers.get(real_path)
+        if streamer is None:
+            streamer = CameraStreamer(real_path, _get_cam_settings(config_path))
+            _streamers[real_path] = streamer
+        if held_by_snapshot:
+            if streamer.clients <= 0:
+                streamer.clients = 1
+        else:
+            streamer.clients += 1
+
+        # Refresh TTL
+        _snapshot_pool[real_path] = now
+
+    if streamer is None or streamer.failed:
+        return None
+    return streamer.latest_frame
 
 def _get_cam_settings(config_path: Path) -> dict:
     cfg = _load_config(config_path)
@@ -175,6 +219,7 @@ def stop_all_streamers_for_process():
     _cameras_locked = True  # Block any new streamer creation from browser requests
     threads = []
     with _streamers_lock:
+        _snapshot_pool.clear()
         for streamer in _streamers.values():
             streamer.stop()
             threads.append(streamer.thread)
@@ -223,6 +268,7 @@ def ensure_rerun_web_server(python_exe: str, web_port: int = 9090, grpc_port: in
 
 def restart_all_streamers(config_path: Path):
     with _streamers_lock:
+        _snapshot_pool.clear()
         for streamer in _streamers.values():
             streamer.stop()
         paths = list(_streamers.keys())

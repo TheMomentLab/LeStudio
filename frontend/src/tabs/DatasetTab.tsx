@@ -94,8 +94,10 @@ const parseDatasetId = (id: string): { user: string; repo: string } | null => {
 export function DatasetTab({ active }: DatasetTabProps) {
   const addToast = useLeStudioStore((s) => s.addToast)
   const setActiveTab = useLeStudioStore((s) => s.setActiveTab)
-  const [datasets, setDatasets] = useState<DatasetListItem[]>([])
-  const [loadingDatasets, setLoadingDatasets] = useState(false)
+  const datasets = useLeStudioStore((s) => s.datasets)
+  const loadingDatasets = useLeStudioStore((s) => s.loadingDatasets)
+  const setDatasets = useLeStudioStore((s) => s.setDatasets)
+  const setLoadingDatasets = useLeStudioStore((s) => s.setLoadingDatasets)
   const [selected, setSelected] = useState<DatasetDetail | null>(null)
   const [selectedEpisode, setSelectedEpisode] = useState<number>(0)
   const [tags, setTags] = useState<Record<string, 'good' | 'bad' | 'review'>>({})
@@ -136,7 +138,7 @@ export function DatasetTab({ active }: DatasetTabProps) {
     } finally {
       setLoadingDatasets(false)
     }
-  }, [addToast])
+  }, [addToast, setDatasets, setLoadingDatasets])
 
   useEffect(() => {
     if (!active) return
@@ -674,7 +676,7 @@ export function DatasetTab({ active }: DatasetTabProps) {
         <div className="card" style={{ maxHeight: 800, display: 'flex', flexDirection: 'column' }}>
           <h3>Local Datasets</h3>
           <div id="dataset-list" className="device-list" style={{ overflowY: 'auto', flex: 1 }}>
-            {loadingDatasets
+            {datasets.length === 0 && loadingDatasets
               ? <div className="device-empty-note">Loading datasets...</div>
               : datasets.length === 0
               ? <div className="device-empty-note">No datasets found in local cache.<br />Record episodes in the <strong>Record</strong> tab, or search and download from the <strong>HuggingFace Hub</strong> above.</div>

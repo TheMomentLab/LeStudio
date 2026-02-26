@@ -114,7 +114,7 @@ Backend checks:
 
 ```bash
 python3 -m compileall -q src/lestudio
-python3 -m pytest -q
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 -m pytest -q -m "not smoke_hw" tests
 ```
 
 Frontend checks:
@@ -127,6 +127,14 @@ npm run build
 ```
 
 CI runs these checks in GitHub Actions: `.github/workflows/ci.yml`.
+
+Hardware smoke checks (real devices only, opt-in):
+
+```bash
+LESTUDIO_RUN_HW_SMOKE=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 -m pytest -q -m "smoke_hw" tests/smoke_hw
+```
+
+Release readiness checklist: [docs/release-checklist.md](docs/release-checklist.md)
 
 ## Workflow Guide
 

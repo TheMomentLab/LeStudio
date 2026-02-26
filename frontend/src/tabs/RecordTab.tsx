@@ -9,6 +9,7 @@ import { apiGet, apiPost } from '../lib/api'
 import { useLeStudioStore } from '../store'
 import type { LogLine, RobotDetail, RobotsResponse, TeleopsResponse } from '../lib/types'
 import { getProcessConflict } from '../lib/processConflicts'
+import { useCameraFeeds } from '../hooks/useCameraFeeds'
 
 
 interface RecordTabProps {
@@ -65,6 +66,7 @@ export function RecordTab({ active }: RecordTabProps) {
   const [streamQuality, setStreamQuality] = useState(70)
   const [cameraStats, setCameraStats] = useState<Record<string, { fps: number; mbps: number }>>({})
   const [pausedFeeds, setPausedFeeds] = useState<Record<string, boolean>>({})
+  const [streamsReady, setStreamsReady] = useState(false)
   const [robotTypes, setRobotTypes] = useState<string[]>(['so101_follower'])
   const [teleopTypes, setTeleopTypes] = useState<string[]>(['so101_leader'])
   const [robotDetails, setRobotDetails] = useState<Record<string, RobotDetail>>({})
@@ -240,15 +242,6 @@ export function RecordTab({ active }: RecordTabProps) {
     cameras: mappedCameras,
   })
 
-  const streamDims = useMemo(() => {
-    const [widthRaw, heightRaw] = streamResolution.split('x')
-    const width = Number(widthRaw)
-    const height = Number(heightRaw)
-    return {
-      width: Number.isFinite(width) && width > 0 ? width : 640,
-      height: Number.isFinite(height) && height > 0 ? height : 480,
-    }
-  }, [streamResolution])
 
   const repoId = (config.record_repo_id as string) ?? defaultRepoId
   const repoError = useMemo(() => {
@@ -282,9 +275,20 @@ export function RecordTab({ active }: RecordTabProps) {
     [mappedCameras],
   )
 
+  const feedCamNames = useMemo(() => feedCameras.map((c) => c.cam), [feedCameras])
+  const cameraFrames = useCameraFeeds(feedCamNames, active && streamsReady, Number(streamFps), pausedFeeds)
+
   useEffect(() => {
     if (active) return
     setPausedFeeds({})
+    setStreamsReady(false)
+  }, [active])
+
+  // 탭 활성화 후 400ms 늘얰서 스트림 연결 — API 호출이 먼저 연결을 주우도록
+  useEffect(() => {
+    if (!active) return
+    const t = window.setTimeout(() => setStreamsReady(true), 400)
+    return () => window.clearTimeout(t)
   }, [active])
 
   useEffect(() => {
@@ -682,14 +686,14 @@ export function RecordTab({ active }: RecordTabProps) {
           <div className="ep-card-title">Episode Progress</div>
           <div id="record-feeds" className="feed-grid">
             {active && feedCameras.length > 0 ? feedCameras.map((camera) => {
-              const streamSrc = `/stream/${camera.cam}?codec=${encodeURIComponent(streamCodec)}&width=${streamDims.width}&height=${streamDims.height}&fps=${encodeURIComponent(streamFps)}&quality=${streamQuality}`
               const stats = cameraStats[camera.cam]
               const fpsText = stats ? `${stats.fps.toFixed(1)} fps` : `${streamFps} fps`
               const statText = stats ? `${stats.fps.toFixed(1)}fps · ${stats.mbps.toFixed(1)}MB/s` : ''
               const paused = !!pausedFeeds[camera.cam]
+              const frameSrc = cameraFrames[camera.cam] ?? ''
               return (
-                <div key={`${camera.cam}-${streamCodec}-${streamResolution}-${streamFps}-${streamQuality}`} className="feed-card" data-vid={camera.cam}>
-                  <img src={paused ? undefined : streamSrc} alt={camera.name} />
+                <div key={camera.cam} className="feed-card" data-vid={camera.cam}>
+                  <img src={paused ? undefined : (frameSrc || undefined)} alt={camera.name} />
                   <div className={`feed-live-badge ${paused ? '' : 'visible'}`}>
                     <div className="feed-live-dot" />LIVE
                   </div>

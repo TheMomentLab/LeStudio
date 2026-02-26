@@ -19,6 +19,23 @@ If you expose LeStudio to a network using `--host 0.0.0.0`, the server automatic
 
 **⚠️ WARNING:** LeStudio executes Python subprocesses and reads hardware devices (`/dev/video*`, `/dev/tty*`). Do **not** expose LeStudio directly to the public internet (e.g., via port-forwarding without a VPN or reverse proxy). Treat it as an internal lab tool.
 
+## Operational Security Baseline (OSS Release)
+
+Before exposing LeStudio to teammates or lab networks:
+
+1. Keep server binding local by default (`127.0.0.1`) unless remote access is required.
+2. If remote access is required, enforce token auth and network controls (VPN/reverse proxy/firewall).
+3. Run the CI-equivalent checks before release:
+   - `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 -m pytest -q -m "not smoke_hw" tests`
+   - `cd frontend && npm run lint && npm test -- --run && npm run build`
+4. Keep hardware tests separate from CI using `smoke_hw` marker tests.
+
+## Known Security Limitations
+
+1. LeStudio is designed for trusted lab environments, not direct internet exposure.
+2. Commands are executed as local subprocesses; host-level hardening remains the operator's responsibility.
+3. Hardware device access relies on Linux device permissions and local system policy configuration.
+
 ## Reporting a Vulnerability
 
 If you discover a security vulnerability, please do **not** open a public GitHub issue.

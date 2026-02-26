@@ -7,6 +7,7 @@ import { RobotCapabilitiesCard } from '../components/shared/RobotCapabilitiesCar
 import { useConfig } from '../hooks/useConfig'
 import { useMappedCameras } from '../hooks/useMappedCameras'
 import { useProcess } from '../hooks/useProcess'
+import { useCameraFeeds } from '../hooks/useCameraFeeds'
 import { apiGet, apiPost } from '../lib/api'
 import { useLeStudioStore } from '../store'
 import type { LogLine, RobotDetail, RobotsResponse, TeleopsResponse } from '../lib/types'
@@ -72,6 +73,7 @@ export function TeleopTab({ active }: TeleopTabProps) {
   const [streamFps, setStreamFps] = useState('30')
   const [jpegQuality, setJpegQuality] = useState(70)
   const [pausedFeeds, setPausedFeeds] = useState<Record<string, boolean>>({})
+  const [streamsReady, setStreamsReady] = useState(false)
   const [step1Open, setStep1Open] = useState(false)
 
   useEffect(() => {
@@ -218,6 +220,14 @@ export function TeleopTab({ active }: TeleopTabProps) {
   useEffect(() => {
     if (active) return
     setPausedFeeds({})
+    setStreamsReady(false)
+  }, [active])
+
+  // 탭 활성화 후 400ms 늘얰서 스트림 연결 — API 호출이 먼저 연결을 주우도록
+  useEffect(() => {
+    if (!active) return
+    const t = window.setTimeout(() => setStreamsReady(true), 400)
+    return () => window.clearTimeout(t)
   }, [active])
 
   useEffect(() => {
@@ -235,13 +245,6 @@ export function TeleopTab({ active }: TeleopTabProps) {
     })
   }, [availableCameras])
 
-  const feedResolution = useMemo(() => {
-    const [width, height] = streamResolution.split('x')
-    return {
-      width: width || '640',
-      height: height || '480',
-    }
-  }, [streamResolution])
 
   const mappedCameraCount = useMemo(
     () => Object.values(mappedCameras).filter((path) => String(path ?? '').trim().length > 0).length,
@@ -275,10 +278,15 @@ export function TeleopTab({ active }: TeleopTabProps) {
     return blockers
   }, [armsReady, camerasReady, conflictReason, mappedCameraCount, missingArmPorts.length])
 
-  const streamSrc = (cameraPath: string) => {
-    const cameraName = cameraPath.replace('/dev/', '')
-    return `/stream/${encodeURIComponent(cameraName)}?codec=${streamCodec}&width=${feedResolution.width}&height=${feedResolution.height}&fps=${streamFps}&quality=${jpegQuality}`
-  }
+  const feedCamKeys = useMemo(() => availableCameras.map((c) => c.path.replace('/dev/', '')), [availableCameras])
+  const pausedFeedsByKey = useMemo(() => {
+    const result: Record<string, boolean> = {}
+    availableCameras.forEach((c) => {
+      result[c.path.replace('/dev/', '')] = !!pausedFeeds[c.path]
+    })
+    return result
+  }, [pausedFeeds, availableCameras])
+  const cameraFrames = useCameraFeeds(feedCamKeys, active && streamsReady, Number(streamFps), pausedFeedsByKey)
 
   const getCfg = () => {
     const cfg: Record<string, unknown> = {
@@ -630,10 +638,10 @@ export function TeleopTab({ active }: TeleopTabProps) {
             </div>
           </div>
           <div id="teleop-feeds" className="feed-grid">
-            {active && availableCameras.length ? (
+            {active && streamsReady && availableCameras.length ? (
               availableCameras.map((camera) => (
                 <div className="feed-card" key={camera.name} data-vid={camera.path.replace('/dev/', '')}>
-                  <img src={pausedFeeds[camera.path] ? undefined : streamSrc(camera.path)} alt={camera.name} />
+                  <img src={pausedFeeds[camera.path] ? undefined : (cameraFrames[camera.path.replace('/dev/', '')] || undefined)} alt={camera.name} />
                   <div className={`feed-live-badge ${pausedFeeds[camera.path] ? '' : 'visible'}`}>
                     <div className="feed-live-dot" />LIVE
                   </div>

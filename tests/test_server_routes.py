@@ -20,7 +20,7 @@ def test_server_route_inventory_contains_expected_contract(tmp_path: Path):
         and (route.path.startswith("/api/") or route.path in {"/ws", "/stream/{video_name}"})
     }
 
-    assert len(paths) == 56
+    assert len(paths) == 57
     assert "/api/process/{name}/command" in paths
     assert "/api/teleop/start" in paths
     assert "/api/record/start" in paths
@@ -28,5 +28,6 @@ def test_server_route_inventory_contains_expected_contract(tmp_path: Path):
     assert "/api/eval/start" in paths
     assert "/api/datasets/{user}/{repo}" in paths
     assert "/api/hub/datasets/download" in paths
+    assert "/api/camera/snapshot/{video_name}" in paths
     assert "/stream/{video_name}" in paths
     assert "/ws" in paths

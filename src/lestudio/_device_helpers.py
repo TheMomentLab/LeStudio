@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 # Stable symlink role names for cameras
@@ -42,7 +43,8 @@ def find_symlink(target_name: str) -> str:
 
 
 def get_cameras() -> list[dict]:
-    cameras = []
+    # 1st pass: index 필터 (fast, no subprocess)
+    videos = []
     for video in sorted(Path("/dev").glob("video*")):
         if not re.match(r"^video\d+$", video.name):
             continue
@@ -52,32 +54,46 @@ def get_cameras() -> list[dict]:
                 continue
         except Exception:
             continue
+        videos.append(video)
+
+    if not videos:
+        return []
+
+    def _probe_camera(video: Path) -> dict:
         props = udev_props(str(video))
         kernels = kernels_from_devpath(props.get("DEVPATH", ""))
-        cameras.append({
+        return {
             "device":  video.name,
             "path":    str(video),
             "kernels": kernels,
             "symlink": find_symlink(video.name),
             "model":   props.get("ID_MODEL", "Unknown"),
-        })
-    return cameras
+        }
+
+    with ThreadPoolExecutor(max_workers=min(len(videos), 8)) as ex:
+        return list(ex.map(_probe_camera, videos))
 
 
 def get_arms() -> list[dict]:
-    arms = []
-    for p in sorted(Path("/dev").glob("tty*")):
-        if not any(x in p.name for x in ("USB", "ACM")):
-            continue
+    ports = [
+        p for p in sorted(Path("/dev").glob("tty*"))
+        if any(x in p.name for x in ("USB", "ACM"))
+    ]
+    if not ports:
+        return []
+
+    def _probe_arm(p: Path) -> dict:
         props = udev_props(str(p))
-        arms.append({
+        return {
             "device":  p.name,
             "path":    str(p),
             "symlink": find_symlink(p.name),
-            "serial": props.get("ID_SERIAL_SHORT", ""),
+            "serial":  props.get("ID_SERIAL_SHORT", ""),
             "kernels": kernels_from_devpath(props.get("DEVPATH", "")),
-        })
-    return arms
+        }
+
+    with ThreadPoolExecutor(max_workers=min(len(ports), 8)) as ex:
+        return list(ex.map(_probe_arm, ports))
 
 
 def get_usb_bus_for_camera(video_name: str) -> dict:

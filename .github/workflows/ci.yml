@@ -8,6 +8,8 @@ on:
 jobs:
   backend:
     runs-on: ubuntu-latest
+    env:
+      PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -25,8 +27,18 @@ jobs:
       - name: Compile backend
         run: python -m compileall -q src/lestudio
 
+      - name: Enforce LeRobot import boundary
+        run: |
+          violations="$(rg -n '\b(from|import)\s+lerobot(\.|\b)' src/lestudio \
+            | grep -vE 'src/lestudio/(teleop_bridge|record_bridge|camera_patch|device_registry)\.py:' || true)"
+          if [ -n "$violations" ]; then
+            echo "Found forbidden lerobot imports:"
+            echo "$violations"
+            exit 1
+          fi
+
       - name: Run tests
-        run: python -m pytest -q
+        run: python -m pytest -q -m "not smoke_hw" tests
 
   frontend:
     runs-on: ubuntu-latest

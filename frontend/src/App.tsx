@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { AppShell } from './components/layout/AppShell'
 import { ToastLayer } from './components/shared/Toast'
 import { useConfig } from './hooks/useConfig'
@@ -126,21 +126,18 @@ function App() {
     localStorage.setItem('lestudio-theme', next)
   }
 
-  const renderTabs = useMemo(
-    () => (
-      <>
-        <StatusTab active={activeTab === 'status'} />
-        <TeleopTab active={activeTab === 'teleop'} />
-        <RecordTab active={activeTab === 'record'} />
-        <CalibrateTab active={activeTab === 'calibrate'} />
-        <MotorSetupTab active={activeTab === 'motor-setup'} />
-        <DeviceSetupTab active={activeTab === 'device-setup'} />
-        <DatasetTab active={activeTab === 'dataset'} />
-        <TrainTab active={activeTab === 'train'} />
-        <EvalTab active={activeTab === 'eval'} />
-      </>
-    ),
-    [activeTab],
+  const renderTabs = (
+    <>
+      <StatusTab active={activeTab === 'status'} />
+      <TeleopTab active={activeTab === 'teleop'} />
+      <RecordTab active={activeTab === 'record'} />
+      <CalibrateTab active={activeTab === 'calibrate'} />
+      <MotorSetupTab active={activeTab === 'motor-setup'} />
+      <DeviceSetupTab active={activeTab === 'device-setup'} />
+      <DatasetTab active={activeTab === 'dataset'} />
+      <TrainTab active={activeTab === 'train'} />
+      <EvalTab active={activeTab === 'eval'} />
+    </>
   )
 
   return (

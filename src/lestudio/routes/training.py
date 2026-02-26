@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import datetime
+import time
 import json
 import shutil
 from pathlib import Path
@@ -19,6 +20,33 @@ from lestudio._train_helpers import (
 )
 from lestudio.routes._state import AppState
 
+# ─── Preflight 서버 캐시 ─────────────────────────────────────────────────────────
+_TTL_PREFLIGHT_OK = 120.0    # ok: True  → 2분 (CUDA 호환성은 설치 전후로만 바넨)
+_TTL_PREFLIGHT_FAIL = 20.0   # ok: False + action 있음 → 20초 (유저 조치 후 쳤캐리 재확인 가능)
+# ok: False + action 없음(서브프로세스 타임아웃 등 일시적 오류) → 캐싱 안 함
+_preflight_cache: dict[str, tuple[dict, float]] = {}
+
+
+def _preflight_cache_get(key: str) -> dict | None:
+    entry = _preflight_cache.get(key)
+    if entry and time.monotonic() < entry[1]:
+        return entry[0]
+    return None
+
+
+def _preflight_cache_set(key: str, result: dict) -> None:
+    if result.get("ok"):
+        ttl = _TTL_PREFLIGHT_OK
+    elif result.get("action"):  # 실제 실패: 유저가 조치해야 하는 아이템
+        ttl = _TTL_PREFLIGHT_FAIL
+    else:
+        return  # subprocess 타임아웃/파싱 오류 등 일시적 문제 → 캐싱 안 함
+    _preflight_cache[key] = (result, time.monotonic() + ttl)
+
+
+def _preflight_cache_invalidate() -> None:
+    _preflight_cache.clear()
+
 
 def _ensure_train_installer(state: AppState, command: str) -> tuple[bool, bool]:
     """Start the train_install process if not already running. Returns (ok, already_running)."""
@@ -29,60 +57,75 @@ def _ensure_train_installer(state: AppState, command: str) -> tuple[bool, bool]:
         return False, False
     return state.proc_mgr.start("train_install", args), False
 
-
 def create_router(state: AppState) -> APIRouter:
     router = APIRouter()
 
     @router.get("/api/train/preflight")
     def api_train_preflight(device: str = "cuda"):
         dev = (device or "cuda").lower()
+        cache_key = f"preflight:{dev}"
+
+        cached = _preflight_cache_get(cache_key)
+        if cached is not None:
+            return cached
 
         deps = _check_train_python_deps(state.python_exe)
         if not deps.get("ok"):
-            return {
+            result = {
                 "ok": False,
                 "reason": deps.get("reason", "Training dependency check failed."),
                 "action": deps.get("action", "install_python_dep"),
                 "command": deps.get("command", ""),
             }
+            _preflight_cache_set(cache_key, result)
+            return result
 
         if dev != "cuda":
             # non-CUDA: CUDA 체크 스킵, torchcodec만 확인
             tc = _check_torchcodec_compat(state.python_exe)
             if tc.get("ok"):
-                return {"ok": True, "reason": f"{dev.upper()} selected. {tc['reason']}"}
+                result = {"ok": True, "reason": f"{dev.upper()} selected. {tc['reason']}"}
+                _preflight_cache_set(cache_key, result)
+                return result
             cause = tc.get("cause", "unknown")
             action_map = {"missing_cuda_toolkit": "install_cuda_toolkit", "missing_ffmpeg": "install_ffmpeg", "version_mismatch": "install_torchcodec"}
-            return {
+            result = {
                 "ok": False,
                 "reason": tc.get("reason", "torchcodec check failed."),
                 "action": action_map.get(cause, "install_torchcodec"),
                 "command": tc.get("command", ""),
             }
+            _preflight_cache_set(cache_key, result)
+            return result
 
         ok, reason = _check_cuda_runtime_compat(state.python_exe)
         if not ok:
             install_args = _build_torch_install_args(state.python_exe, cuda_tag="cu128", nightly=True)
-            return {
+            result = {
                 "ok": False,
                 "reason": f"{reason} Switch Compute Device to CPU/MPS or install a CUDA-compatible PyTorch build.",
                 "action": "install_torch_cuda",
                 "command": _format_cmd(install_args),
             }
+            _preflight_cache_set(cache_key, result)
+            return result
 
         # CUDA OK → torchcodec 체크
         tc = _check_torchcodec_compat(state.python_exe)
         if tc.get("ok"):
-            return {"ok": True, "reason": f"{reason} | {tc['reason']}"}
+            result = {"ok": True, "reason": f"{reason} | {tc['reason']}"}
+            _preflight_cache_set(cache_key, result)
+            return result
         cause = tc.get("cause", "unknown")
         action_map = {"missing_cuda_toolkit": "install_cuda_toolkit", "missing_ffmpeg": "install_ffmpeg", "version_mismatch": "install_torchcodec"}
-        return {
+        result = {
             "ok": False,
             "reason": tc.get("reason", "torchcodec check failed."),
             "action": action_map.get(cause, "install_torchcodec"),
             "command": tc.get("command", ""),
         }
-
+        _preflight_cache_set(cache_key, result)
+        return result
     @router.get("/api/deps/status")
     def api_deps_status():
         return {
@@ -103,6 +146,8 @@ def create_router(state: AppState) -> APIRouter:
         args = _build_torch_install_args(state.python_exe, cuda_tag=cuda_tag, nightly=nightly)
 
         ok = state.proc_mgr.start("train_install", args)
+        if ok:
+            _preflight_cache_invalidate()  # 설치 시작 시 preflight 캐시 무효화
         return {
             "ok": ok,
             "command": _format_cmd(args),
@@ -123,6 +168,8 @@ def create_router(state: AppState) -> APIRouter:
         if not args:
             return {"ok": False, "error": "Invalid install command."}
         ok = state.proc_mgr.start("train_install", args)
+        if ok:
+            _preflight_cache_invalidate()  # 설치 시작 시 preflight 캐시 무효화
         return {
             "ok": ok,
             "command": " ".join(args),

@@ -47,14 +47,16 @@ def create_router(state: AppState) -> APIRouter:
                             except Exception:
                                 info_size = 0.0
 
-                            disk_size = 0.0
-                            try:
-                                total_bytes = sum(f.stat().st_size for f in ds_dir.rglob('*') if f.is_file())
-                                disk_size = round(total_bytes / (1024 * 1024), 1)
-                            except Exception:
-                                disk_size = 0.0
-
-                            info_size = disk_size if disk_size > 0 else round(info_size, 1)
+                            # info.json에 사이즈 정보가 있으면 rglob 스킵
+                            # (rglob은 수백 개 파일 stat() 호출 → 데이터셋이 클수록 매우 느렸)
+                            if info_size > 0:
+                                size_mb = round(info_size, 1)
+                            else:
+                                try:
+                                    total_bytes = sum(f.stat().st_size for f in ds_dir.rglob('*') if f.is_file())
+                                    size_mb = round(total_bytes / (1024 * 1024), 1)
+                                except Exception:
+                                    size_mb = 0.0
                             datasets.append({
                                 "id": f"{user_dir.name}/{ds_dir.name}",
                                 "total_episodes": info.get("total_episodes", 0),
@@ -62,7 +64,7 @@ def create_router(state: AppState) -> APIRouter:
                                 "fps": info.get("fps", 30),
                                 "modified": mdate,
                                 "timestamp": mtime,
-                                "size_mb": info_size
+                                "size_mb": size_mb
                             })
                         except Exception:
                             pass
@@ -526,19 +528,34 @@ def create_router(state: AppState) -> APIRouter:
             return {"ok": True, **job}
 
     # ─── HF Identity ───────────────────────────────────────────────────────────
+    # ─── HF Identity ─────────────────────────────────────────────────────────
+    _whoami_cache: dict = {}  # {"result": ..., "expires": float, "token": str}
+
     @router.get("/api/hf/whoami")
     def api_hf_whoami():
         """Return the HuggingFace username associated with the current token."""
+        # ok:True만 캐싱 (5분). 토큰이 달라지면 즉시 무효화.
         token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_HUB_TOKEN")
         if not token:
+            _whoami_cache.clear()
             return {"ok": False, "username": None, "error": "no_token"}
+        cached = _whoami_cache.get("result")
+        if (cached
+                and time.monotonic() < _whoami_cache.get("expires", 0)
+                and _whoami_cache.get("token") == token):
+            return cached
+
         try:
             from huggingface_hub import whoami  # type: ignore
             info = whoami(token=token)
             username = info.get("name", None) if isinstance(info, dict) else None
             if not username:
                 return {"ok": False, "username": None, "error": "no_username"}
-            return {"ok": True, "username": username}
+            result = {"ok": True, "username": username}
+            _whoami_cache["result"] = result
+            _whoami_cache["expires"] = time.monotonic() + 300.0  # 5분
+            _whoami_cache["token"] = token
+            return result
         except ImportError:
             return {"ok": False, "username": None, "error": "huggingface_hub_not_installed"}
         except Exception:

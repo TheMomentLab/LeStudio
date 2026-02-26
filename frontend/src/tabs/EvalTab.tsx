@@ -231,7 +231,7 @@ export function EvalTab({ active }: EvalTabProps) {
     setDatasets(res.datasets ?? [])
   }, [])
 
-  const loadCheckpoints = async () => {
+  const loadCheckpoints = useCallback(async () => {
     const res = await apiGet<{ ok: boolean; checkpoints: CheckpointItem[] }>('/api/checkpoints')
     if (res.ok) {
       const list = res.checkpoints ?? []
@@ -240,7 +240,7 @@ export function EvalTab({ active }: EvalTabProps) {
         void buildConfig({ eval_policy_path: list[0].path })
       }
     }
-  }
+  }, [buildConfig, config.eval_policy_path, policySource])
 
   const handleSetPolicySource = (newSource: 'local' | 'hf') => {
     setPolicySource(newSource)
@@ -273,7 +273,7 @@ export function EvalTab({ active }: EvalTabProps) {
     loadCheckpoints()
     refreshDatasets()
     refreshPreflight()
-  }, [active, refreshDatasets, refreshPreflight])
+  }, [active, loadCheckpoints, refreshDatasets, refreshPreflight])
 
   useEffect(() => {
     if (!active || preflightOk) return

@@ -2,9 +2,9 @@ import '@testing-library/jest-dom';
 import { vi } from 'vitest';
 
 // Mock fetch for relative API calls in jsdom
-global.fetch = vi.fn(() =>
-  Promise.resolve({
-    ok: true,
-    json: () => Promise.resolve({}),
+globalThis.fetch = vi.fn(async () =>
+  new Response('{}', {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
   })
-) as any;
+) as unknown as typeof fetch;

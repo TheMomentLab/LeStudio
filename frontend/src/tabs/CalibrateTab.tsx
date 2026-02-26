@@ -112,6 +112,20 @@ function swapRoleInType(type: string, targetRole: 'leader' | 'follower'): string
   return type
 }
 
+function fileHasMatchingArm(file: CalibrationFileItem, arms: ArmDevice[]): boolean {
+  const fileRole = file.guessed_type.toLowerCase().includes('leader') ? 'leader' : 'follower'
+  const fileIndex = lastNumberToken(file.id)
+  return arms.some((arm, idx) => {
+    const label = arm.symlink || armPath(arm, idx)
+    const labelLower = label.toLowerCase()
+    const labelRole = labelLower.includes('leader') ? 'leader' : labelLower.includes('follower') ? 'follower' : null
+    if (labelRole !== fileRole) return false
+    if (fileIndex === null) return true
+    const armIndex = lastNumberToken(label) ?? lastNumberToken(armPath(arm, idx))
+    return armIndex === fileIndex
+  })
+}
+
 function pickBestPortForId(options: {
   arms: ArmDevice[]
   robotType: string
@@ -172,7 +186,7 @@ export function CalibrateTab({ active }: CalibrateTabProps) {
   const [type, setType] = useState('so101_follower')
   const [id, setId] = useState('my_arm_1')
   const [port, setPort] = useState('/dev/follower_arm_1')
-  const [fileStatus, setFileStatus] = useState('Checking...')
+  const [fileStatus, setFileStatus] = useState('')
   const [fileMeta, setFileMeta] = useState('')
   const [files, setFiles] = useState<CalibrationFileItem[]>([])
   const [fileFilter, setFileFilter] = useState<string>('all')
@@ -406,11 +420,17 @@ export function CalibrateTab({ active }: CalibrateTabProps) {
     await checkFile()
   }
 
+  // refreshFiles는 tab 활성화 시 한 번만 (checkFile 재생성에 끌려가지 않도록 분리)
   useEffect(() => {
     if (!active) return
     refreshFiles()
+  }, [active, refreshFiles])
+
+  // checkFile은 id/type 변경 시마다 (파라미터 바뀔 때 재확인)
+  useEffect(() => {
+    if (!active) return
     checkFile()
-  }, [active, checkFile, refreshFiles])
+  }, [active, checkFile])
 
   useEffect(() => {
     if (!active) {
@@ -642,8 +662,8 @@ export function CalibrateTab({ active }: CalibrateTabProps) {
               <div className="info-box" style={{ marginTop: 12 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
                   <span style={{ fontWeight: 600, color: 'var(--text)' }}>Calibration File</span>
-                  <span id="cal-file-status" className={`dbadge ${fileStatus === 'Found' ? 'badge-ok' : 'badge-err'}`}>
-                    {fileStatus}
+                  <span id="cal-file-status" className={`dbadge ${fileStatus === 'Found' ? 'badge-ok' : fileStatus === '' ? 'badge-idle' : 'badge-err'}`}>
+                    {fileStatus === '' ? 'Checking…' : fileStatus}
                   </span>
                 </div>
                 <div id="cal-file-meta" style={{ fontFamily: 'var(--mono)', fontSize: 10, opacity: 0.8, wordBreak: 'break-all', whiteSpace: 'pre-line' }}>
@@ -807,7 +827,7 @@ export function CalibrateTab({ active }: CalibrateTabProps) {
                             setId(f.id)
                             if (armTypes.includes(f.guessed_type)) setType(f.guessed_type)
                           }}>
-                            <span className="dot green" />
+                            <span className={`dot ${fileHasMatchingArm(f, devices.arms) ? 'green' : 'gray'}`} />
                             <div style={{ flex: 1 }}>
                               <div className="dname">{f.id}</div>
                               <div className="dsub">{f.modified ?? ''}</div>
@@ -824,7 +844,7 @@ export function CalibrateTab({ active }: CalibrateTabProps) {
                       setId(f.id)
                       if (armTypes.includes(f.guessed_type)) setType(f.guessed_type)
                     }}>
-                      <span className="dot green" />
+                      <span className={`dot ${fileHasMatchingArm(f, devices.arms) ? 'green' : 'gray'}`} />
                       <div style={{ flex: 1 }}>
                         <div className="dname">{f.id}</div>
                         <div className="dsub">{f.modified ?? ''}</div>

@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { DevicesResponse, LeStudioConfig, LogLine, SidebarSignals, Toast } from '../lib/types'
+import type { DatasetListItem, DevicesResponse, LeStudioConfig, LogLine, SidebarSignals, Toast } from '../lib/types'
 
 interface LeStudioState {
   activeTab: string
@@ -10,6 +10,8 @@ interface LeStudioState {
   apiHealth: { resources: boolean; history: boolean }
   apiSupport: { resources: boolean; history: boolean }
   hfUsername: string | null
+  datasets: DatasetListItem[]
+  loadingDatasets: boolean
 
   logLines: Record<string, LogLine[]>
   toasts: Toast[]
@@ -33,6 +35,8 @@ interface LeStudioState {
   setMobileSidebarOpen: (open: boolean) => void
   setHfUsername: (username: string | null) => void
   setConsoleHeight: (height: number) => void
+  setDatasets: (datasets: DatasetListItem[]) => void
+  setLoadingDatasets: (loading: boolean) => void
 }
 
 const MAX_LOG_LINES = 1200
@@ -83,6 +87,9 @@ export const useLeStudioStore = create<LeStudioState>((set) => ({
   hfUsername: null,
   consoleHeight: 170,
 
+  datasets: [],
+  loadingDatasets: false,
+
   setActiveTab: (tab) => {
     if (!VALID_TABS.has(tab)) return
     if (typeof window !== 'undefined') {
@@ -91,6 +98,8 @@ export const useLeStudioStore = create<LeStudioState>((set) => ({
     set({ activeTab: tab })
   },
   setConfig: (cfg) => set({ config: cfg }),
+  setDatasets: (datasets) => set({ datasets }),
+  setLoadingDatasets: (loading) => set({ loadingDatasets: loading }),
   updateConfig: (partial) => set((s) => ({ config: { ...s.config, ...partial } })),
   setProcStatus: (status) => set({ procStatus: status }),
   setDevices: (devices) => set({ devices }),

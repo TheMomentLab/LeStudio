@@ -7,6 +7,11 @@ interface ProfileListResponse {
   active: string
 }
 
+interface ProfileGetResponse {
+  ok: boolean
+  config: import('../../lib/types').LeStudioConfig
+}
+
 export function ProfileSelector() {
   const config = useLeStudioStore((s) => s.config)
   const setConfig = useLeStudioStore((s) => s.setConfig)
@@ -21,8 +26,8 @@ export function ProfileSelector() {
   const refresh = useCallback(async () => {
     try {
       const res = await apiGet<ProfileListResponse>('/api/profiles')
-      setProfiles(res.profiles)
-      setActiveProfile(res.active)
+      if (res.profiles) setProfiles(res.profiles)
+      if (res.active) setActiveProfile(res.active)
     } catch {
       /* ignore */
     }
@@ -46,9 +51,9 @@ export function ProfileSelector() {
 
   const applySelected = async (name: string) => {
     try {
-      const res = await apiGet<import('../../lib/types').LeStudioConfig>(`/api/profiles/${encodeURIComponent(name)}`)
-      if (res) {
-        setConfig(res)
+      const res = await apiGet<ProfileGetResponse>(`/api/profiles/${encodeURIComponent(name)}`)
+      if (res?.ok && res.config) {
+        setConfig(res.config)
         setActiveProfile(name)
         addToast(`Profile "${name}" applied`, 'success')
       }
@@ -81,8 +86,9 @@ export function ProfileSelector() {
 
   const exportCurrent = async () => {
     try {
-      const data = await apiGet<Record<string, unknown>>(`/api/profiles/${encodeURIComponent(activeProfile)}`)
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+      const res = await apiGet<ProfileGetResponse>(`/api/profiles/${encodeURIComponent(activeProfile)}`)
+      if (!res?.ok || !res.config) throw new Error('invalid response')
+      const blob = new Blob([JSON.stringify(res.config, null, 2)], { type: 'application/json' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url

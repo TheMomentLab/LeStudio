@@ -1,3 +1,5 @@
+import { useRef } from 'react'
+import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { useLeStudioStore } from '../../store'
 
 const PROCESS_TABS: Record<string, string> = {
@@ -43,6 +45,8 @@ const TAB_GROUPS = [
   },
 ]
 
+const TAB_ORDER = TAB_GROUPS.flatMap((group) => group.tabs.map((tab) => tab.id))
+
 function tabHealthState(tab: string, signals: ReturnType<typeof useLeStudioStore.getState>['sidebarSignals']): string {
   if (tab === 'device-setup') {
     if (signals.rulesNeedsRoot) return 'needs_root'
@@ -71,6 +75,57 @@ export function Sidebar() {
   const procStatus = useLeStudioStore((s) => s.procStatus)
   const signals = useLeStudioStore((s) => s.sidebarSignals)
   const setMobileSidebarOpen = useLeStudioStore((s) => s.setMobileSidebarOpen)
+  const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({})
+
+  const activateTab = (tabId: string) => {
+    setActiveTab(tabId)
+    setMobileSidebarOpen(false)
+  }
+
+  const focusTab = (tabId: string) => {
+    const next = tabRefs.current[tabId]
+    if (next) next.focus()
+  }
+
+  const handleKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>, tabId: string) => {
+    const idx = TAB_ORDER.indexOf(tabId)
+    if (idx < 0) return
+
+    const focusAndActivate = (nextIdx: number) => {
+      const nextTabId = TAB_ORDER[nextIdx]
+      activateTab(nextTabId)
+      window.requestAnimationFrame(() => focusTab(nextTabId))
+    }
+
+    if (event.key === 'ArrowDown' || event.key === 'ArrowRight') {
+      event.preventDefault()
+      focusAndActivate((idx + 1) % TAB_ORDER.length)
+      return
+    }
+
+    if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') {
+      event.preventDefault()
+      focusAndActivate((idx - 1 + TAB_ORDER.length) % TAB_ORDER.length)
+      return
+    }
+
+    if (event.key === 'Home') {
+      event.preventDefault()
+      focusAndActivate(0)
+      return
+    }
+
+    if (event.key === 'End') {
+      event.preventDefault()
+      focusAndActivate(TAB_ORDER.length - 1)
+      return
+    }
+
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      activateTab(tabId)
+    }
+  }
 
   return (
     <aside id="sidebar-nav" aria-label="Workflow Navigation" role="tablist" aria-orientation="vertical">
@@ -96,9 +151,12 @@ export function Sidebar() {
                 aria-controls={panelId}
                 tabIndex={isActive ? 0 : -1}
                 className={`tab-btn ${isActive ? 'active' : ''} ${state ? `has-${state.replace('_', '-')}` : ''}`}
-                onClick={() => {
-                  setActiveTab(tab.id)
-                  setMobileSidebarOpen(false)
+                aria-label={stateLabel ? `${tab.label} (${stateLabel})` : tab.label}
+                title={stateLabel ? `${tab.label} • ${stateLabel}` : tab.label}
+                onClick={() => activateTab(tab.id)}
+                onKeyDown={(event) => handleKeyDown(event, tab.id)}
+                ref={(el) => {
+                  tabRefs.current[tab.id] = el
                 }}
                 data-tab={tab.id}
                 data-proc={proc ?? ''}
@@ -109,6 +167,7 @@ export function Sidebar() {
                     {stateLabel}
                   </span>
                 ) : null}
+                {stateLabel ? <span className="tab-state-dot" aria-hidden="true" /> : null}
               </button>
             )
           })}
