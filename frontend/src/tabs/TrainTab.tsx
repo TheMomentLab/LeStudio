@@ -48,7 +48,7 @@ interface ColabLinkResponse {
   session_limit_note?: string
 }
 
-const DEFAULT_COLAB_NOTEBOOK_URL = 'https://colab.research.google.com/github/TheMomentLab/lerobot-studio/blob/main/notebooks/lerobot_train.ipynb'
+const DEFAULT_COLAB_NOTEBOOK_URL = 'https://colab.research.google.com/github/TheMomentLab/lerobot-studio/blob/dev/notebooks/lerobot_train.ipynb'
 
 function buildColabSnippet(repoId: string, configPath: string): string {
   return [
