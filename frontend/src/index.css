@@ -991,6 +991,58 @@ select option { background: var(--bg3); }
   color: var(--text);
 }
 
+.dataset-collapsible-panel {
+  margin-top: 10px;
+}
+
+.dataset-collapsible-panel > summary.dataset-collapsible-summary {
+  gap: 12px;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--text);
+  transition: color 0.15s, border-color 0.15s, background 0.15s, transform 0.15s;
+}
+
+.dataset-collapsible-panel > summary .dataset-collapsible-title {
+  color: var(--text);
+  letter-spacing: 0.1px;
+}
+
+.dataset-collapsible-panel > summary .dataset-collapsible-meta {
+  margin-left: 10px;
+  min-width: 90px;
+  justify-content: center;
+  white-space: nowrap;
+  font-size: 10.5px;
+  padding: 3px 8px;
+}
+
+.dataset-collapsible-panel:not([open]) > summary {
+  border-color: color-mix(in srgb, var(--border) 68%, var(--accent) 32%);
+  background: color-mix(in srgb, var(--bg2) 70%, transparent);
+}
+
+.dataset-collapsible-panel > summary:hover {
+  border-color: color-mix(in srgb, var(--accent) 46%, var(--border));
+  background: color-mix(in srgb, var(--accent) 16%, var(--bg3));
+  transform: translateY(-1px);
+}
+
+.dataset-collapsible-panel[open] > summary {
+  border-color: color-mix(in srgb, var(--accent) 52%, var(--border));
+  background: color-mix(in srgb, var(--accent) 20%, var(--bg3));
+}
+
+.dataset-collapsible-panel[open] > summary::after {
+  color: var(--accent);
+}
+
+@media (max-width: 640px) {
+  .dataset-collapsible-panel > summary .dataset-collapsible-meta {
+    min-width: 0;
+  }
+}
+
 .teleop-step-compact {
   border: 1px solid var(--border);
   border-radius: 8px;

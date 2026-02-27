@@ -154,6 +154,12 @@ export function DatasetCurationPanel({
   const repoIdValid = REPO_ID_REGEX.test(newRepoId.trim())
   const isRunning = !!jobId && job?.status !== 'success' && job?.status !== 'error' && job?.status !== 'cancelled'
   const canDerive = repoIdValid && keepCount > 0 && keepCount < totalEpisodes && !isRunning
+  const curationSummaryBadgeClass =
+    keepCount === 0
+      ? 'badge-warn'
+      : keepCount === totalEpisodes
+        ? 'badge-idle'
+        : 'badge-ok'
 
   const deleteIndices = useMemo(() => {
     const keepSet = new Set(keepEpisodes.map((ep) => ep.episode_index))
@@ -192,12 +198,11 @@ export function DatasetCurationPanel({
   return (
     <details
       id="ds-curation-panel"
-      className="advanced-panel advanced-panel-clickable"
-      style={{ marginTop: 10 }}
+      className="advanced-panel advanced-panel-clickable dataset-collapsible-panel"
     >
-      <summary style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span>Curation — Derive Dataset</span>
-        <span className="muted" style={{ fontSize: 11, marginLeft: 8 }}>
+      <summary className="dataset-collapsible-summary">
+        <span className="dataset-collapsible-title">Curation — Derive Dataset</span>
+        <span className={`dbadge dataset-collapsible-meta ${curationSummaryBadgeClass}`}>
           {keepCount} / {totalEpisodes} keep
         </span>
       </summary>

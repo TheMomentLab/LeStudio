@@ -283,13 +283,20 @@ export function DatasetAutoFlagPanel({ datasetId, totalEpisodes, onTagsChanged }
     + (useMaxJerkRatio ? 1 : 0)
 
   const isStatsRunning = !!statsJobId && statsJobStatus !== 'success' && statsJobStatus !== 'error' && statsJobStatus !== 'cancelled'
+  const autoFlagSummaryText = stats ? `${flaggedEpisodes.length} / ${totalEpisodes} flagged` : 'not loaded'
+  const autoFlagSummaryBadgeClass =
+    !stats
+      ? 'badge-idle'
+      : flaggedEpisodes.length > 0
+        ? 'badge-warn'
+        : 'badge-ok'
 
   return (
-    <details id="ds-autoflag-panel" className="advanced-panel advanced-panel-clickable" style={{ marginTop: 10 }}>
-      <summary style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span>Auto-Flag — Episode Quality</span>
-        <span className="muted" style={{ fontSize: 11, marginLeft: 8 }}>
-          {stats ? `${flaggedEpisodes.length} / ${totalEpisodes} flagged` : 'not loaded'}
+    <details id="ds-autoflag-panel" className="advanced-panel advanced-panel-clickable dataset-collapsible-panel">
+      <summary className="dataset-collapsible-summary">
+        <span className="dataset-collapsible-title">Auto-Flag — Episode Quality</span>
+        <span className={`dbadge dataset-collapsible-meta ${autoFlagSummaryBadgeClass}`}>
+          {autoFlagSummaryText}
         </span>
       </summary>
 
