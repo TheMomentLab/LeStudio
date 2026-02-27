@@ -104,6 +104,7 @@ export function StatusTab({ active }: StatusTabProps) {
   const devices = useLeStudioStore((s) => s.devices)
   const setDevices = useLeStudioStore((s) => s.setDevices)
   const procStatus = useLeStudioStore((s) => s.procStatus)
+  const hfUsername = useLeStudioStore((s) => s.hfUsername)
   const addToast = useLeStudioStore((s) => s.addToast)
   const setActiveTab = useLeStudioStore((s) => s.setActiveTab)
   const [resources, setResources] = useState<ResourcesResponse | null>(null)
@@ -244,6 +245,26 @@ export function StatusTab({ active }: StatusTabProps) {
       ) : null}
 
       <div className="status-grid">
+        <div className="card">
+          <h3>🤗 Hugging Face Auth</h3>
+          <div className="device-list">
+            <div className="device-item" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <div className="dname">Hub Login</div>
+                <div className="dsub">Required for Hub push/download in Dataset tab</div>
+              </div>
+              <span className={`dbadge ${hfUsername ? 'badge-ok' : 'badge-warn'}`}>
+                {hfUsername ? hfUsername : 'Not Logged In'}
+              </span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button type="button" className="link-btn" onClick={() => setActiveTab('dataset')}>
+                → Open Dataset Auth
+              </button>
+            </div>
+          </div>
+        </div>
+
         <div className="card">
           <h3>📷 Cameras</h3>
           <div id="status-cameras" className="device-list">
@@ -407,7 +428,7 @@ export function StatusTab({ active }: StatusTabProps) {
           </div>
         </div>
 
-        <div className="card" style={{ gridColumn: '1 / -1' }}>
+        <div className="card">
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
             <h3 style={{ margin: 0 }}>📋 Session History</h3>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

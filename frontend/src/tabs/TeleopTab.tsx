@@ -74,7 +74,6 @@ export function TeleopTab({ active }: TeleopTabProps) {
   const [jpegQuality, setJpegQuality] = useState(70)
   const [pausedFeeds, setPausedFeeds] = useState<Record<string, boolean>>({})
   const [streamsReady, setStreamsReady] = useState(false)
-  const [step1Open, setStep1Open] = useState(false)
 
   useEffect(() => {
     buildConfigRef.current = buildConfig
@@ -164,6 +163,7 @@ export function TeleopTab({ active }: TeleopTabProps) {
   const rightRobotId = (config.right_robot_id as string) ?? 'my_so101_follower_2'
   const leftTeleopId = (config.left_teleop_id as string) ?? 'my_so101_leader_1'
   const rightTeleopId = (config.right_teleop_id as string) ?? 'my_so101_leader_2'
+  const teleopSpeed = (config.teleop_speed as string) ?? '0.5'
 
   const followerPortOptions = useMemo(
     () => buildSelectOptions(DEFAULT_FOLLOWER_PORTS, armPaths, followerPort),
@@ -228,11 +228,6 @@ export function TeleopTab({ active }: TeleopTabProps) {
     if (!active) return
     const t = window.setTimeout(() => setStreamsReady(true), 400)
     return () => window.clearTimeout(t)
-  }, [active])
-
-  useEffect(() => {
-    if (!active) return
-    setStep1Open(window.innerWidth >= 1100)
   }, [active])
 
   useEffect(() => {
@@ -364,50 +359,66 @@ export function TeleopTab({ active }: TeleopTabProps) {
         </div>
       </div>
 
-      {!running && !teleopReady ? (
-        <div className="teleop-guard-card">
-          <div className="dsub" style={{ marginBottom: 6 }}>Start blocked:</div>
-          <div className="teleop-blocker-chip-row">
-            {teleopBlockers.map((blocker) => (
-              <span key={blocker} className="dbadge badge-warn">{blocker}</span>
-            ))}
-          </div>
-          <div className="teleop-blocker-actions">
-            <button type="button" className="link-btn" onClick={() => setActiveTab('device-setup')}>→ Open Mapping</button>
-            <button type="button" className="link-btn" onClick={() => setStep1Open(true)}>→ Review Step 1</button>
-          </div>
-        </div>
-      ) : null}
-
-      <div className="two-col">
-        <div className="card">
-          {!step1Open ? (
-            <div className="teleop-step-compact" style={{ marginBottom: 8 }}>
-              <div className="device-item" style={{ justifyContent: 'space-between', marginBottom: 6 }}>
-                <span className="dname">Step 1 Ready Summary</span>
-                <button type="button" className="btn-xs" onClick={() => setStep1Open(true)}>Show details</button>
-              </div>
-              <div className="dsub" style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                <span>Mode: {mode === 'single' ? 'Single Arm' : 'Bi-Arm'}</span>
-                <span>Robot: {formatRobotType(selectedRobotType)}</span>
-                <span>Teleop: {formatRobotType(selectedTeleopType)}</span>
-              </div>
-              <div className="dsub" style={{ marginTop: 4 }}>
-                Ports ready: {requiredArmPorts.length - missingArmPorts.length}/{requiredArmPorts.length}
-              </div>
-              {!armsReady ? <div className="dsub" style={{ marginTop: 2 }}>Missing: {missingArmPorts.join(', ')}</div> : null}
+      <div className="teleop-content">
+        {!running && !teleopReady ? (
+          <div className="teleop-guard-card">
+            <div className="dsub" style={{ marginBottom: 6 }}>Start blocked:</div>
+            <div className="teleop-blocker-chip-row">
+              {teleopBlockers.map((blocker) => (
+                <span key={blocker} className="dbadge badge-warn">{blocker}</span>
+              ))}
             </div>
-          ) : null}
-          <details
-            className="advanced-panel"
-            id="teleop-step1-panel"
-            open={step1Open}
-            onToggle={(e) => setStep1Open((e.currentTarget as HTMLDetailsElement).open)}
-          >
-            <summary>
-              <span>Step 1 — Arm Connections</span>
-              <span className="rules-summary-meta">{step1Open ? 'Collapse details' : 'Expand details'}</span>
-            </summary>
+            <div className="teleop-blocker-actions">
+              <button type="button" className="link-btn" onClick={() => setActiveTab('device-setup')}>→ Open Mapping</button>
+            </div>
+          </div>
+        ) : null}
+
+        <div className="episode-progress-card teleop-status-card">
+          <div className="ep-card-title">Runtime Status</div>
+          <div className="device-list" style={{ marginBottom: 10 }}>
+            <div className="device-item" style={{ justifyContent: 'space-between' }}>
+              <span className="dname">Arms connected</span>
+              <span className={`dbadge ${armsReady ? 'badge-ok' : 'badge-warn'}`}>{armsReady ? 'ready' : `missing ${missingArmPorts.length}`}</span>
+            </div>
+            {!armsReady ? <div className="dsub">Missing ports: {missingArmPorts.join(', ')}</div> : null}
+            <div className="device-item" style={{ justifyContent: 'space-between' }}>
+              <span className="dname">Camera feeds</span>
+              <span className={`dbadge ${camerasReady ? 'badge-ok' : 'badge-warn'}`}>{availableCameras.length}/{mappedCameraCount || 0}</span>
+            </div>
+            <div className="device-item" style={{ justifyContent: 'space-between' }}>
+              <span className="dname">Process conflicts</span>
+              <span className={`dbadge ${conflictReason ? 'badge-err' : 'badge-ok'}`}>{conflictReason ? `${conflictReason} running` : 'none'}</span>
+            </div>
+          </div>
+          {running && (
+            <div
+              className="safety-banner"
+              style={{
+                background: 'rgba(248,81,73,0.08)',
+                border: '1px solid rgba(248,81,73,0.25)',
+                borderRadius: 4,
+                padding: '6px 10px',
+                marginBottom: 8,
+                fontSize: 11,
+                color: 'var(--red)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                width: '100%',
+              }}
+            >
+              <span style={{ fontSize: 13 }}>⚠️</span>
+              <span>
+                Unexpected movement → press <b>Stop</b> immediately. Keep hands clear.
+              </span>
+            </div>
+          )}
+        </div>
+
+        <div className="two-col">
+        <div className="card">
+            <h3>Step 1 — Arm Connections</h3>
             <div className="field-help" style={{ marginTop: 8 }}>Single Arm controls one leader + one follower. Bi-Arm controls left/right pairs.</div>
             <div className="teleop-arm-grid">
               <div className="form-field">
@@ -565,7 +576,6 @@ export function TeleopTab({ active }: TeleopTabProps) {
                 </>
               )}
             </div>
-          </details>
         </div>
 
         <div className="card">
@@ -577,7 +587,7 @@ export function TeleopTab({ active }: TeleopTabProps) {
           <div id="teleop-cameras" className="camera-cfg" style={{ marginTop: 16 }}>
             <MappedCameraRows mappedCameras={mappedCameras} />
           </div>
-          <details className="advanced-panel" style={{ marginTop: 12 }}>
+          <details className="advanced-panel advanced-panel-clickable" style={{ marginTop: 12 }}>
             <summary>Advanced Stream Settings</summary>
             <div className="settings-grid" style={{ marginTop: 10 }}>
               <div className="setting-item">
@@ -618,26 +628,7 @@ export function TeleopTab({ active }: TeleopTabProps) {
               </div>
             </div>
           </details>
-        </div>
-
-        <div className="episode-progress-card">
-          <div className="ep-card-title">Teleop Control</div>
-          <div className="device-list" style={{ marginBottom: 10 }}>
-            <div className="device-item" style={{ justifyContent: 'space-between' }}>
-              <span className="dname">Arms connected</span>
-              <span className={`dbadge ${armsReady ? 'badge-ok' : 'badge-warn'}`}>{armsReady ? 'ready' : `missing ${missingArmPorts.length}`}</span>
-            </div>
-            {!armsReady ? <div className="dsub">Missing ports: {missingArmPorts.join(', ')}</div> : null}
-            <div className="device-item" style={{ justifyContent: 'space-between' }}>
-              <span className="dname">Camera feeds</span>
-              <span className={`dbadge ${camerasReady ? 'badge-ok' : 'badge-warn'}`}>{availableCameras.length}/{mappedCameraCount || 0}</span>
-            </div>
-            <div className="device-item" style={{ justifyContent: 'space-between' }}>
-              <span className="dname">Process conflicts</span>
-              <span className={`dbadge ${conflictReason ? 'badge-err' : 'badge-ok'}`}>{conflictReason ? `${conflictReason} running` : 'none'}</span>
-            </div>
-          </div>
-          <div id="teleop-feeds" className="feed-grid">
+          <div id="teleop-feeds" className="feed-grid" style={{ marginTop: 12 }}>
             {active && streamsReady && availableCameras.length ? (
               availableCameras.map((camera) => (
                 <div className="feed-card" key={camera.name} data-vid={camera.path.replace('/dev/', '')}>
@@ -674,48 +665,39 @@ export function TeleopTab({ active }: TeleopTabProps) {
               </div>
             )}
           </div>
-          <div className="ep-actions-panel">
-          {running && (
-            <div
-              className="safety-banner"
-              style={{
-                background: 'rgba(248,81,73,0.08)',
-                border: '1px solid rgba(248,81,73,0.25)',
-                borderRadius: 4,
-                padding: '6px 10px',
-                marginBottom: 8,
-                fontSize: 11,
-                color: 'var(--red)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-                width: '100%',
-              }}
-            >
-              <span style={{ fontSize: 13 }}>⚠️</span>
-              <span>
-                Unexpected movement → press <b>Stop</b> immediately. Keep hands clear.
-              </span>
-            </div>
-          )}
-          {!running && teleopLines.length > 0 && (
-            <button type="button" className="link-btn" style={{ marginBottom: 8 }} onClick={() => setActiveTab('record')}>→ Proceed to Record</button>
-          )}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <label style={{ fontSize: 11, color: 'var(--text2)', minWidth: 48 }}>Speed:</label>
-              <select value={(config.teleop_speed as string) ?? '0.5'} onChange={(e) => update('teleop_speed', e.target.value)} style={{ minWidth: 130 }}>
-                <option value="0.1">0.1x (slow)</option>
-                <option value="0.25">0.25x</option>
-                <option value="0.5">0.5x (default)</option>
-                <option value="0.75">0.75x</option>
-                <option value="1.0">1.0x (full)</option>
-              </select>
-            </div>
-            <ProcessButtons running={running} onStart={start} onStop={stop} startLabel="▶ Start Teleop" conflictReason={conflictReason} disabled={!armsReady || !camerasReady} />
-          </div>
         </div>
+
       </div>
+      </div>
+      <div className="teleop-sticky-controls">
+        <div className="teleop-run-summary">
+          <span className={`dbadge ${running ? 'badge-run' : teleopReady ? 'badge-ok' : 'badge-err'}`}>
+            {running ? 'TELEOP ACTIVE' : teleopReady ? 'READY' : 'BLOCKED'}
+          </span>
+          <span className="teleop-run-text">
+            {running
+              ? `${mode === 'single' ? 'Single Arm' : 'Bi-Arm'} · Speed ${teleopSpeed}x`
+              : teleopReady
+                ? 'Ready to start teleoperation'
+                : teleopBlockers[0] ?? 'Resolve blockers before starting'}
+          </span>
+          {!running && teleopLines.length > 0 ? (
+            <button type="button" className="link-btn" onClick={() => setActiveTab('record')}>→ Proceed to Record</button>
+          ) : null}
+        </div>
+        <div className="teleop-footer-controls">
+          <div className="teleop-speed-control">
+            <label style={{ fontSize: 11, color: 'var(--text2)', minWidth: 48 }}>Speed:</label>
+            <select value={teleopSpeed} onChange={(e) => update('teleop_speed', e.target.value)} style={{ minWidth: 130 }}>
+              <option value="0.1">0.1x (slow)</option>
+              <option value="0.25">0.25x</option>
+              <option value="0.5">0.5x (default)</option>
+              <option value="0.75">0.75x</option>
+              <option value="1.0">1.0x (full)</option>
+            </select>
+          </div>
+          <ProcessButtons running={running} onStart={start} onStop={stop} startLabel="▶ Start Teleop" conflictReason={conflictReason} disabled={!armsReady || !camerasReady} />
+        </div>
       </div>
     </section>
   )

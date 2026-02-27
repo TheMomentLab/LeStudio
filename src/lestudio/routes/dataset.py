@@ -22,6 +22,32 @@ from lestudio.routes._state import AppState
 def create_router(state: AppState) -> APIRouter:
     router = APIRouter()
 
+    token_file = state.config_dir / "hf_token"
+
+    def _resolve_hf_token() -> tuple[str, str]:
+        token_env = (os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_HUB_TOKEN") or "").strip()
+        if token_env:
+            return token_env, "env"
+
+        if token_file.exists():
+            try:
+                token_saved = token_file.read_text().strip()
+            except Exception:
+                token_saved = ""
+            if token_saved:
+                os.environ["HF_TOKEN"] = token_saved
+                os.environ["HUGGINGFACE_HUB_TOKEN"] = token_saved
+                return token_saved, "file"
+
+        return "", "none"
+
+    def _mask_token(token: str) -> str:
+        if not token:
+            return ""
+        if len(token) <= 8:
+            return "*" * len(token)
+        return f"{token[:4]}...{token[-4:]}"
+
     # ─── Dataset List / Info ───────────────────────────────────────────────────
     @router.get("/api/datasets")
     def api_datasets_list():
@@ -413,7 +439,7 @@ def create_router(state: AppState) -> APIRouter:
         target_repo_id = str(payload.get("target_repo_id", f"{user}/{repo}")).strip() or f"{user}/{repo}"
         private = bool(payload.get("private", False))
 
-        token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_HUB_TOKEN")
+        token, _ = _resolve_hf_token()
         if not token:
             return {"ok": False, "error": "HF_TOKEN (or HUGGINGFACE_HUB_TOKEN) is not set"}
 
@@ -527,22 +553,68 @@ def create_router(state: AppState) -> APIRouter:
                 return {"ok": False, "error": "Push job not found"}
             return {"ok": True, **job}
 
-    # ─── HF Identity ───────────────────────────────────────────────────────────
     # ─── HF Identity ─────────────────────────────────────────────────────────
-    _whoami_cache: dict = {}  # {"result": ..., "expires": float, "token": str}
+    _whoami_cache: dict[str, object] = {}  # {"result": ..., "expires": float, "token": str}
+
+    @router.get("/api/hf/token/status")
+    def api_hf_token_status():
+        token, source = _resolve_hf_token()
+        return {
+            "ok": True,
+            "has_token": bool(token),
+            "source": source,
+            "masked_token": _mask_token(token),
+        }
+
+    @router.put("/api/hf/token")
+    @router.post("/api/hf/token")
+    async def api_hf_token_set(data: dict[str, object] | None = None):
+        payload = data or {}
+        token = str(payload.get("token", "")).strip()
+        if not token:
+            return {"ok": False, "error": "token is required"}
+        try:
+            token_file.parent.mkdir(parents=True, exist_ok=True)
+            token_file.write_text(token)
+            try:
+                os.chmod(token_file, 0o600)
+            except Exception:
+                pass
+            os.environ["HF_TOKEN"] = token
+            os.environ["HUGGINGFACE_HUB_TOKEN"] = token
+            _whoami_cache.clear()
+            return {"ok": True, "has_token": True, "source": "env"}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    @router.delete("/api/hf/token")
+    def api_hf_token_clear():
+        os.environ.pop("HF_TOKEN", None)
+        os.environ.pop("HUGGINGFACE_HUB_TOKEN", None)
+        try:
+            if token_file.exists():
+                token_file.unlink()
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+        _whoami_cache.clear()
+        return {"ok": True, "has_token": False, "source": "none"}
 
     @router.get("/api/hf/whoami")
     def api_hf_whoami():
         """Return the HuggingFace username associated with the current token."""
         # ok:True만 캐싱 (5분). 토큰이 달라지면 즉시 무효화.
-        token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_HUB_TOKEN")
+        token, _ = _resolve_hf_token()
         if not token:
             _whoami_cache.clear()
             return {"ok": False, "username": None, "error": "no_token"}
         cached = _whoami_cache.get("result")
+        expires_raw = _whoami_cache.get("expires", 0.0)
+        expires = float(expires_raw) if isinstance(expires_raw, (int, float)) else 0.0
+        token_cached = _whoami_cache.get("token")
         if (cached
-                and time.monotonic() < _whoami_cache.get("expires", 0)
-                and _whoami_cache.get("token") == token):
+                and time.monotonic() < expires
+                and isinstance(token_cached, str)
+                and token_cached == token):
             return cached
 
         try:

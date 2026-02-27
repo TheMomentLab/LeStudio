@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import sys
 import types
 from pathlib import Path
@@ -181,3 +182,151 @@ def test_hf_whoami_cache_is_token_scoped(monkeypatch, tmp_path: Path):
     third = endpoint()
     assert third == {"ok": True, "username": "user-token-b"}
     assert calls["count"] == 2
+
+
+def test_hf_token_crud_status(monkeypatch, tmp_path: Path):
+    monkeypatch.delenv("HF_TOKEN", raising=False)
+    monkeypatch.delenv("HUGGINGFACE_HUB_TOKEN", raising=False)
+
+    app = _make_app(tmp_path)
+    status_endpoint = _find_endpoint(app, "/api/hf/token/status", "GET")
+    set_endpoint = _find_endpoint(app, "/api/hf/token", "POST")
+    set_endpoint_put = _find_endpoint(app, "/api/hf/token", "PUT")
+    clear_endpoint = _find_endpoint(app, "/api/hf/token", "DELETE")
+
+    initial = status_endpoint()
+    assert initial["ok"] is True
+    assert initial["has_token"] is False
+    assert initial["source"] == "none"
+
+    saved = asyncio.run(set_endpoint({"token": "hf_test_123456"}))
+    assert saved["ok"] is True
+    assert saved["has_token"] is True
+    assert saved["source"] == "env"
+
+    after_set = status_endpoint()
+    assert after_set["ok"] is True
+    assert after_set["has_token"] is True
+    assert after_set["source"] == "env"
+    assert after_set["masked_token"].startswith("hf_t")
+
+    token_file = tmp_path / "config" / "hf_token"
+    assert token_file.exists()
+    assert token_file.read_text() == "hf_test_123456"
+
+    saved_put = asyncio.run(set_endpoint_put({"token": "hf_test_654321"}))
+    assert saved_put["ok"] is True
+    assert saved_put["has_token"] is True
+    assert saved_put["source"] == "env"
+    assert token_file.read_text() == "hf_test_654321"
+
+    cleared = clear_endpoint()
+    assert cleared["ok"] is True
+    assert cleared["has_token"] is False
+    assert cleared["source"] == "none"
+    assert not token_file.exists()
+
+    after_clear = status_endpoint()
+    assert after_clear["ok"] is True
+    assert after_clear["has_token"] is False
+    assert after_clear["source"] == "none"
+
+
+def test_train_colab_config_uploads_json_and_returns_link(monkeypatch, tmp_path: Path):
+    captured: dict[str, object] = {}
+    monkeypatch.setenv("HF_TOKEN", "hf_test_token")
+
+    def fake_which(name: str):
+        if name == "huggingface-cli":
+            return "/usr/bin/huggingface-cli"
+        return None
+
+    def fake_run(cmd, capture_output, text, env, timeout):
+        captured["cmd"] = list(cmd)
+        captured["env_tokens"] = (env.get("HF_TOKEN"), env.get("HUGGINGFACE_HUB_TOKEN"))
+        cfg_path = Path(cmd[3])
+        captured["cfg"] = json.loads(cfg_path.read_text())
+        return types.SimpleNamespace(returncode=0, stdout="uploaded", stderr="")
+
+    monkeypatch.setattr(training_routes.shutil, "which", fake_which)
+    monkeypatch.setattr(training_routes.subprocess, "run", fake_run)
+
+    app = _make_app(tmp_path)
+    endpoint = _find_endpoint(app, "/api/train/colab/config", "POST")
+    payload = asyncio.run(endpoint({
+        "train_repo_id": "user/my-dataset",
+        "train_policy": "act",
+        "train_steps": 12345,
+        "train_device": "mps",
+        "train_batch_size": 16,
+        "train_lr": "1e-4",
+        "train_output_repo": "user/my-policy",
+        "colab_notebook_url": "https://colab.research.google.com/github/acme/repo/blob/main/notebooks/train.ipynb?foo=bar&repo_id={repo_id}&config_path={config_path}",
+    }))
+
+    assert payload["ok"] is True
+    assert payload["repo_id"] == "user/my-dataset"
+    assert payload["config_path"] == "lestudio_train_config.json"
+    assert payload["manual_run_required"] is True
+    assert "repo_id=user%2Fmy-dataset" in payload["colab_link"]
+    assert "config_path=lestudio_train_config.json" in payload["colab_link"]
+
+    cmd = captured["cmd"]
+    assert isinstance(cmd, list)
+    assert cmd[:3] == ["/usr/bin/huggingface-cli", "upload", "user/my-dataset"]
+    assert cmd[4] == "lestudio_train_config.json"
+    assert captured["env_tokens"] == ("hf_test_token", "hf_test_token")
+
+    cfg = captured["cfg"]
+    assert isinstance(cfg, dict)
+    assert cfg["dataset_repo"] == "user/my-dataset"
+    assert cfg["policy"] == "act"
+    assert cfg["steps"] == 12345
+    assert cfg["train_device"] == "cuda"
+    assert cfg["batch_size"] == 16
+    assert cfg["output_repo"] == "user/my-policy"
+
+
+def test_train_colab_config_requires_hf_token(monkeypatch, tmp_path: Path):
+    monkeypatch.delenv("HF_TOKEN", raising=False)
+    monkeypatch.delenv("HUGGINGFACE_HUB_TOKEN", raising=False)
+
+    app = _make_app(tmp_path)
+    endpoint = _find_endpoint(app, "/api/train/colab/config", "POST")
+    payload = asyncio.run(endpoint({"train_repo_id": "user/my-dataset"}))
+
+    assert payload["ok"] is False
+    assert "HF_TOKEN" in payload["error"]
+
+
+def test_train_colab_link_defaults_to_starter_notebook(monkeypatch, tmp_path: Path):
+    app = _make_app(tmp_path)
+    endpoint = _find_endpoint(app, "/api/train/colab/link", "GET")
+    payload = endpoint("user/my-dataset", "lestudio_train_config.json", "")
+
+    assert payload["ok"] is True
+    assert payload["repo_id"] == "user/my-dataset"
+    assert payload["url"] == "https://colab.research.google.com/github/googlecolab/colabtools/blob/main/notebooks/colab-github-demo.ipynb"
+
+
+def test_train_colab_link_does_not_mutate_colab_root_url(monkeypatch, tmp_path: Path):
+    app = _make_app(tmp_path)
+    endpoint = _find_endpoint(app, "/api/train/colab/link", "GET")
+    payload = endpoint("user/my-dataset", "lestudio_train_config.json", "https://colab.research.google.com/")
+
+    assert payload["ok"] is True
+    assert payload["url"] == "https://colab.research.google.com/"
+
+
+def test_train_colab_link_expands_placeholders_when_present(monkeypatch, tmp_path: Path):
+    app = _make_app(tmp_path)
+    endpoint = _find_endpoint(app, "/api/train/colab/link", "GET")
+    payload = endpoint(
+        "user/my-dataset",
+        "lestudio_train_config.json",
+        "https://colab.research.google.com/github/acme/repo/blob/main/notebooks/train.ipynb?repo_id={repo_id}&config_path={config_path}",
+    )
+
+    assert payload["ok"] is True
+    assert "repo_id=user%2Fmy-dataset" in payload["url"]
+    assert "config_path=lestudio_train_config.json" in payload["url"]

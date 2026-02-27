@@ -2,10 +2,13 @@
 from __future__ import annotations
 
 import datetime
-import time
 import json
+import os
 import shutil
+import subprocess
+import time
 from pathlib import Path
+from urllib.parse import quote, urlparse
 
 from fastapi import APIRouter
 
@@ -25,6 +28,7 @@ _TTL_PREFLIGHT_OK = 120.0    # ok: True  → 2분 (CUDA 호환성은 설치 전�
 _TTL_PREFLIGHT_FAIL = 20.0   # ok: False + action 있음 → 20초 (유저 조치 후 쳤캐리 재확인 가능)
 # ok: False + action 없음(서브프로세스 타임아웃 등 일시적 오류) → 캐싱 안 함
 _preflight_cache: dict[str, tuple[dict, float]] = {}
+DEFAULT_COLAB_NOTEBOOK_URL = "https://colab.research.google.com/github/TheMomentLab/lerobot-studio/blob/main/notebooks/lerobot_train.ipynb"
 
 
 def _preflight_cache_get(key: str) -> dict | None:
@@ -57,8 +61,62 @@ def _ensure_train_installer(state: AppState, command: str) -> tuple[bool, bool]:
         return False, False
     return state.proc_mgr.start("train_install", args), False
 
+
+def _safe_positive_int(value: object, default: int) -> int:
+    if isinstance(value, str):
+        candidate: str | int | float = value
+    elif isinstance(value, (int, float)):
+        candidate = value
+    else:
+        return default
+    try:
+        parsed = int(float(candidate))
+    except Exception:
+        return default
+    return parsed if parsed > 0 else default
+
+
+def _normalize_colab_device(value: object) -> str:
+    if isinstance(value, str) and value.strip().lower() == "cpu":
+        return "cpu"
+    return "cuda"
+
+
+def _build_colab_link(base_url: str, repo_id: str, config_path: str) -> str:
+    source = (base_url or "").strip()
+    if not source:
+        return ""
+
+    has_placeholders = "{repo_id}" in source or "{config_path}" in source
+    if has_placeholders:
+        source = source.replace("{repo_id}", quote(repo_id, safe=""))
+        source = source.replace("{config_path}", quote(config_path, safe="/"))
+
+    parsed = urlparse(source)
+    if parsed.scheme not in {"http", "https"}:
+        return ""
+    return source
+
 def create_router(state: AppState) -> APIRouter:
     router = APIRouter()
+    token_file = state.config_dir / "hf_token"
+
+    def _resolve_hf_token() -> tuple[str, str]:
+        token_env = (os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_HUB_TOKEN") or "").strip()
+        if token_env:
+            return token_env, "env"
+
+        if token_file.exists():
+            try:
+                token_saved = token_file.read_text().strip()
+            except Exception:
+                token_saved = ""
+            if token_saved:
+                os.environ["HF_TOKEN"] = token_saved
+                os.environ["HUGGINGFACE_HUB_TOKEN"] = token_saved
+                return token_saved, "file"
+
+        return "", "none"
 
     @router.get("/api/train/preflight")
     def api_train_preflight(device: str = "cuda"):
@@ -237,6 +295,115 @@ def create_router(state: AppState) -> APIRouter:
                 "device": data.get("train_device", ""),
             })
         return {"ok": ok}
+
+    @router.post("/api/train/colab/config")
+    async def api_train_colab_config(data: dict | None = None):
+        payload = data or {}
+        repo_id = str(payload.get("train_repo_id") or payload.get("dataset_repo") or payload.get("repo_id") or "").strip()
+        if not repo_id or "/" not in repo_id:
+            return {"ok": False, "error": "train_repo_id (user/repo) is required for Colab config upload."}
+
+        config_path = str(payload.get("config_path", "lestudio_train_config.json") or "").strip().lstrip("/")
+        if not config_path:
+            config_path = "lestudio_train_config.json"
+        if ".." in Path(config_path).parts:
+            return {"ok": False, "error": "config_path cannot contain '..' segments."}
+
+        token, _ = _resolve_hf_token()
+        if not token:
+            return {"ok": False, "error": "HF_TOKEN (or HUGGINGFACE_HUB_TOKEN) is not set."}
+
+        cli = shutil.which("huggingface-cli")
+        if not cli:
+            return {"ok": False, "error": "huggingface-cli is not installed in this environment."}
+
+        train_config = {
+            "version": 1,
+            "dataset_repo": repo_id,
+            "policy": str(payload.get("train_policy", "act") or "act"),
+            "steps": _safe_positive_int(payload.get("train_steps"), 50000),
+            "batch_size": _safe_positive_int(payload.get("train_batch_size"), 8),
+            "lr": str(payload.get("train_lr", "") or "") or None,
+            "train_device": _normalize_colab_device(payload.get("train_device")),
+            "output_repo": str(payload.get("train_output_repo") or payload.get("output_repo") or "").strip() or None,
+            "extra_overrides": payload.get("extra_overrides", []) if isinstance(payload.get("extra_overrides"), list) else [],
+            "generated_by": "LeStudio",
+            "generated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        }
+
+        temp_dir = state.config_dir / "tmp"
+        temp_dir.mkdir(parents=True, exist_ok=True)
+        tmp_path = temp_dir / f"colab_train_config_{int(time.time() * 1000)}.json"
+        tmp_path.write_text(json.dumps(train_config, indent=2))
+
+        cmd = [cli, "upload", repo_id, str(tmp_path), config_path, "--repo-type", "dataset"]
+        try:
+            proc = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                env={**os.environ, "HF_TOKEN": token, "HUGGINGFACE_HUB_TOKEN": token},
+                timeout=120,
+            )
+        except Exception as e:
+            return {"ok": False, "error": f"Failed to upload Colab config: {e}"}
+        finally:
+            try:
+                tmp_path.unlink(missing_ok=True)
+            except Exception:
+                pass
+
+        output = "\n".join(p for p in (proc.stdout.strip(), proc.stderr.strip()) if p).strip()
+        if proc.returncode != 0:
+            tail = "\n".join(output.splitlines()[-8:]).strip() if output else ""
+            return {
+                "ok": False,
+                "error": tail or f"huggingface-cli upload failed with exit code {proc.returncode}.",
+            }
+
+        notebook_url = str(payload.get("colab_notebook_url", "") or "").strip() or DEFAULT_COLAB_NOTEBOOK_URL
+
+        colab_link = _build_colab_link(notebook_url, repo_id, config_path)
+        return {
+            "ok": True,
+            "repo_id": repo_id,
+            "config_path": config_path,
+            "colab_link": colab_link,
+            "manual_run_required": True,
+            "session_limit_note": "Colab free runtime can disconnect when idle and has finite session duration.",
+        }
+
+    @router.get("/api/train/colab/link")
+    def api_train_colab_link(
+        repo_id: str = "",
+        config_path: str = "lestudio_train_config.json",
+        notebook_url: str = DEFAULT_COLAB_NOTEBOOK_URL,
+    ):
+        rid = (repo_id or "").strip()
+        if not rid or "/" not in rid:
+            return {"ok": False, "error": "repo_id must be in user/repo format."}
+
+        cpath = (config_path or "lestudio_train_config.json").strip().lstrip("/") or "lestudio_train_config.json"
+        if ".." in Path(cpath).parts:
+            return {"ok": False, "error": "config_path cannot contain '..' segments."}
+
+        nurl = (notebook_url or "").strip() or DEFAULT_COLAB_NOTEBOOK_URL
+
+        link = _build_colab_link(nurl, rid, cpath)
+        if not link:
+            return {
+                "ok": False,
+                "error": "Colab notebook URL is invalid.",
+            }
+
+        return {
+            "ok": True,
+            "url": link,
+            "repo_id": rid,
+            "config_path": cpath,
+            "manual_run_required": True,
+            "session_limit_note": "Colab may disconnect idle sessions and has runtime limits.",
+        }
 
     @router.get("/api/checkpoints")
     def api_checkpoints():

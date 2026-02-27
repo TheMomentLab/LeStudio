@@ -37,6 +37,7 @@ DEFAULT_CONFIG = {
     "record_resume":   False,
     "profile_name":    "default",
     "train_dataset_source": "local",
+    "train_output_repo": "",
     "process_view_url": "",
     "eval_policy_path": "outputs/train/checkpoints/last/pretrained_model",
     "eval_repo_id": "user/my-dataset",

@@ -508,13 +508,14 @@ export function EvalTab({ active }: EvalTabProps) {
         </div>
       ) : null}
 
-      <div className="quick-guide">
-        <h3>Evaluation Guide</h3>
-        <p>Select a <strong>trained checkpoint</strong> or enter a custom path. Match the <strong>Dataset Repo ID</strong> to the dataset used during training. Switch <strong>Compute Device</strong> to CPU/MPS if CUDA is unavailable. Start with <strong>3–5 episodes</strong> for a quick sanity check. Logs and detailed metrics appear in the <strong>global console drawer</strong>.</p>
-      </div>
+      <div className="eval-content">
+        <div className="quick-guide">
+          <h3>Evaluation Guide</h3>
+          <p>Select a <strong>trained checkpoint</strong> or enter a custom path. Match the <strong>Dataset Repo ID</strong> to the dataset used during training. Switch <strong>Compute Device</strong> to CPU/MPS if CUDA is unavailable. Start with <strong>3–5 episodes</strong> for a quick sanity check. Logs and detailed metrics appear in the <strong>global console drawer</strong>.</p>
+        </div>
 
-      <div>
-        <div className="card">
+        <div className="eval-main-grid">
+          <div className="card">
           <h3>Configuration</h3>
           <label>Policy Source</label>
           <div className="mode-toggle" style={{ marginLeft: 0, marginBottom: 8 }}>
@@ -643,8 +644,10 @@ export function EvalTab({ active }: EvalTabProps) {
             placeholder="Optional env task override"
             onChange={(e) => buildConfig({ eval_task: e.target.value })}
           />
+          </div>
 
-          <div style={{ marginTop: 10, padding: 10, border: '1px solid var(--border)', borderRadius: 8, background: 'rgba(255,255,255,0.02)' }}>
+          <div className="eval-side-stack">
+            <div className="card">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
               <span style={{ fontSize: 12, color: 'var(--text2)' }}>Evaluation Progress</span>
               <span
@@ -683,10 +686,10 @@ export function EvalTab({ active }: EvalTabProps) {
             ) : (
               <div className="field-help" style={{ marginTop: 8 }}>Start evaluation to populate episode/reward/success metrics.</div>
             )}
-          </div>
+            </div>
 
-          {progressStatus !== 'idle' && (
-            <div style={{ marginTop: 10, padding: 10, border: '1px solid var(--border)', borderRadius: 8, background: 'rgba(255,255,255,0.02)' }}>
+            {progressStatus !== 'idle' && (
+              <div className="card">
               <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 8 }}>Evaluation Summary</div>
               <div style={{ marginBottom: 8, fontSize: 11, color: 'var(--text2)' }}>
                 <span id="eval-summary-confidence" className="dbadge" style={{ display: 'none' }} />
@@ -720,13 +723,26 @@ export function EvalTab({ active }: EvalTabProps) {
                   </button>
                 )}
               </div>
-            </div>
-          )}
-
+              </div>
+            )}
+          </div>
         </div>
       </div>
-
-      <ProcessButtons running={running} onStart={() => void start()} onStop={stop} startLabel="▶ Start Eval" disabled={!evalReady} conflictReason={conflictReason} />
+      <div className="eval-sticky-controls">
+        <div className="eval-run-summary">
+          <span className={`dbadge ${running ? 'badge-run' : evalReady ? 'badge-ok' : 'badge-err'}`}>
+            {running ? 'RUNNING' : evalReady ? 'READY' : 'BLOCKED'}
+          </span>
+          <span className="eval-run-text">
+            {running
+              ? `${doneEpisodes}/${progressTotal ?? totalEpisodes} episodes`
+              : evalReady
+                ? 'Ready to start evaluation'
+                : evalBlockers[0] ?? 'Resolve blockers before starting'}
+          </span>
+        </div>
+        <ProcessButtons running={running} onStart={() => void start()} onStop={stop} startLabel="▶ Start Eval" disabled={!evalReady} conflictReason={conflictReason} />
+      </div>
     </section>
   )
 }

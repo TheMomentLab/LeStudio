@@ -83,7 +83,23 @@ interface PushStatusResponse {
   error?: string
 }
 
+interface HFTokenStatusResponse {
+  ok: boolean
+  has_token: boolean
+  source: string
+  masked_token?: string
+  error?: string
+}
+
+interface HFTokenMutationResponse {
+  ok: boolean
+  has_token?: boolean
+  source?: string
+  error?: string
+}
+
 const clampPercent = (value: number) => Math.max(0, Math.min(100, Number.isFinite(value) ? value : 0))
+const DATASET_AUTO_NEXT_STORAGE_KEY = 'lestudio-dataset-auto-next-on-tag'
 
 const parseDatasetId = (id: string): { user: string; repo: string } | null => {
   const [user, repo] = id.split('/')
@@ -93,6 +109,7 @@ const parseDatasetId = (id: string): { user: string; repo: string } | null => {
 
 export function DatasetTab({ active }: DatasetTabProps) {
   const addToast = useLeStudioStore((s) => s.addToast)
+  const setHfUsername = useLeStudioStore((s) => s.setHfUsername)
   const setActiveTab = useLeStudioStore((s) => s.setActiveTab)
   const datasets = useLeStudioStore((s) => s.datasets)
   const loadingDatasets = useLeStudioStore((s) => s.loadingDatasets)
@@ -102,6 +119,10 @@ export function DatasetTab({ active }: DatasetTabProps) {
   const [selectedEpisode, setSelectedEpisode] = useState<number>(0)
   const [tags, setTags] = useState<Record<string, 'good' | 'bad' | 'review'>>({})
   const [filter, setFilter] = useState<TagFilter>('all')
+  const [autoNextOnTag, setAutoNextOnTag] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false
+    return window.localStorage.getItem(DATASET_AUTO_NEXT_STORAGE_KEY) === '1'
+  })
   const [pushStatus, setPushStatus] = useState<PushStatus>({
     visible: false,
     status: 'idle',
@@ -122,6 +143,12 @@ export function DatasetTab({ active }: DatasetTabProps) {
   const [hubDownloadNote, setHubDownloadNote] = useState('')
   const [hubDownloadJobId, setHubDownloadJobId] = useState('')
   const [lastHubDownloadRepoId, setLastHubDownloadRepoId] = useState('')
+  const [hfTokenInput, setHfTokenInput] = useState('')
+  const [hfTokenVisible, setHfTokenVisible] = useState(false)
+  const [hfTokenSaving, setHfTokenSaving] = useState(false)
+  const [hfTokenHasSaved, setHfTokenHasSaved] = useState(false)
+  const [hfTokenSource, setHfTokenSource] = useState('none')
+  const [hfTokenMasked, setHfTokenMasked] = useState('')
   const [isPlaying, setIsPlaying] = useState(false)
   const [playbackSpeed, setPlaybackSpeed] = useState(1)
   const [currentTime, setCurrentTime] = useState(0)
@@ -140,10 +167,78 @@ export function DatasetTab({ active }: DatasetTabProps) {
     }
   }, [addToast, setDatasets, setLoadingDatasets])
 
+  const refreshHfTokenStatus = useCallback(async () => {
+    try {
+      const res = await apiGet<HFTokenStatusResponse>('/api/hf/token/status')
+      if (!res.ok) {
+        setHfTokenHasSaved(false)
+        setHfTokenSource('none')
+        setHfTokenMasked('')
+        return
+      }
+      setHfTokenHasSaved(Boolean(res.has_token))
+      setHfTokenSource(String(res.source ?? 'none'))
+      setHfTokenMasked(String(res.masked_token ?? ''))
+    } catch {
+      setHfTokenHasSaved(false)
+      setHfTokenSource('none')
+      setHfTokenMasked('')
+    }
+  }, [])
+
   useEffect(() => {
     if (!active) return
     refreshList()
-  }, [active, refreshList])
+    void refreshHfTokenStatus()
+  }, [active, refreshHfTokenStatus, refreshList])
+
+  const saveHfToken = async () => {
+    const token = hfTokenInput.trim()
+    if (!token) {
+      addToast('Enter your Hugging Face token first.', 'error')
+      return
+    }
+    setHfTokenSaving(true)
+    try {
+      const res = await apiPost<HFTokenMutationResponse>('/api/hf/token', { token })
+      if (!res.ok) {
+        addToast(`Failed to save token: ${res.error ?? 'unknown error'}`, 'error')
+        return
+      }
+      setHfTokenInput('')
+      await refreshHfTokenStatus()
+      addToast('Hugging Face token saved.', 'success')
+      try {
+        const whoami = await apiGet<{ ok: boolean; username: string | null }>('/api/hf/whoami')
+        setHfUsername(whoami.ok ? whoami.username : null)
+      } catch {
+        setHfUsername(null)
+      }
+    } catch (error) {
+      addToast(`Failed to save token: ${String(error)}`, 'error')
+    } finally {
+      setHfTokenSaving(false)
+    }
+  }
+
+  const clearHfToken = async () => {
+    setHfTokenSaving(true)
+    try {
+      const res = await apiDelete<HFTokenMutationResponse>('/api/hf/token')
+      if (!res.ok) {
+        addToast(`Failed to clear token: ${res.error ?? 'unknown error'}`, 'error')
+        return
+      }
+      setHfTokenInput('')
+      await refreshHfTokenStatus()
+      setHfUsername(null)
+      addToast('Hugging Face token cleared.', 'info')
+    } catch (error) {
+      addToast(`Failed to clear token: ${String(error)}`, 'error')
+    } finally {
+      setHfTokenSaving(false)
+    }
+  }
 
   useEffect(() => {
     if (!pushJobId) return
@@ -277,10 +372,18 @@ export function DatasetTab({ active }: DatasetTabProps) {
     }
   }, [filteredEpisodes, selectedEpisode])
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    window.localStorage.setItem(DATASET_AUTO_NEXT_STORAGE_KEY, autoNextOnTag ? '1' : '0')
+  }, [autoNextOnTag])
+
   const tagEpisode = async (tag: 'good' | 'bad' | 'review' | 'untagged') => {
     if (!selected) return
     const parsed = parseDatasetId(selected.dataset_id)
     if (!parsed) return
+    const episodesSnapshot = filteredEpisodes.map((ep) => ep.episode_index)
+    const currentEpisode = selectedEpisode
+    const currentIndex = episodesSnapshot.findIndex((episodeIndex) => episodeIndex === currentEpisode)
     try {
       const res = await apiPost<{ ok: boolean; error?: string }>(`/api/datasets/${encodeURIComponent(parsed.user)}/${encodeURIComponent(parsed.repo)}/tags`, {
         episode_index: selectedEpisode,
@@ -300,6 +403,13 @@ export function DatasetTab({ active }: DatasetTabProps) {
         setTags((prev) => ({ ...prev, [String(selectedEpisode)]: tag }))
       }
       addToast(`Episode ${selectedEpisode} tagged: ${tag}`, 'info')
+      if (autoNextOnTag && currentIndex >= 0) {
+        if (currentIndex < episodesSnapshot.length - 1) {
+          setSelectedEpisode(episodesSnapshot[currentIndex + 1])
+        } else {
+          addToast('Reached last episode in current filter.', 'info')
+        }
+      }
     } catch (error) {
       addToast(`Tag failed: ${String(error)}`, 'error')
     }
@@ -344,8 +454,12 @@ export function DatasetTab({ active }: DatasetTabProps) {
     try {
       const res = await apiPost<PushStartResponse>(`/api/datasets/${encodeURIComponent(parsed.user)}/${encodeURIComponent(parsed.repo)}/push`, { target_repo_id: target })
       if (!res.ok || !res.job_id) {
+        const errText = String(res.error ?? 'Failed to create upload job')
         setPushStatus({ visible: true, status: 'error', phase: 'error', progress: 0, note: res.error ?? 'Failed to create upload job' })
         addToast(`Hub push failed: ${res.error ?? 'Unknown error'}`, 'error')
+        if (errText.includes('HF_TOKEN') || errText.includes('HUGGINGFACE_HUB_TOKEN')) {
+          addToast('Set your HF token in the Hub panel, then retry push.', 'info')
+        }
         return
       }
       setPushStatus({ visible: true, status: 'queued', phase: 'queued', progress: 5, note: 'Upload job queued...' })
@@ -578,6 +692,41 @@ export function DatasetTab({ active }: DatasetTabProps) {
               Retry Search
             </button>
           ) : null}
+        </div>
+      </div>
+      <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 10, background: 'var(--bg3)', marginBottom: 10 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+          <strong style={{ fontSize: 13 }}>Hub Auth Token</strong>
+          <span className={`dbadge ${hfTokenHasSaved ? 'badge-ok' : 'badge-warn'}`}>
+            {hfTokenHasSaved ? `Configured (${hfTokenSource})` : 'Missing'}
+          </span>
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <input
+            id="hub-token-input"
+            type={hfTokenVisible ? 'text' : 'password'}
+            value={hfTokenInput}
+            placeholder={hfTokenHasSaved ? 'Enter new token to replace current one' : 'Paste HF token (hf_...)'}
+            style={{ flex: 1, minWidth: 220 }}
+            onChange={(e) => setHfTokenInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                void saveHfToken()
+              }
+            }}
+          />
+          <button className="btn-xs" onClick={() => setHfTokenVisible((prev) => !prev)}>
+            {hfTokenVisible ? 'Hide' : 'Show'}
+          </button>
+          <button className="btn-xs" disabled={hfTokenSaving} onClick={() => void saveHfToken()}>
+            Save Token
+          </button>
+          <button className="btn-xs" disabled={hfTokenSaving || !hfTokenHasSaved} onClick={() => void clearHfToken()}>
+            Clear Token
+          </button>
+        </div>
+        <div className="muted" style={{ marginTop: 6, fontSize: 11 }}>
+          {hfTokenHasSaved ? `Current token: ${hfTokenMasked}` : 'Token is required for Hub push/download in this GUI session.'}
         </div>
       </div>
       <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
@@ -995,6 +1144,16 @@ export function DatasetTab({ active }: DatasetTabProps) {
                 <button id="ds-tag-clear" className="btn-xs" onClick={() => tagEpisode('untagged')}>
                   ✕ Clear
                 </button>
+                <label htmlFor="ds-auto-next" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginLeft: 4, fontSize: 11, color: 'var(--text2)' }}>
+                  <input
+                    id="ds-auto-next"
+                    type="checkbox"
+                    checked={autoNextOnTag}
+                    onChange={(e) => setAutoNextOnTag(e.target.checked)}
+                    style={{ width: 'auto' }}
+                  />
+                  Auto-next after tag
+                </label>
               </div>
             </div>
           )}

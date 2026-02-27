@@ -31,6 +31,48 @@ interface CheckpointItem {
   size_mb?: number | null
 }
 
+interface ColabConfigResponse {
+  ok: boolean
+  error?: string
+  repo_id?: string
+  config_path?: string
+  colab_link?: string
+  manual_run_required?: boolean
+  session_limit_note?: string
+}
+
+interface ColabLinkResponse {
+  ok: boolean
+  error?: string
+  url?: string
+  session_limit_note?: string
+}
+
+const DEFAULT_COLAB_NOTEBOOK_URL = 'https://colab.research.google.com/github/TheMomentLab/lerobot-studio/blob/main/notebooks/lerobot_train.ipynb'
+
+function buildColabSnippet(repoId: string, configPath: string): string {
+  return [
+    `repo_id = "${repoId}"  #@param {type:"string"}`,
+    `config_path = "${configPath}"  #@param {type:"string"}`,
+    '',
+    '# If your shared notebook defines `lestudio_load_config`, this uses it first.',
+    'if "lestudio_load_config" in globals():',
+    '    cfg = lestudio_load_config(repo_id=repo_id, config_path=config_path)',
+    'else:',
+    '    import json, os',
+    '    from huggingface_hub import hf_hub_download',
+    '    cfg_file = hf_hub_download(',
+    '        repo_id=repo_id,',
+    '        filename=config_path,',
+    '        repo_type="dataset",',
+    '        token=os.getenv("HF_TOKEN") or os.getenv("HUGGINGFACE_HUB_TOKEN"),',
+    '    )',
+    '    with open(cfg_file, "r", encoding="utf-8") as f:',
+    '        cfg = json.load(f)',
+    'print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg.get("steps"))',
+  ].join('\n')
+}
+
 const TRAIN_STEP_RE = /\bstep\s*[:=]\s*([0-9]+(?:\.[0-9]+)?[KMBTQ]?)/i
 const TRAIN_LOSS_RE = /\bloss\s*[:=]\s*([+-]?[0-9]*\.?[0-9]+(?:e[+-]?[0-9]+)?)/i
 const TRAIN_TOTAL_RE = /cfg\.steps=([0-9_,]+)/i
@@ -91,9 +133,13 @@ export function TrainTab({ active }: TrainTabProps) {
   const [oomDetected, setOomDetected] = useState(false)
   const retryPendingRef = useRef(false)
   const [starting, setStarting] = useState(false)
+  const [colabStarting, setColabStarting] = useState(false)
+
+  const [copyingColab, setCopyingColab] = useState(false)
   const lossCanvasRef = useRef<HTMLCanvasElement | null>(null)
 
   const trainSteps = Number(config.train_steps ?? 100000)
+  const colabOpenUrl = DEFAULT_COLAB_NOTEBOOK_URL
   const trainBatchSize = useMemo(() => {
     const parsed = Number(config.train_batch_size)
     if (Number.isFinite(parsed) && parsed > 0) return Math.floor(parsed)
@@ -454,6 +500,123 @@ export function TrainTab({ active }: TrainTabProps) {
     addToast('Training stop requested', 'info')
   }
 
+  const copyColabSnippet = useCallback(async (targetRepoId: string, targetConfigPath: string): Promise<boolean> => {
+    const snippet = buildColabSnippet(targetRepoId, targetConfigPath)
+    if (!navigator.clipboard || typeof navigator.clipboard.writeText !== 'function') {
+      appendLog('train', '[WARN] Clipboard API is unavailable. Copy repo_id/config_path manually.', 'info')
+      return false
+    }
+    try {
+      await navigator.clipboard.writeText(snippet)
+      appendLog('train', '[INFO] Colab snippet copied. Paste it into the first Colab cell.', 'info')
+      addToast('Colab snippet copied', 'success')
+      return true
+    } catch (e) {
+      appendLog('train', `[WARN] Failed to copy Colab snippet: ${e instanceof Error ? e.message : 'clipboard denied'}`, 'info')
+      return false
+    }
+  }, [addToast, appendLog])
+
+  const copyColabSnippetFromForm = async () => {
+    if (!repoId || repoId === '__none__' || !repoId.includes('/')) {
+      addToast('Select a valid dataset repo first', 'info')
+      return
+    }
+    setCopyingColab(true)
+    try {
+      await copyColabSnippet(repoId, 'lestudio_train_config.json')
+    } finally {
+      setCopyingColab(false)
+    }
+  }
+
+  const startOnColab = async () => {
+    if (source === 'local' && repoId === '__none__') {
+      appendLog('train', '[ERROR] No local dataset found. Switch to Hugging Face or create a local dataset first.', 'error')
+      return
+    }
+
+    const popup = window.open(colabOpenUrl, '_blank')
+    setColabStarting(true)
+    try {
+      const selectedDevice = ((config.train_device as string | undefined) ?? 'cuda').toLowerCase()
+      const colabDevice = selectedDevice === 'cpu' ? 'cpu' : 'cuda'
+      if (selectedDevice === 'mps') {
+        appendLog('train', '[WARN] Colab does not support MPS. Using CUDA for Colab config.', 'info')
+      }
+
+      const cfg = {
+        train_policy: (config.train_policy as string) ?? 'act',
+        train_repo_id: repoId,
+        train_steps: Number(config.train_steps ?? 100000),
+        train_device: colabDevice,
+        train_batch_size: trainBatchSize,
+        train_lr: (config.train_lr as string | undefined) || undefined,
+        train_output_repo: ((config.train_output_repo as string | undefined) ?? '').trim() || undefined,
+      }
+      await buildConfig({ ...cfg, train_dataset_source: source })
+
+      const upload = await apiPost<ColabConfigResponse>('/api/train/colab/config', {
+        ...cfg,
+        train_dataset_source: source,
+        colab_notebook_url: colabOpenUrl,
+      })
+      if (!upload.ok) {
+        if (popup && !popup.closed) popup.close()
+        appendLog('train', `[ERROR] ${upload.error ?? 'Failed to upload Colab config.'}`, 'error')
+        return
+      }
+
+      const uploadedRepoId = (upload.repo_id ?? repoId).trim()
+      const uploadedConfigPath = (upload.config_path ?? 'lestudio_train_config.json').trim() || 'lestudio_train_config.json'
+      await copyColabSnippet(uploadedRepoId, uploadedConfigPath)
+
+      let link = (upload.colab_link ?? '').trim()
+      if (!link && upload.repo_id) {
+        const query = new URLSearchParams({
+          repo_id: upload.repo_id,
+          config_path: upload.config_path ?? 'lestudio_train_config.json',
+        })
+        query.set('notebook_url', colabOpenUrl)
+        const fetched = await apiGet<ColabLinkResponse>(`/api/train/colab/link?${query.toString()}`)
+        if (!fetched.ok) {
+          appendLog('train', `[WARN] ${fetched.error ?? 'Colab link is not configured.'}`, 'info')
+        } else {
+          link = (fetched.url ?? '').trim()
+          if (fetched.session_limit_note) {
+            appendLog('train', `[WARN] ${fetched.session_limit_note}`, 'info')
+          }
+        }
+      }
+
+      if (!link) {
+        appendLog('train', '[WARN] Config uploaded to Hub, but deep link was not generated.', 'info')
+        appendLog('train', '[INFO] Opened starter Colab notebook. Paste the copied snippet into the first cell.', 'info')
+        addToast('Config uploaded. Opened starter Colab notebook.', 'info')
+        return
+      }
+
+      try {
+        if (popup && !popup.closed) popup.location.href = link
+        else window.open(link, '_blank')
+      } catch {
+        window.open(link, '_blank')
+      }
+      appendLog('train', '[INFO] Colab notebook opened. Complete HF login there and run all cells.', 'info')
+      if (upload.session_limit_note) {
+        appendLog('train', `[WARN] ${upload.session_limit_note}`, 'info')
+      }
+      addToast('Colab flow started (manual Run all required)', 'success')
+    } catch (e) {
+      if (popup && !popup.closed) popup.close()
+      appendLog('train', `[ERROR] ${e instanceof Error ? e.message : 'Colab request failed.'}`, 'error')
+    } finally {
+      setColabStarting(false)
+    }
+  }
+
+
+
   // OOM reduce & retry: config 반영 후 자동 재시작
   useEffect(() => {
     if (retryPendingRef.current && !running) {
@@ -499,12 +662,14 @@ export function TrainTab({ active }: TrainTabProps) {
       ) : null}
 
 
-      <div className="quick-guide">
-        <h3>Training Guide</h3>
-        <p>Training can take <strong>hours to days</strong> depending on hardware and dataset size. Closing the GUI or restarting the server will <strong>terminate the process</strong>. Monitor real-time progress and loss values in the <strong>global console drawer</strong>.</p>
-      </div>
+      <div className="train-content">
+        <div className="quick-guide">
+          <h3>Training Guide</h3>
+          <p>Training can take <strong>hours to days</strong> depending on hardware and dataset size. Closing the GUI or restarting the server will <strong>terminate the process</strong>. Monitor real-time progress and loss values in the <strong>global console drawer</strong>.</p>
+          <p className="field-help" style={{ marginTop: 8 }}>Colab runs are also not permanent: idle sessions can disconnect, and free-tier runtime length is limited. Push checkpoints frequently to avoid losing progress.</p>
+        </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div className="train-main-grid">
         <div className="card">
           <h3>Configuration</h3>
           <label>Policy Type</label>
@@ -585,7 +750,7 @@ export function TrainTab({ active }: TrainTabProps) {
             />
           </div>
           <div className="field-help" style={{ marginTop: 4 }}>Set any positive integer. If OOM occurs, lower this value and retry. This value is applied immediately when training starts.</div>
-          <details className="advanced-panel" style={{ marginTop: 8 }}>
+          <details className="advanced-panel advanced-panel-clickable" style={{ marginTop: 8 }}>
             <summary>Advanced Params</summary>
             <div style={{ marginTop: 8, padding: 10, border: '1px solid var(--border)', borderRadius: 6, background: 'color-mix(in srgb, var(--bg3) 60%, transparent)' }}>
               <div className="train-advanced-grid">
@@ -599,15 +764,43 @@ export function TrainTab({ active }: TrainTabProps) {
                   />
                   <div className="field-help">e.g. 1e-4, 0.0001</div>
                 </div>
+                <div>
+                  <label style={{ marginBottom: 3 }}>Model Output Repo (Optional)</label>
+                  <input
+                    type="text"
+                    placeholder="user/my-policy"
+                    value={(config.train_output_repo as string | undefined) ?? ''}
+                    onChange={(e) => buildConfig({ train_output_repo: e.target.value })}
+                  />
+                  <div className="field-help">Used by Colab flow to choose where trained checkpoints are uploaded.</div>
+                </div>
               </div>
             </div>
           </details>
+          <div style={{ marginTop: 6, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+
+            <button
+              type="button"
+              className="btn-xs"
+              onClick={() => { void copyColabSnippetFromForm() }}
+              disabled={copyingColab || !repoId.includes('/')}
+              title={repoId.includes('/') ? 'Copy Colab snippet with repo_id/config_path' : 'Select a valid dataset repo first'}
+            >
+              {copyingColab ? 'Copying snippet...' : 'Copy Colab Snippet'}
+            </button>
+          </div>
+          <div className="field-help" style={{ marginTop: 4 }}>
+            Use <strong>Train on Colab</strong> to upload your config and open the notebook in one step. Use <strong>Copy Colab Snippet</strong> to re-copy the load command and paste it into the first cell.
+          </div>
           <label>Compute Device</label>
           <select value={(config.train_device as string) ?? 'cuda'} onChange={(e) => buildConfig({ train_device: e.target.value })}>
             <option value="cuda">CUDA (GPU)</option>
             <option value="cpu">CPU</option>
             <option value="mps">MPS (Apple Silicon)</option>
           </select>
+          <div className="field-help" style={{ marginTop: 4 }}>
+            For Colab, device is limited to CUDA/CPU. If MPS is selected, Colab flow automatically uses CUDA.
+          </div>
           {!preflightOk ? (
             <div id="train-device-warning" className="train-device-warning">
               {preflightReason || 'Device preflight failed. Training is blocked.'}
@@ -687,7 +880,7 @@ export function TrainTab({ active }: TrainTabProps) {
             )}
           </div>
         </div>
-        <div className="train-info-grid">
+          <div className="train-info-stack">
           <div className="card">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
               <h3 style={{ margin: 0 }}>Checkpoints</h3>
@@ -765,22 +958,51 @@ export function TrainTab({ active }: TrainTabProps) {
               ) : null}
             </div>
           </div>
+          </div>
+        </div>
+        {oomDetected && !running ? (
+          <div className="train-device-warning" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, width: '100%', maxWidth: 600 }}>
+            <span>GPU out of memory. Current batch size: {trainBatchSize}. Reduce to {Math.max(1, Math.floor(trainBatchSize / 2))} and retry?</span>
+            <button className="btn-sm" style={{ flexShrink: 0 }} onClick={reduceAndRetry}>
+              Reduce &amp; Retry
+            </button>
+          </div>
+        ) : null}
+        {!running && checkpoints.length > 0 && (
+          <div className="workflow-cta" style={{ marginTop: 12 }}>
+            <button className="btn-sm" onClick={() => setActiveTab('eval')}>→ Proceed to Eval</button>
+          </div>
+        )}
+      </div>
+      <div className="train-sticky-controls">
+        <div className="train-run-summary">
+          <span className={`dbadge ${running || starting ? 'badge-run' : trainReady ? 'badge-ok' : 'badge-err'}`}>
+            {starting ? 'STARTING' : running ? 'RUNNING' : trainReady ? 'READY' : 'BLOCKED'}
+          </span>
+          <span className="train-run-text">
+            {running || starting
+              ? `Step ${progress.currentStep !== null ? progress.currentStep.toLocaleString() : '--'} / ${progress.currentStep !== null && progress.totalSteps !== null ? (progress.totalSteps ?? trainSteps).toLocaleString() : '--'}`
+              : trainReady
+                ? 'Ready to start training'
+                : trainBlockers[0] ?? 'Resolve blockers before starting'}
+          </span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button
+            type="button"
+            className="btn-sm"
+            onClick={() => { void startOnColab() }}
+            disabled={colabStarting || running || starting || noLocalDataset}
+            title={noLocalDataset ? 'Record/download a dataset first' : 'Upload config and open Colab notebook'}
+          >
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <img src="/colab-logo.png" alt="" aria-hidden="true" style={{ width: 14, height: 14, objectFit: 'contain' }} />
+              {colabStarting ? 'Preparing Colab...' : 'Train on Colab'}
+            </span>
+          </button>
+          <ProcessButtons running={running || starting} onStart={start} onStop={stop} startLabel={starting ? '⏳ Starting...' : '▶ Start Training'} disabled={startDisabled} conflictReason={conflictReason} />
         </div>
       </div>
-      {oomDetected && !running ? (
-        <div className="train-device-warning" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, width: '100%', maxWidth: 600 }}>
-          <span>GPU out of memory. Current batch size: {trainBatchSize}. Reduce to {Math.max(1, Math.floor(trainBatchSize / 2))} and retry?</span>
-          <button className="btn-sm" style={{ flexShrink: 0 }} onClick={reduceAndRetry}>
-            Reduce &amp; Retry
-          </button>
-        </div>
-      ) : null}
-      <ProcessButtons running={running || starting} onStart={start} onStop={stop} startLabel={starting ? '⏳ Starting...' : '▶ Start Training'} disabled={startDisabled} conflictReason={conflictReason} />
-      {!running && checkpoints.length > 0 && (
-        <div className="workflow-cta" style={{ marginTop: 12 }}>
-          <button className="btn-sm" onClick={() => setActiveTab('eval')}>→ Proceed to Eval</button>
-        </div>
-      )}
     </section>
   )
 }

@@ -640,7 +640,7 @@ export function RecordTab({ active }: RecordTabProps) {
           {mappedCameraCount === 0 ? <button type="button" className="link-btn" onClick={() => setActiveTab('device-setup')}>→ Open Mapping</button> : null}
         </div>
           <MappedCameraRows mappedCameras={mappedCameras} />
-          <details className="advanced-panel" style={{ marginTop: 12 }}>
+          <details className="advanced-panel advanced-panel-clickable" style={{ marginTop: 12 }}>
             <summary>Advanced Stream Settings</summary>
             <div className="settings-grid" style={{ marginTop: 10 }}>
               <div className="setting-item">

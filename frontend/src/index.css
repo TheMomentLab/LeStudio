@@ -117,6 +117,18 @@ header {
   flex-shrink: 0;
 }
 .header-left { display: flex; align-items: center; gap: 10px; }
+.brand-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  border: none;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  color: var(--text);
+  cursor: pointer;
+}
+
 .header-left #sidebar-menu-btn {
   display: none;
   width: 30px;
@@ -146,6 +158,102 @@ h1 { font-size: 16px; font-weight: 600; letter-spacing: .3px; }
   background: color-mix(in srgb, var(--yellow) 10%, transparent);
 }
 .header-right { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text2); }
+.hf-auth-link {
+  position: relative;
+  color: var(--text2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+  cursor: pointer;
+  transition: color 0.2s ease, border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.hf-auth-link-icon {
+  font-size: 15px;
+  line-height: 1;
+}
+
+.hf-auth-link-dot {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1px solid var(--bg2);
+}
+
+.hf-auth-link.ready {
+  border-color: color-mix(in srgb, var(--green) 45%, var(--border));
+  background: color-mix(in srgb, var(--green) 10%, transparent);
+}
+
+.hf-auth-link.warn {
+  border-color: color-mix(in srgb, var(--yellow) 45%, var(--border));
+  background: color-mix(in srgb, var(--yellow) 10%, transparent);
+}
+
+.hf-auth-link-dot.ready {
+  background: var(--green);
+  box-shadow: 0 0 5px var(--green);
+}
+
+.hf-auth-link-dot.warn {
+  background: var(--yellow);
+  box-shadow: 0 0 5px var(--yellow);
+}
+
+.hf-auth-link:hover {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+}
+
+.colab-quick-link {
+  color: var(--text2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+  cursor: pointer;
+  transition: color 0.2s ease, border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.colab-quick-link-img {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+  display: block;
+}
+
+.colab-quick-link.ready {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.colab-quick-link.warn {
+  border-color: color-mix(in srgb, var(--yellow) 45%, var(--border));
+  background: color-mix(in srgb, var(--yellow) 10%, transparent);
+}
+
+.colab-quick-link:hover {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+}
+
+.colab-quick-link:disabled {
+  cursor: not-allowed;
+  opacity: 0.75;
+}
+
 .header-profile-controls {
   display: flex;
   align-items: center;
@@ -492,26 +600,27 @@ main {
 .tab         { display: none; }
 .tab.active  { display: block; }
 
-/* Record tab needs flex layout to push sticky bar to viewport bottom */
-#tab-record.active {
+#tab-record.active,
+#tab-train.active,
+#tab-eval.active,
+#tab-teleop.active {
   display: flex;
   flex-direction: column;
   min-height: 100%;
 }
 
-#tab-record > .two-col {
+#tab-record > .two-col,
+#tab-train > .train-content,
+#tab-eval > .eval-content,
+#tab-teleop > .teleop-content {
   flex: 1;
   padding-bottom: 40px;
 }
 
-/* Teleop / Train / Eval — no sticky footer, but still need bottom padding for console drawer clearance */
-#tab-teleop > div:last-child,
-#tab-train > div:last-child,
-#tab-eval > div:last-child {
-  padding-bottom: 40px;
-}
-
-main:has(#tab-record.active) {
+main:has(#tab-record.active),
+main:has(#tab-train.active),
+main:has(#tab-eval.active),
+main:has(#tab-teleop.active) {
   padding-bottom: 0;
 }
 
@@ -568,6 +677,10 @@ main:has(#tab-record.active) {
     min-width: 0;
   }
 
+  .brand-link {
+    min-width: 0;
+  }
+
   .header-left h1 {
     display: none;
   }
@@ -599,6 +712,7 @@ main:has(#tab-record.active) {
   }
 
   #theme-toggle-btn,
+  #colab-quick-link,
   .profile-more-btn,
   .header-profile-controls .btn-xs {
     min-height: 30px;
@@ -740,6 +854,7 @@ label {
 }
 input:not([type]),
 input[type="text"],
+input[type="password"],
 input[type="number"],
 select {
   width: 100%;
@@ -829,6 +944,40 @@ select option { background: var(--bg3); }
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+}
+
+.advanced-panel-clickable > summary {
+  padding: 7px 10px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--bg2) 65%, transparent);
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.advanced-panel-clickable > summary::after {
+  content: '▾';
+  margin-left: auto;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--text2);
+  transform: rotate(-90deg);
+  transition: transform 0.15s ease, color 0.15s ease;
+}
+
+.advanced-panel-clickable > summary:hover {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg3));
+}
+
+.advanced-panel-clickable[open] > summary {
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg3));
+}
+
+.advanced-panel-clickable[open] > summary::after {
+  color: var(--text);
+  transform: rotate(0deg);
 }
 
 .rules-summary-meta {
@@ -1082,17 +1231,36 @@ select option { background: var(--bg3); }
   gap: 8px;
 }
 
-.train-info-grid {
+.train-main-grid,
+.eval-main-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(340px, 1.3fr) minmax(280px, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+
+.train-info-stack,
+.eval-side-stack {
+  display: grid;
+  grid-template-columns: 1fr;
   gap: 10px;
 }
 
-@media (max-width: 640px) {
-  .train-info-grid {
+.train-main-grid > .card,
+.eval-main-grid > .card,
+.train-info-stack > .card,
+.eval-side-stack > .card {
+  margin-bottom: 0;
+}
+
+@media (max-width: 1100px) {
+  .train-main-grid,
+  .eval-main-grid {
     grid-template-columns: 1fr;
   }
+}
 
+@media (max-width: 640px) {
   .train-advanced-grid {
     grid-template-columns: 1fr;
   }
@@ -2254,6 +2422,10 @@ kbd {
   align-self: start;
 }
 
+#tab-teleop .two-col {
+  align-items: start;
+}
+
 #tab-record .episode-progress-card {
   position: static;
   bottom: auto;
@@ -2280,8 +2452,10 @@ kbd {
   margin-top: auto;
 }
 
-/* P0-3: Record tab controls — sticky bottom bar */
-#tab-record > .record-sticky-controls {
+#tab-record > .record-sticky-controls,
+#tab-train > .train-sticky-controls,
+#tab-eval > .eval-sticky-controls,
+#tab-teleop > .teleop-sticky-controls {
   position: sticky;
   bottom: 0;
   z-index: 5;
@@ -2297,7 +2471,10 @@ kbd {
   backdrop-filter: blur(4px);
 }
 
-.record-run-summary {
+.record-run-summary,
+.train-run-summary,
+.eval-run-summary,
+.teleop-run-summary {
   margin-right: auto;
   display: flex;
   align-items: center;
@@ -2330,6 +2507,27 @@ kbd {
 .record-run-text {
   font-size: 12px;
   color: var(--text2);
+}
+
+.train-run-text,
+.eval-run-text,
+.teleop-run-text {
+  font-size: 12px;
+  color: var(--text2);
+}
+
+.teleop-footer-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.teleop-speed-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .record-run-last {
@@ -2429,11 +2627,24 @@ kbd {
   }
 }
 
-/* Sticky footer overrides — Record only (Teleop/Train/Eval use inline buttons) */
-.record-sticky-controls .btn-row { margin-top: 0; }
+.record-sticky-controls .btn-row,
+.train-sticky-controls .btn-row,
+.eval-sticky-controls .btn-row,
+.teleop-sticky-controls .btn-row { margin-top: 0; }
+
 .record-sticky-controls .btn-primary,
-.record-sticky-controls .btn-danger { padding: 4px 14px; font-size: 12px; }
-.record-sticky-controls .btn-sm { padding: 4px 10px; font-size: 12px; }
+.record-sticky-controls .btn-danger,
+.train-sticky-controls .btn-primary,
+.train-sticky-controls .btn-danger,
+.eval-sticky-controls .btn-primary,
+.eval-sticky-controls .btn-danger,
+.teleop-sticky-controls .btn-primary,
+.teleop-sticky-controls .btn-danger { padding: 4px 14px; font-size: 12px; }
+
+.record-sticky-controls .btn-sm,
+.train-sticky-controls .btn-sm,
+.eval-sticky-controls .btn-sm,
+.teleop-sticky-controls .btn-sm { padding: 4px 10px; font-size: 12px; }
 
 .calibrate-mobile-controls {
   display: none;
