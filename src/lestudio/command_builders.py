@@ -1,6 +1,7 @@
+import json
+from json import JSONDecodeError
 from pathlib import Path
 import shutil
-import json
 
 def dataset_cache_path(repo_id: str) -> Path:
     return Path.home() / ".cache" / "huggingface" / "lerobot" / repo_id
@@ -227,29 +228,134 @@ def build_train_args(python_exe: str, cfg: dict) -> list[str]:
     return args
 
 
+def _normalize_env_type(raw: str) -> str:
+    return (raw or "").strip()
+
+
+def _sanitize_env_value(raw: object) -> str:
+    value = str(raw or "").strip()
+    if value.lower() in {"", "none", "null"}:
+        return ""
+    return value
+
+
 def build_eval_args(python_exe: str, cfg: dict) -> list[str]:
     policy_path = str(cfg.get("eval_policy_path", "")).strip()
     if not policy_path:
         policy_path = "outputs/train/checkpoints/last/pretrained_model"
 
-    repo_id = str(cfg.get("eval_repo_id", cfg.get("train_repo_id", "user/dataset"))).strip() or "user/dataset"
+    repo_id = str(cfg.get("eval_repo_id", "")).strip()
     episodes = int(cfg.get("eval_episodes", 10) or 10)
     device = str(cfg.get("eval_device", cfg.get("train_device", "cuda"))).strip() or "cuda"
+    env_type = _normalize_env_type(str(cfg.get("eval_env_type", "")))
+    env_task = _sanitize_env_value(cfg.get("eval_task", ""))
+
+    if policy_path:
+        train_cfg_path = Path(policy_path) / "train_config.json"
+        if train_cfg_path.is_file():
+            try:
+                train_cfg = json.loads(train_cfg_path.read_text())
+                env_cfg = train_cfg.get("env") if isinstance(train_cfg, dict) else None
+                if isinstance(env_cfg, dict):
+                    if not env_type:
+                        inferred_type = _normalize_env_type(str(env_cfg.get("type", "")))
+                        if inferred_type:
+                            env_type = inferred_type
+                    if not env_task:
+                        inferred_task = _sanitize_env_value(env_cfg.get("task", ""))
+                        if inferred_task:
+                            env_task = inferred_task
+                    if not env_task:
+                        inferred_name = _sanitize_env_value(env_cfg.get("name", ""))
+                        if inferred_name:
+                            env_task = inferred_name
+            except (OSError, JSONDecodeError, TypeError, ValueError):
+                pass
+
+    if not env_type:
+        raise ValueError(
+            "Eval requires env.type but the checkpoint has no env metadata (env: null in train_config.json). "
+            "This usually means the model was trained on real-robot data without a gym environment. "
+            "Set the Env Type override in Advanced Overrides (e.g. 'gym_manipulator' for SO-101 arms)."
+        )
+    if not env_task:
+        raise ValueError(
+            "Eval requires env.task but none was found in the checkpoint metadata. "
+            "Set a Task description in the Eval tab (e.g. 'Pick up the block')."
+        )
 
     args = [
         python_exe,
         "-m",
         "lerobot.scripts.lerobot_eval",
         f"--policy.path={policy_path}",
-        f"--dataset.repo_id={repo_id}",
+        f"--env.type={env_type}",
         f"--eval.n_episodes={episodes}",
-        f"--device={device}",
+        f"--eval.batch_size={episodes}",
+        f"--policy.device={device}",
+        f"--env.task={env_task}",
     ]
 
-    task = str(cfg.get("eval_task", "")).strip()
-    if task:
-        args.append(f"--env.task={task}")
+    if repo_id:
+        args.append(f"--dataset.repo_id={repo_id}")
 
+    # gym_manipulator (real robot) requires robot and teleop config
+    if env_type == "gym_manipulator":
+        is_bi = cfg.get("robot_mode") == "bi"
+        if is_bi:
+            robot_type = str(cfg.get("eval_robot_type", "bi_so_follower")).strip() or "bi_so_follower"
+            teleop_type = str(cfg.get("eval_teleop_type", "bi_so_leader")).strip() or "bi_so_leader"
+            args += [
+                f"--env.robot.type={robot_type}",
+                f'--env.robot.left_arm_config.port={cfg.get("left_follower_port", "/dev/follower_arm_1")}',
+                f'--env.robot.right_arm_config.port={cfg.get("right_follower_port", "/dev/follower_arm_2")}',
+                f"--env.teleop.type={teleop_type}",
+                f'--env.teleop.left_arm_config.port={cfg.get("left_leader_port", "/dev/leader_arm_1")}',
+                f'--env.teleop.right_arm_config.port={cfg.get("right_leader_port", "/dev/leader_arm_2")}',
+            ]
+        else:
+            robot_type = str(cfg.get("eval_robot_type", "so101_follower")).strip() or "so101_follower"
+            teleop_type = str(cfg.get("eval_teleop_type", "so101_leader")).strip() or "so101_leader"
+            follower_port = str(cfg.get("follower_port", "/dev/follower_arm_1")).strip()
+            leader_port = str(cfg.get("leader_port", "/dev/leader_arm_1")).strip()
+            robot_id = str(cfg.get("robot_id", "my_so101_follower_1")).strip()
+            teleop_id = str(cfg.get("teleop_id", "my_so101_leader_1")).strip()
+            args += [
+                f"--env.robot.type={robot_type}",
+                f"--env.robot.port={follower_port}",
+                f"--env.robot.id={robot_id}",
+                f"--env.teleop.type={teleop_type}",
+                f"--env.teleop.port={leader_port}",
+                f"--env.teleop.id={teleop_id}",
+            ]
+
+        # Pass camera configurations so the robot has images to observe.
+        # Camera names (e.g. 'follower_cam_1') must match the feature keys
+        # in the trained policy (observation.images.<name>).
+        cam_w = int(cfg.get("eval_cam_width", cfg.get("record_cam_width", 640)))
+        cam_h = int(cfg.get("eval_cam_height", cfg.get("record_cam_height", 480)))
+        cam_fps = int(cfg.get("eval_cam_fps", cfg.get("record_cam_fps", 30)))
+        cameras = cfg.get("cameras", {})
+        cam_dict = {}
+        for name, path in cameras.items():
+            if path:
+                if not path.startswith("/dev/"):
+                    path = f"/dev/{path}"
+                cam_dict[name] = {
+                    "type": "opencv",
+                    "index_or_path": path,
+                    "width": cam_w,
+                    "height": cam_h,
+                    "fps": cam_fps,
+                    "fourcc": "MJPG",
+                }
+        if cam_dict:
+            cam_str = json.dumps(cam_dict)
+            if is_bi:
+                args.append(f"--env.robot.cameras={{}}")
+                args.append(f"--env.robot.left_arm_config.cameras={cam_str}")
+            else:
+                args.append(f"--env.robot.cameras={cam_str}")
     return args
 
 

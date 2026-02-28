@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import datetime
+import importlib.util
 import json
 import os
 import shutil
@@ -434,6 +435,9 @@ def create_router(state: AppState) -> APIRouter:
                     "path": str(entry / "pretrained_model"),
                     "step": None,
                     "policy": None,
+                    "env_type": None,
+                    "env_task": None,
+                    "image_keys": [],
                     "size_mb": 0,
                     "has_config": (pretrained / "config.json").exists(),
                     "has_model": any(pretrained.glob("*.safetensors")) or any(pretrained.glob("*.bin")),
@@ -457,14 +461,27 @@ def create_router(state: AppState) -> APIRouter:
                     except Exception:
                         pass
 
-                # Read policy type from pretrained_model/train_config.json
+                # Read policy type and env metadata from pretrained_model/train_config.json
                 train_cfg = pretrained / "train_config.json"
                 if train_cfg.exists():
                     try:
                         tc = json.loads(train_cfg.read_text())
                         ckpt["policy"] = tc.get("policy", {}).get("type") or tc.get("policy_type")
+                        env_cfg = tc.get("env") if isinstance(tc, dict) else None
+                        if isinstance(env_cfg, dict):
+                            raw_type = (env_cfg.get("type") or "").strip()
+                            ckpt["env_type"] = raw_type or None
+                            ckpt["env_task"] = (env_cfg.get("task") or env_cfg.get("name") or "").strip() or None
                     except Exception:
                         pass
+
+                # Extract image feature keys from policy.input_features
+                if isinstance(tc, dict):
+                    input_feats = (tc.get("policy") or {}).get("input_features", {})
+                    if isinstance(input_feats, dict):
+                        img_keys = [k.replace("observation.images.", "") for k in input_feats if k.startswith("observation.images.")]
+                        if img_keys:
+                            ckpt["image_keys"] = img_keys
 
                 # Calculate size and modification time
                 total_bytes = 0
@@ -483,17 +500,20 @@ def create_router(state: AppState) -> APIRouter:
 
                 results.append(ckpt)
 
-        # Pattern 1: outputs/train/checkpoints/ (flat)
-        _scan_checkpoints_dir(Path("outputs/train/checkpoints"))
-
-        # Pattern 2: outputs/train/<run_name>/checkpoints/ (timestamped)
         train_root = Path("outputs/train")
+        flat_checkpoints_dir = train_root / "checkpoints"
+
+        # Pattern 1: outputs/train/checkpoints/ (flat)
+        _scan_checkpoints_dir(flat_checkpoints_dir)
+
         if train_root.is_dir():
-            for run_dir in train_root.iterdir():
-                if run_dir.name == "checkpoints":
-                    continue  # already scanned above
-                if run_dir.is_dir():
-                    _scan_checkpoints_dir(run_dir / "checkpoints", run_dir.name)
+            nested_checkpoints_dirs = sorted(
+                p for p in train_root.rglob("checkpoints") if p.is_dir() and p != flat_checkpoints_dir
+            )
+            for ckpts_dir in nested_checkpoints_dirs:
+                rel_parent = ckpts_dir.parent.relative_to(train_root)
+                run_name = rel_parent.as_posix()
+                _scan_checkpoints_dir(ckpts_dir, run_name)
 
         # Sort: 'last' first, then by step descending, then by modified
         def sort_key(c):
@@ -557,7 +577,37 @@ def create_router(state: AppState) -> APIRouter:
                     "error": f"{reason} Switch Compute Device to CPU/MPS or install a CUDA-compatible PyTorch build.",
                 }
 
-        args = build_eval_args(state.python_exe, data)
+        try:
+            args = build_eval_args(state.python_exe, data)
+        except ValueError as e:
+            return {"ok": False, "error": str(e)}
+
+        env_type = ""
+        for arg in args:
+            if arg.startswith("--env.type="):
+                env_type = arg.split("=", 1)[1].strip()
+                break
+        if env_type:
+            # Look up the correct module name from _KNOWN_ENV_TYPES (handles
+            # built-in modules like lerobot.rl.gym_manipulator that aren't pip packages)
+            module_name = f"gym_{env_type}"
+            for entry in _KNOWN_ENV_TYPES:
+                if entry["type"] == env_type and "module" in entry:
+                    module_name = entry["module"]
+                    break
+            if importlib.util.find_spec(module_name) is None:
+                install_cmd = f"{state.python_exe} -m pip install {module_name}"
+                return {
+                    "ok": False,
+                    "error": (
+                        f"Environment plugin '{module_name}' is not installed. "
+                        f"Install it to run evaluation with this checkpoint."
+                    ),
+                    "action": "install_gym_plugin",
+                    "command": install_cmd,
+                    "module_name": module_name,
+                }
+
         ok = state.proc_mgr.start("eval", args)
         if ok:
             state.append_history("eval_start", {
@@ -565,5 +615,28 @@ def create_router(state: AppState) -> APIRouter:
                 "device": data.get("eval_device", ""),
             })
         return {"ok": ok}
+
+    # Known lerobot gym environment types
+    _KNOWN_ENV_TYPES = [
+        {"type": "gym_manipulator", "label": "Manipulator (SO-101, real robot)", "module": "lerobot.rl.gym_manipulator"},
+        {"type": "aloha", "label": "Aloha (sim)"},
+        {"type": "pusht", "label": "PushT (sim)"},
+        {"type": "xarm", "label": "xArm (sim)"},
+        {"type": "dora_aloha_real", "label": "Dora Aloha (real)"},
+    ]
+
+    @router.get("/api/eval/env-types")
+    def api_eval_env_types():
+        results = []
+        for entry in _KNOWN_ENV_TYPES:
+            module_name = entry.get("module") or f"gym_{entry['type']}"
+            installed = importlib.util.find_spec(module_name) is not None
+            results.append({
+                "type": entry["type"],
+                "label": entry["label"],
+                "module": module_name,
+                "installed": installed,
+            })
+        return {"ok": True, "env_types": results}
 
     return router

@@ -40,10 +40,13 @@ DEFAULT_CONFIG = {
     "train_output_repo": "",
     "process_view_url": "",
     "eval_policy_path": "outputs/train/checkpoints/last/pretrained_model",
-    "eval_repo_id": "user/my-dataset",
+    "eval_repo_id": "",
+    "eval_env_type": "",
     "eval_episodes": 10,
     "eval_device": "cuda",
     "eval_task": "",
+    "eval_robot_type": "so101_follower",
+    "eval_teleop_type": "so101_leader",
 }
 
 
