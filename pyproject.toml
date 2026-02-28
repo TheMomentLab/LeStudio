@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "lestudio"
 version = "0.1.0"
-description = "LeStudio: Web-based GUI for LeRobot robot arm operations"
+description = "LeStudio: Web-based GUI workbench for Hugging Face LeRobot — device setup, teleop, record, train, and eval in one dashboard"
 readme = "README.md"
 license = {text = "Apache-2.0"}
 requires-python = ">=3.10"
@@ -31,6 +31,18 @@ dependencies = [
     "psutil>=5.9.0",
     "pandas>=2.0.0",
     "pyarrow>=14.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.4.0",
+    "mypy>=1.10.0",
+    "pytest>=7.0.0",
+    "anyio[trio]>=4.0.0",
+    "httpx>=0.24.0",
+    "pytest-cov>=5.0.0",
+    "mypy>=1.10.0",
+    "httpx>=0.24.0",
 ]
 
 [project.scripts]
@@ -67,3 +79,10 @@ quote-style = "double"
 indent-style = "space"
 skip-magic-trailing-comma = false
 line-ending = "auto"
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+ignore_missing_imports = true

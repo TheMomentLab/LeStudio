@@ -1,36 +1,62 @@
-# Getting Started
+# Quick Start
 
-## Prerequisites
+This guide gets you from a fresh install to your first teleoperation session in minutes.
 
-Before using LeStudio, you must have an environment with Hugging Face `lerobot` installed.
+## 1. Start the Server
 
-We recommend using conda:
 ```bash
-conda create -n lerobot python=3.10
 conda activate lerobot
+lestudio
 ```
 
-Install LeRobot from source (as it provides the necessary dependencies like PyTorch, OpenCV, etc.):
-```bash
-pip install "lerobot[cameras, motors] @ git+https://github.com/huggingface/lerobot.git"
-```
+The server starts at `http://localhost:7860` and opens a browser tab automatically.
+On SSH/headless environments the browser is not opened — navigate there manually.
 
-## Installing LeStudio
+## 2. Check Hardware Status
 
-Once you have your `lerobot` environment active, you can install LeStudio:
+Open the **Status** tab. You should see:
 
-```bash
-git clone https://github.com/TheMomentLab/lestudio.git
-cd lestudio
-pip install -e .
-```
+- **Cameras** listed with their `/dev/` paths or symlinks
+- **Arms** (if connected) shown under robot devices
+- System resources (CPU, RAM, Disk, GPU if available)
 
-## Running the App
+If devices are missing, go to the **Mapping** tab to create udev rules.
 
-Start the LeStudio server by running:
+## 3. Map Devices (First Time Only)
 
-```bash
-lestudio serve --host 127.0.0.1 --port 8000
-```
+The **Mapping** tab lets you assign stable symlinks to your USB devices:
 
-Open your browser and navigate to [http://127.0.0.1:8000](http://127.0.0.1:8000). You will be greeted by the LeStudio dashboard!
+1. Click **Add Camera Rule** or **Add Arm Rule**
+2. Plug in your device and follow the Arm Identify Wizard (for arms) or select the video device (for cameras)
+3. Click **Apply Rules** to write `/etc/udev/rules.d/99-lerobot.rules`
+4. Re-plug your USB devices to activate the symlinks
+
+!!! tip
+    If the Apply button fails (SSH / headless environment), run `lestudio install-udev` in your terminal instead.
+
+## 4. Calibrate
+
+Go to the **Calibration** tab and run calibration for your follower and leader arms.
+Calibration files are saved to `~/.config/lestudio/` by default.
+
+## 5. Teleop
+
+Open the **Teleop** tab:
+
+1. Select your robot and teleoperator from the dropdowns
+2. Click **Preflight** to verify cameras and arms are ready
+3. Click **Start Teleop** — live camera feeds appear in the UI while the process runs
+4. Click **Stop** when done
+
+## 6. Record Episodes
+
+Switch to the **Record** tab:
+
+1. Set your dataset name, task name, and episode count
+2. Click **Start Recording**
+3. Use **Next Episode** / **Abort Episode** buttons (or keyboard shortcuts) to control episodes
+4. When all episodes are captured, the dataset is saved locally
+
+## 7. Inspect & Push
+
+Use the **Dataset** tab to review episodes, curate data, and push to Hugging Face Hub.

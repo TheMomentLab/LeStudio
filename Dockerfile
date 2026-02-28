@@ -40,11 +40,14 @@ RUN groupadd -r lerobot_group && useradd -m -r -g lerobot_group lerobot_user \
     && usermod -a -G dialout lerobot_user \
     && usermod -a -G tty lerobot_user
 
-# Copy python dependencies
-# In a real environment, you might install 'lerobot' from source or pip first
+# Copy dependency metadata for pip install cache
+COPY pyproject.toml README.md ./
+COPY src/lestudio/__init__.py src/lestudio/__init__.py
+
+# Install heavy dependency first (cached layer)
 RUN pip install "lerobot[cameras, motors] @ git+https://github.com/huggingface/lerobot.git"
 
-# Copy LeStudio source
+# Copy full LeStudio source
 COPY . .
 
 # Copy built frontend assets from stage 1

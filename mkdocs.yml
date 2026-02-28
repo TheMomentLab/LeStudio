@@ -1,8 +1,9 @@
-site_name: LeStudio Documentation
-site_description: Web-based GUI for LeRobot robot arm operations
-site_author: TheMomentLab
+site_name: LeStudio
+site_description: Web-based GUI workbench for Hugging Face LeRobot
+site_url: https://themomentlab.github.io/lestudio/
 repo_url: https://github.com/TheMomentLab/lestudio
 repo_name: TheMomentLab/lestudio
+edit_uri: edit/main/docs_public/
 
 docs_dir: docs_public
 
@@ -11,8 +12,11 @@ theme:
   features:
     - navigation.tabs
     - navigation.sections
+    - navigation.top
     - search.suggest
     - search.highlight
+    - content.code.copy
+    - content.action.edit
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default
@@ -29,13 +33,27 @@ theme:
 
 nav:
   - Home: index.md
-  - Getting Started: getting-started.md
+  - Getting Started:
+    - Installation: installation.md
+    - Quick Start: getting-started.md
+  - Hardware Guide: hardware.md
+  - Workflow: workflow.md
+  - Troubleshooting: troubleshooting.md
+  - Contributing: contributing.md
 
 plugins:
   - search
 
 markdown_extensions:
-  - pymdownx.highlight
-  - pymdownx.superfences
   - admonition
   - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+  - tables
+  - toc:
+      permalink: true

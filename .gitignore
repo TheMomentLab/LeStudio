@@ -50,3 +50,12 @@ docs/private/
 
 # Local oh-my-codex runtime artifacts
 .omx/
+
+
+# Build artifacts
+site/
+.coverage
+coverage.xml
+
+# Training outputs
+outputs/
