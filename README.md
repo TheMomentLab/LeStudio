@@ -7,7 +7,7 @@
 
 A web-based GUI workbench for [Hugging Face LeRobot](https://github.com/huggingface/lerobot) — covering the full pipeline from hardware setup to policy evaluation. Replaces the CLI-heavy LeRobot workflow with a browser-based interface.
 
-**[Documentation](https://themomentlab.github.io/lestudio/)** · **[Contributing](CONTRIBUTING.md)** · **[Changelog](docs/release-checklist.md)**
+**[Documentation](https://themomentlab.github.io/lestudio/)** · **[Contributing](CONTRIBUTING.md)** · **[Changelog](docs/release-checklist.md)** · **[한국어](README.ko.md)**
 
 ## Screenshots
 
