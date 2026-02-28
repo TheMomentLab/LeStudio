@@ -6,6 +6,7 @@ import shlex
 import subprocess
 import textwrap
 from pathlib import Path
+from typing import Any
 
 
 def _check_cuda_runtime_compat(python_exe: str) -> tuple[bool, str]:
@@ -27,13 +28,23 @@ def _check_cuda_runtime_compat(python_exe: str) -> tuple[bool, str]:
         "\n except Exception:"
         "\n  raw_arches = []"
         "\n supported = []"
+        "\n compute_caps = []"
         "\n for arch in raw_arches:"
         "\n  if arch.startswith('sm_'): supported.append(arch)"
-        "\n  elif arch.startswith('compute_'): supported.append('sm_' + arch.split('_', 1)[1])"
+        "\n  elif arch.startswith('compute_'):"
+        "\n   supported.append('sm_' + arch.split('_', 1)[1])"
+        "\n   compute_caps.append(int(arch.split('_', 1)[1]))"
         "\n supported = sorted(set(supported))"
-        "\n if supported and gpu_arch not in supported:"
-        "\n  msg = 'CUDA arch mismatch: GPU ' + gpu_arch + ', torch supports ' + ', '.join(supported) + '.'"
-        "\n  print(json.dumps({'ok': False, 'reason': msg})); sys.exit(0)"
+        "\n gpu_cap = major * 10 + minor"
+        "\n forward_ok = any(gpu_cap >= cc for cc in compute_caps) if compute_caps else False"
+        "\n if supported and gpu_arch not in supported and not forward_ok:"
+        "\n  try:"
+        "\n   t = torch.zeros(1, device='cuda'); _ = t + t"
+        "\n   print(json.dumps({'ok': True, 'reason': f'CUDA forward compat ({gpu_arch} via PTX)'}))"
+        "\n  except Exception:"
+        "\n   msg = 'CUDA arch mismatch: GPU ' + gpu_arch + ', torch supports ' + ', '.join(supported) + '.'"
+        "\n   print(json.dumps({'ok': False, 'reason': msg}))"
+        "\n  sys.exit(0)"
         "\n print(json.dumps({'ok': True, 'reason': f'CUDA arch supported ({gpu_arch})'}))"
         "\nexcept Exception as e:"
         "\n print(json.dumps({'ok': False, 'reason': f'CUDA preflight check failed: {e}'}))"
@@ -50,7 +61,7 @@ def _check_cuda_runtime_compat(python_exe: str) -> tuple[bool, str]:
         return False, f"CUDA preflight check returned no output. {err}".strip()
 
     try:
-        payload = json.loads(out[-1])
+        payload: dict[str, Any] = json.loads(out[-1])
     except Exception:
         return False, f"CUDA preflight parse error: {out[-1]}"
 
@@ -75,7 +86,7 @@ def _cuda_tag_to_toolkit_version(cuda_tag: str) -> str | None:
     return f"{major}.{minor}"
 
 
-def _check_torchcodec_compat(python_exe: str) -> dict:
+def _check_torchcodec_compat(python_exe: str) -> dict[str, Any]:
     """torchcodec가 현재 환경에서 로드 가능한지 확인하고, 실패 시 원인을 분류합니다."""
     script = textwrap.dedent("""
         import json, sys
@@ -145,7 +156,7 @@ def _check_torchcodec_compat(python_exe: str) -> dict:
         err = (r.stderr or "").strip()
         return {"ok": False, "reason": f"torchcodec check returned no output. {err}".strip(), "cause": "unknown"}
     try:
-        payload = json.loads(out[-1])
+        payload: dict[str, Any] = json.loads(out[-1])
     except Exception:
         return {"ok": False, "reason": f"torchcodec check parse error: {out[-1]}", "cause": "unknown"}
     # 실패 시 cause별 install 명령어 생성
@@ -178,7 +189,7 @@ def _check_torchcodec_compat(python_exe: str) -> dict:
     return payload
 
 
-def _check_train_python_deps(python_exe: str) -> dict:
+def _check_train_python_deps(python_exe: str) -> dict[str, Any]:
     script = textwrap.dedent("""
         import importlib.util
         import json
@@ -204,7 +215,7 @@ def _check_train_python_deps(python_exe: str) -> dict:
         return {"ok": True, "reason": "Dependency probe skipped: no output"}
 
     try:
-        payload = json.loads(out[-1])
+        payload: dict[str, Any] = json.loads(out[-1])
     except Exception:
         return {"ok": True, "reason": f"Dependency probe skipped: parse error ({out[-1]})"}
 
@@ -267,7 +278,7 @@ def _parse_install_args(raw_command: str, python_exe: str) -> list[str]:
     head = args[0]
     if head in {"pip", "pip3"}:
         args = [python_exe, "-m", "pip", *args[1:]]
-    elif head in {"python", "python3"} and len(args) >= 3 and args[1] == "-m" and args[2] == "pip":
+    elif Path(head).name.startswith("python") and len(args) >= 3 and args[1] == "-m" and args[2] == "pip":
         args = [python_exe, "-m", "pip", *args[3:]]
     return _ensure_non_interactive_conda_args(args)
 
@@ -298,31 +309,19 @@ def _normalize_console_command(python_exe: str, raw_command: str) -> tuple[list[
     if head in {"pip", "pip3"}:
         subcommand = args[1].lower() if len(args) > 1 else ""
         if subcommand not in _PIP_SUBCOMMANDS:
-            raise ValueError(
-                f"Command not allowed: 'pip {subcommand}'. "
-                f"Only pip {'/'.join(sorted(_PIP_SUBCOMMANDS))} are permitted."
-            )
+            raise ValueError(f"Command not allowed: 'pip {subcommand}'. Only pip {'/'.join(sorted(_PIP_SUBCOMMANDS))} are permitted.")
         args = [python_exe, "-m", "pip", *args[1:]]
-    elif head in {"python", "python3"} and len(args) >= 3 and args[1] == "-m" and args[2] == "pip":
+    elif Path(head).name.lower().startswith("python") and len(args) >= 3 and args[1] == "-m" and args[2] == "pip":
         subcommand = args[3].lower() if len(args) > 3 else ""
         if subcommand not in _PIP_SUBCOMMANDS:
-            raise ValueError(
-                f"Command not allowed: 'python -m pip {subcommand}'. "
-                f"Only pip {'/'.join(sorted(_PIP_SUBCOMMANDS))} are permitted."
-            )
+            raise ValueError(f"Command not allowed: 'python -m pip {subcommand}'. Only pip {'/'.join(sorted(_PIP_SUBCOMMANDS))} are permitted.")
         args = [python_exe, "-m", "pip", *args[3:]]
     elif Path(head).name.lower() in _CONDA_EXECUTABLES:
         subcommand = args[1].lower() if len(args) > 1 else ""
         if subcommand not in _CONDA_SUBCOMMANDS:
-            raise ValueError(
-                f"Command not allowed: '{Path(head).name} {subcommand}'. "
-                f"Only conda/mamba {'/'.join(sorted(_CONDA_SUBCOMMANDS))} are permitted."
-            )
+            raise ValueError(f"Command not allowed: '{Path(head).name} {subcommand}'. Only conda/mamba {'/'.join(sorted(_CONDA_SUBCOMMANDS))} are permitted.")
     else:
-        raise ValueError(
-            f"Command not allowed: '{head}'. "
-            "Only pip install/uninstall/download and conda/mamba install/update/remove are permitted."
-        )
+        raise ValueError(f"Command not allowed: '{head}'. Only pip install/uninstall/download and conda/mamba install/update/remove are permitted.")
 
     args = _ensure_non_interactive_conda_args(args)
 
