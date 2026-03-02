@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { Link } from "react-router";
-import { ChevronDown, ChevronUp, Play, Loader2, CheckCircle2, Check, Pause } from "lucide-react";
+import { ChevronDown, ChevronUp, Play, Loader2, CheckCircle2, Check, Pause, Camera } from "lucide-react";
 import { cn } from "../components/ui/utils";
 import { apiGet, apiPost } from "../services/apiClient";
 import { useLeStudioStore } from "../store";
@@ -15,7 +15,7 @@ import {
 import {
   PageHeader, StatusBadge, WireSelect, WireInput,
   FieldRow, ModeToggle, StickyControlBar, WireBox, WireToggle, ProcessButtons,
-  HfGateBanner, BlockerCard,
+  BlockerCard, EmptyState, RefreshButton,
 } from "../components/wireframe";
 import { useHfAuth } from "../hf-auth-context";
 import {
@@ -45,14 +45,16 @@ type CameraStatsResponse = {
 
 type DevicesResponse = {
   cameras: Array<{ device: string; path: string; kernels: string; symlink: string; model: string }>;
-  arms: unknown[];
+  arms: Array<{ device: string; path: string; symlink?: string | null }>;
 };
 
+type CalibFile = { id: string; guessed_type: string };
+
 const LOADING_STEPS = [
-  "팔 연결 중...",
-  "카메라 열기...",
-  "데이터셋 준비...",
-  "녹화 준비 완료",
+  "Connecting arm...",
+  "Opening cameras...",
+  "Preparing dataset...",
+  "Recording ready",
 ];
 
 export function Recording() {
@@ -78,6 +80,15 @@ export function Recording() {
   const [resumeEnabled, setResumeEnabled] = useState(() => getConfigBool(config, "record_resume", false));
   const [pushToHub, setPushToHub] = useState(() => hfAuth === "ready" && getConfigBool(config, "record_push_to_hub", true));
   const [camerasMapped, setCamerasMapped] = useState<{ role: string; path: string }[]>([]);
+  const [armPortOptions, setArmPortOptions] = useState<string[]>([]);
+  const [followerIdOptions, setFollowerIdOptions] = useState<string[]>([]);
+  const [leaderIdOptions, setLeaderIdOptions] = useState<string[]>([]);
+  const [bimanualIdOptions, setBimanualIdOptions] = useState<string[]>([]);
+  const [selectedFollowerPort, setSelectedFollowerPort] = useState("");
+  const [selectedLeaderPort, setSelectedLeaderPort] = useState("");
+  const [selectedFollowerId, setSelectedFollowerId] = useState("");
+  const [selectedLeaderId, setSelectedLeaderId] = useState("");
+  const [selectedBimanualId, setSelectedBimanualId] = useState("");
 
   const progress = Math.round((currentEp / totalEps) * 100);
   const running = phase === "running";
@@ -211,15 +222,39 @@ export function Recording() {
   useEffect(() => {
     if (hfAuth !== "ready") setPushToHub(false);
   }, [hfAuth]);
+  const loadDevicesAndCalibration = async () => {
+    const result = await apiGet<DevicesResponse>("/api/devices");
+    const mapped = (result.cameras ?? [])
+      .filter((cam) => cam.symlink)
+      .map((cam) => ({ role: cam.symlink, path: `/dev/lerobot/${cam.symlink}` }));
+    setCamerasMapped(mapped);
+
+    const ports = Array.from(
+      new Set(
+        (result.arms ?? [])
+          .map((arm) => (arm.symlink ? `/dev/${arm.symlink}` : arm.path))
+          .filter((value): value is string => Boolean(value))
+      )
+    );
+    setArmPortOptions(ports);
+    setSelectedFollowerPort((prev) => (prev && ports.includes(prev) ? prev : ports[0] ?? ""));
+    setSelectedLeaderPort((prev) => (prev && ports.includes(prev) ? prev : ports[0] ?? ""));
+
+    const calibResult = await apiGet<{ files?: CalibFile[] }>("/api/calibrate/list");
+    const files = calibResult.files ?? [];
+    const followers = Array.from(new Set(files.filter((f) => f.guessed_type.includes("follower")).map((f) => f.id)));
+    const leaders = Array.from(new Set(files.filter((f) => f.guessed_type.includes("leader")).map((f) => f.id)));
+    const bimanual = Array.from(new Set(files.filter((f) => f.guessed_type.startsWith("bi_")).map((f) => f.id)));
+    setFollowerIdOptions(followers);
+    setLeaderIdOptions(leaders);
+    setBimanualIdOptions(bimanual);
+    setSelectedFollowerId((prev) => (prev && followers.includes(prev) ? prev : followers[0] ?? ""));
+    setSelectedLeaderId((prev) => (prev && leaders.includes(prev) ? prev : leaders[0] ?? ""));
+    setSelectedBimanualId((prev) => (prev && bimanual.includes(prev) ? prev : bimanual[0] ?? ""));
+  };
+
   useEffect(() => {
-    const run = async () => {
-      const result = await apiGet<DevicesResponse>("/api/devices");
-      const mapped = (result.cameras ?? [])
-        .filter((cam) => cam.symlink)
-        .map((cam) => ({ role: cam.symlink, path: `/dev/lerobot/${cam.symlink}` }));
-      setCamerasMapped(mapped);
-    };
-    void run();
+    void loadDevicesAndCalibration();
   }, []);
 
   useEffect(() => {
@@ -272,7 +307,7 @@ export function Recording() {
   return (
     <div className="flex flex-col h-full">
       {/* Top nav bar */}
-      <div className="flex items-center justify-between px-6 py-2 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-sm text-zinc-400">
+      <div className="grid grid-cols-[1fr_auto_1fr] items-center px-6 py-2 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-sm text-zinc-400">
         <Link to="/teleop" className="inline-flex items-center gap-1 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors">
           ← Teleop
         </Link>
@@ -283,7 +318,7 @@ export function Recording() {
           <span className="text-zinc-300 dark:text-zinc-600">›</span>
           <Link to="/dataset" className="hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors">Dataset</Link>
         </div>
-        <Link to="/dataset" className="inline-flex items-center gap-1 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors">
+        <Link to="/dataset" className="justify-self-end inline-flex items-center gap-1 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors">
           Dataset →
         </Link>
       </div>
@@ -291,32 +326,29 @@ export function Recording() {
       <div className="flex-1 overflow-y-auto">
         <div className="p-6 flex flex-col gap-4 max-w-[1600px] mx-auto w-full">
           {/* Header */}
-          <div className="flex items-start justify-between">
-            <PageHeader
-              title="Episode Recording"
-              subtitle="원격 조작 + 에피소드 데이터 녹화 → 학습용 데이터셋 생성"
-              status={running ? "running" : phase === "loading" ? "warning" : "ready"}
-              statusLabel={running ? "RECORDING" : phase === "loading" ? "STARTING..." : "READY"}
-            />
-            {phase === "idle" && (
-              <ModeToggle
-                options={["Single Arm", "Bi-Arm"]}
-                value={mode}
-                onChange={setMode}
-              />
-            )}
-          </div>
+          <PageHeader
+            title="Episode Recording"
+            subtitle="Remote control + episode recording → create training dataset"
+            action={
+              <div className="flex items-center gap-3">
+                {phase === "idle" && (
+                  <ModeToggle options={["Single Arm", "Bi-Arm"]} value={mode} onChange={setMode} />
+                )}
+                <RefreshButton onClick={() => { void loadDevicesAndCalibration(); }} />
+              </div>
+            }
+          />
 
-          {flowError && <BlockerCard title="실행 차단" severity="error" reasons={[flowError]} />}
+          {flowError && <BlockerCard title="Execution Blocked" severity="error" reasons={[flowError]} />}
 
           {/* ─── IDLE: Sub-tabs for settings ─── */}
           {phase === "idle" && (
             <div className="flex flex-col gap-4">
               <div className="flex gap-1 bg-zinc-100 dark:bg-zinc-800/50 p-1 rounded-lg w-fit mx-auto">
                 {[
-                  { key: "plan", label: "녹화 계획" },
-                  { key: "device", label: "디바이스" },
-                  { key: "camera", label: "카메라" },
+                  { key: "plan", label: "Recording Plan" },
+                  { key: "device", label: "Device" },
+                  { key: "camera", label: "Camera" },
                 ].map((tab) => (
                   <button
                     key={tab.key}
@@ -336,7 +368,7 @@ export function Recording() {
               {/* 녹화 계획 Tab */}
               {recTab === "plan" && (
                 <div className="flex flex-col gap-3">
-                  <FieldRow label="에피소드 수">
+                  <FieldRow label="Number of Episodes">
                     <input
                       type="number"
                       value={totalEps}
@@ -351,10 +383,10 @@ export function Recording() {
                     <WireInput value={recordTask} onChange={setRecordTask} placeholder="Pick the red cube and place it..." />
                   </FieldRow>
                   <div className="flex flex-col gap-2 pt-1">
-                    <WireToggle label="Resume — 기존 데이터셋에 이어서 녹화" checked={resumeEnabled} onChange={setResumeEnabled} />
+                    <WireToggle label="Resume — continue recording to existing dataset" checked={resumeEnabled} onChange={setResumeEnabled} />
                     <div className="flex items-center gap-2">
                       <WireToggle
-                        label="Push to Hub — 완료 후 자동 업로드"
+                        label="Push to Hub — auto-upload after completion"
                         checked={pushToHub}
                         onChange={setPushToHub}
                       />
@@ -364,11 +396,6 @@ export function Recording() {
                         </span>
                       )}
                     </div>
-                    {hfAuth !== "ready" && (
-                      <div className="mt-1">
-                        <HfGateBanner authState={hfAuth} level="hf_write" />
-                      </div>
-                    )}
                   </div>
                 </div>
               )}
@@ -376,7 +403,7 @@ export function Recording() {
               {/* 디바이스 Tab */}
               {recTab === "device" && (
                 <div className="flex flex-col gap-3">
-                  <p className="text-sm text-zinc-400">로봇과 조종 방식을 선택하세요.</p>
+                  <p className="text-sm text-zinc-400">Select robot type and control method.</p>
                   <FieldRow label="Robot Type">
                     <WireSelect value="so101_follower" options={["so101_follower", "so100_follower"]} />
                   </FieldRow>
@@ -384,40 +411,68 @@ export function Recording() {
                     <WireSelect value="so101_leader" options={["so101_leader", "keyboard"]} />
                   </FieldRow>
                   <div className="border-t border-zinc-100 dark:border-zinc-800 pt-3 flex flex-col gap-2">
-                    <p className="text-sm text-zinc-400">연결할 디바이스 포트를 선택하세요.</p>
+                    <p className="text-sm text-zinc-400">Select device ports to connect.</p>
                     {mode === "Single Arm" ? (
                       <>
                         <FieldRow label="Follower Port">
-                          <WireSelect value="/dev/lerobot/follower_arm" options={["/dev/lerobot/follower_arm"]} />
+                          <WireSelect
+                            placeholder={armPortOptions.length === 0 ? "No ports detected" : undefined}
+                            value={selectedFollowerPort}
+                            options={armPortOptions}
+                            onChange={setSelectedFollowerPort}
+                          />
                         </FieldRow>
                         <FieldRow label="Leader Port">
-                          <WireSelect value="/dev/lerobot/leader_arm" options={["/dev/lerobot/leader_arm"]} />
+                          <WireSelect
+                            placeholder={armPortOptions.length === 0 ? "No ports detected" : undefined}
+                            value={selectedLeaderPort}
+                            options={armPortOptions}
+                            onChange={setSelectedLeaderPort}
+                          />
                         </FieldRow>
                       </>
                     ) : (
                       <>
                         {["Left Follower", "Right Follower", "Left Leader", "Right Leader"].map((label) => (
                           <FieldRow key={label} label={label}>
-                            <WireSelect placeholder={`${label} Port`} options={["/dev/lerobot/follower_arm", "/dev/lerobot/leader_arm"]} />
+                            <WireSelect
+                              placeholder={armPortOptions.length === 0 ? "감지된 포트 없음" : `${label} Port`}
+                              options={armPortOptions}
+                            />
                           </FieldRow>
                         ))}
                       </>
                     )}
                   </div>
                   <div className="border-t border-zinc-100 dark:border-zinc-800 pt-3 flex flex-col gap-2">
-                    <p className="text-sm text-zinc-400">캘리브레이션 프로필을 선택하세요.</p>
+                    <p className="text-sm text-zinc-400">Select calibration profile.</p>
                     {mode === "Single Arm" ? (
                       <>
                         <FieldRow label="Follower ID">
-                          <WireSelect value="follower_arm_1" options={["follower_arm_1"]} />
+                          <WireSelect
+                            placeholder={followerIdOptions.length === 0 ? "No calibration files" : undefined}
+                            value={selectedFollowerId}
+                            options={followerIdOptions}
+                            onChange={setSelectedFollowerId}
+                          />
                         </FieldRow>
                         <FieldRow label="Leader ID">
-                          <WireSelect value="leader_arm_1" options={["leader_arm_1"]} />
+                          <WireSelect
+                            placeholder={leaderIdOptions.length === 0 ? "No calibration files" : undefined}
+                            value={selectedLeaderId}
+                            options={leaderIdOptions}
+                            onChange={setSelectedLeaderId}
+                          />
                         </FieldRow>
                       </>
                     ) : (
                       <FieldRow label="Robot ID">
-                        <WireSelect value="bimanual_follower" options={["bimanual_follower"]} />
+                        <WireSelect
+                          placeholder={bimanualIdOptions.length === 0 ? "No calibration files" : undefined}
+                          value={selectedBimanualId}
+                          options={bimanualIdOptions}
+                          onChange={setSelectedBimanualId}
+                        />
                       </FieldRow>
                     )}
                   </div>
@@ -427,16 +482,22 @@ export function Recording() {
               {/* 카메라 Tab — 설정 위, 프리뷰 아래 */}
               {recTab === "camera" && (
                 <div className="flex flex-col gap-4">
-                  <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 overflow-hidden">
+                  <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden">
                     <div className="px-3 py-2 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
-                      <span className="text-sm text-zinc-500">카메라 피드</span>
-                      <StatusBadge status="ready" label={`${cameraStatsRows.length}/${camerasMapped.length} 매핑됨`} />
+                      <span className="text-sm text-zinc-500">Camera Feeds</span>
+                      <StatusBadge status="ready" label={`${cameraStatsRows.length}/${camerasMapped.length} mapped`} />
                     </div>
                     <div className="p-4 flex flex-col gap-3">
                       {camerasMapped.length === 0 ? (
-                        <div className="text-sm text-zinc-400 text-center py-2">
-                          카메라 매핑이 없습니다. <a href="/camera-setup" className="underline hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors">Camera Setup</a> 탭에서 먼저 카메라를 연결하세요.
-                        </div>
+                        <EmptyState
+                          icon={<Camera size={28} />}
+                          message={(
+                            <>
+                              No camera mappings. First connect cameras in the <a href="/camera-setup" className="underline hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors">Camera Setup</a> tab.
+                            </>
+                          )}
+                          messageClassName="max-w-none"
+                        />
                       ) : camerasMapped.map((cam) => (
                         <div key={cam.role} className="flex items-center gap-2 px-2 py-1.5 rounded border border-zinc-100 dark:border-zinc-800/50">
                           <span className="size-1.5 rounded-full bg-emerald-400 flex-none" />
@@ -450,16 +511,16 @@ export function Recording() {
                         onClick={() => setAdvStreamOpen(!advStreamOpen)}
                         className="flex items-center gap-1 text-sm text-zinc-400 hover:text-zinc-600 cursor-pointer"
                       >
-                        고급 스트림 설정
+                        Advanced Stream Settings
                         {advStreamOpen ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
                       </button>
 
                       {advStreamOpen && (
                         <div className="flex flex-col gap-2 pl-2 border-l-2 border-zinc-100 dark:border-zinc-800">
-                          <FieldRow label="코덱">
+                          <FieldRow label="Codec">
                             <WireSelect value="MJPG" options={["MJPG", "YUYV"]} />
                           </FieldRow>
-                          <FieldRow label="해상도">
+                          <FieldRow label="Resolution">
                             <WireSelect value="640×480" options={["1280×720", "800×600", "640×480", "320×240"]} />
                           </FieldRow>
                           <FieldRow label="FPS">
@@ -481,7 +542,7 @@ export function Recording() {
                               <img src={frameSrc} alt={`${cam.role} preview`} className="h-full w-full object-cover" />
                             ) : (
                               <div className="h-full w-full flex items-center justify-center">
-                                <span className="text-sm text-zinc-600">대기 중...</span>
+                                <span className="text-sm text-zinc-600">Waiting...</span>
                               </div>
                             )}
                           </div>
@@ -570,7 +631,7 @@ export function Recording() {
                           )
                         ) : (
                           <div className="absolute inset-0 flex items-center justify-center text-zinc-600">
-                            <span className="text-sm flex items-center gap-1"><Pause size={10} className="fill-current" /> 일시정지</span>
+                            <span className="text-sm flex items-center gap-1"><Pause size={10} className="fill-current" /> Paused</span>
                           </div>
                         )}
 
@@ -626,7 +687,7 @@ export function Recording() {
             pulse={running}
           />
           <span className="text-sm text-zinc-400 truncate">
-            {running ? `Episode ${currentEp} / ${totalEps}` : "녹화 준비 완료"}
+            {running ? `Episode ${currentEp} / ${totalEps}` : "Recording ready"}
           </span>
         </div>
 

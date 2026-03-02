@@ -1,10 +1,10 @@
 import React from "react";
 import { Link } from "react-router";
-import { Play, Square, Lock } from "lucide-react";
+import { Play, Square, AlertTriangle, RefreshCw } from "lucide-react";
 import { cn } from "../ui/utils";
 
 // ─── Status Badge ─────────────────────────────────────────────────────────────
-type StatusType = "running" | "ready" | "warning" | "error" | "idle" | "blocked" | "missing";
+type StatusType = "running" | "ready" | "warning" | "error" | "idle" | "blocked";
 export function StatusBadge({
   status,
   label,
@@ -20,8 +20,7 @@ export function StatusBadge({
     warning: "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30",
     error: "bg-red-500/15 text-red-600 dark:text-red-400 border-red-500/30",
     idle: "bg-zinc-500/15 text-zinc-400 border-zinc-600/30",
-    blocked: "bg-red-500/15 text-red-600 dark:text-red-400 border-red-500/30",
-    missing: "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30",
+    blocked: "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30",
   };
   const dotMap: Record<StatusType, string> = {
     running: "bg-emerald-400",
@@ -29,8 +28,7 @@ export function StatusBadge({
     warning: "bg-amber-400",
     error: "bg-red-400",
     idle: "bg-zinc-500",
-    blocked: "bg-red-400",
-    missing: "bg-amber-400",
+    blocked: "bg-amber-400",
   };
   return (
     <span
@@ -184,53 +182,57 @@ export function SectionHeader({
 // ─── Blocker Card ─────────────────────────────────────────────────────────────
 export function BlockerCard({
   reasons,
-  title = "Start 불가",
+  title = "Cannot Start",
   severity = "warning",
 }: {
   reasons: (string | { text: string; to?: string })[];
   title?: string;
   severity?: "warning" | "error";
 }) {
+  const textReasons = reasons
+    .map((r) => (typeof r === "string" ? r : r.text))
+    .filter((text) => text && !text.includes("→"));
+  const linkReasons = reasons.filter(
+    (r): r is { text: string; to?: string } => typeof r !== "string" && Boolean(r.to)
+  );
+
   const tone =
     severity === "error"
       ? {
           shell: "border-red-500/30 bg-red-500/5",
-          title: "text-red-500",
-          chip: "border-red-500/30 text-red-500 bg-red-500/10",
+          text: "text-red-600 dark:text-red-400",
+          action: "border-red-500/30 text-red-600 dark:text-red-400 bg-red-500/10 hover:bg-red-500/20",
         }
       : {
           shell: "border-amber-500/30 bg-amber-500/5",
-          title: "text-amber-400",
-          chip: "border-amber-500/30 text-amber-400 bg-amber-500/10",
+          text: "text-amber-600 dark:text-amber-400",
+          action: "border-amber-500/30 text-amber-600 dark:text-amber-400 bg-amber-500/10 hover:bg-amber-500/20",
         };
 
+  const message = textReasons.length > 0 ? textReasons.join(" · ") : title;
+
   return (
-    <div className={cn("rounded-lg border px-3 py-2", tone.shell)}>
-      <div className="flex items-center gap-2 mb-2">
-        <span className={cn("text-sm", tone.title)}>⚠ {title}</span>
-      </div>
-      <div className="flex flex-wrap gap-2">
-        {reasons.map((r, i) => {
-          const text = typeof r === "string" ? r : r.text;
-          const to = typeof r === "string" ? undefined : r.to;
-          return to ? (
+    <div className={cn("flex items-center gap-2 px-3 py-2 rounded-lg border", tone.shell)}>
+      <AlertTriangle size={13} className={cn("flex-none", tone.text)} />
+      <span className={cn("text-sm flex-1", tone.text)}>
+        {message}
+      </span>
+      {linkReasons.length > 0 && (
+        <div className="ml-auto flex items-center gap-2">
+          {linkReasons.map((r, i) => (
             <Link
-              key={i}
-              to={to}
-              className={cn("px-2 py-0.5 rounded text-sm border transition-colors", tone.chip)}
+              key={`${r.text}-${i}`}
+              to={r.to!}
+              className={cn(
+                "px-2 py-1 rounded border text-sm transition-colors cursor-pointer whitespace-nowrap",
+                tone.action
+              )}
             >
-              {text} →
+              {r.text} →
             </Link>
-          ) : (
-            <span
-              key={i}
-              className={cn("px-2 py-0.5 rounded text-sm border", tone.chip)}
-            >
-              {text}
-            </span>
-          );
-        })}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -238,7 +240,7 @@ export function BlockerCard({
 // ─── Error Banner ─────────────────────────────────────────────────────────────
 export function ErrorBanner({ message }: { message: string | null }) {
   if (!message) return null;
-  return <BlockerCard title="실행 차단" severity="error" reasons={[message]} />;
+  return <BlockerCard title="Execution Blocked" severity="error" reasons={[message]} />;
 }
 
 // ─── Process Buttons ──────────────────────────────────────────────────────────
@@ -311,12 +313,13 @@ export function FieldRow({
 }
 
 // ─── WireSelect ───────────────────────────────────────────────────────────────
-export function WireSelect({ placeholder, value, options, onChange }: { placeholder?: string; value?: string; options?: string[]; onChange?: (v: string) => void }) {
+export function WireSelect({ placeholder, value, options, onChange, disabled }: { placeholder?: string; value?: string; options?: string[]; onChange?: (v: string) => void; disabled?: boolean }) {
   return (
     <select
       value={value ?? ""}
       onChange={onChange ? (e) => onChange(e.target.value) : () => {}}
-      className="w-full h-9 px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-800 dark:text-zinc-200 text-sm outline-none cursor-pointer hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all"
+      disabled={disabled}
+      className={cn("w-full h-9 px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-800 dark:text-zinc-200 text-sm outline-none cursor-pointer hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all", disabled && "opacity-50 cursor-not-allowed")}
     >
       {placeholder && <option value="" disabled>{placeholder}</option>}
       {options?.map((o) => (
@@ -327,7 +330,7 @@ export function WireSelect({ placeholder, value, options, onChange }: { placehol
 }
 
 // ─── WireInput ────────────────────────────────────────────────────────────────
-export function WireInput({ placeholder, value, onChange }: { placeholder?: string; value?: string; onChange?: (v: string) => void }) {
+export function WireInput({ placeholder, value, onChange, disabled }: { placeholder?: string; value?: string; onChange?: (v: string) => void; disabled?: boolean }) {
   return (
     <input
       type="text"
@@ -335,7 +338,8 @@ export function WireInput({ placeholder, value, onChange }: { placeholder?: stri
       readOnly={!onChange}
       onChange={onChange ? (e) => onChange(e.target.value) : undefined}
       placeholder={placeholder}
-      className="w-full h-9 px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-800 dark:text-zinc-200 text-sm outline-none placeholder:text-zinc-400 hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all"
+      disabled={disabled}
+      className={cn("w-full h-9 px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-800 dark:text-zinc-200 text-sm outline-none placeholder:text-zinc-400 hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all", disabled && "opacity-50 cursor-not-allowed")}
     />
   );
 }
@@ -372,14 +376,10 @@ export function ResourceBar({
 export function PageHeader({
   title,
   subtitle,
-  status,
-  statusLabel,
   action,
 }: {
   title: string;
   subtitle?: string;
-  status?: StatusType;
-  statusLabel?: string;
   action?: React.ReactNode;
 }) {
   return (
@@ -387,7 +387,6 @@ export function PageHeader({
       <div>
         <div className="flex items-center gap-3 mb-1">
           <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-50 tracking-tight">{title}</h1>
-          {status && <StatusBadge status={status} label={statusLabel} />}
         </div>
         {subtitle && <p className="text-sm text-zinc-500 dark:text-zinc-400">{subtitle}</p>}
       </div>
@@ -494,46 +493,42 @@ export function ModeToggle({
 }
 
 // ─── Empty State ──────────────────────────────────────────────────────────────
-export function EmptyState({ icon, message, action }: { icon?: React.ReactNode; message: string; action?: React.ReactNode }) {
+export function EmptyState({
+  icon,
+  message,
+  action,
+  messageClassName,
+}: {
+  icon?: React.ReactNode;
+  message: React.ReactNode;
+  action?: React.ReactNode;
+  messageClassName?: string;
+}) {
   return (
     <div className="flex flex-col items-center justify-center py-8 gap-3 text-center">
       {icon && <div className="text-3xl opacity-30">{icon}</div>}
-      <p className="text-sm text-zinc-400 max-w-xs">{message}</p>
+      <p className={cn("text-sm text-zinc-400 max-w-xs", messageClassName)}>{message}</p>
       {action}
     </div>
   );
 }
 
-// ─── HF Gate Banner ──────────────────────────────────────────────────────────
-import type { HfAuthState } from "../../hf-auth-context";
-import { useHfAuth } from "../../hf-auth-context";
 
-const HF_GATE_MSG: Record<Exclude<HfAuthState, "ready">, string> = {
-  missing_token: "HF token이 없습니다. huggingface-cli login으로 토큰을 등록하세요.",
-  expired_token: "HF token이 만료되었습니다. 새 토큰으로 다시 로그인/재등록하세요.",
-  invalid_token: "토큰이 유효하지 않습니다. 토큰 값을 확인한 뒤 다시 로그인/재등록하세요.",
-};
-
-export function HfGateBanner({
-  authState,
-  level,
+// ─── Refresh Button ────────────────────────────────────────────────────────────
+export function RefreshButton({
+  onClick,
+  title = "Refresh",
 }: {
-  authState: HfAuthState;
-  level: "hf_read" | "hf_write";
+  onClick: () => void;
+  title?: string;
 }) {
-  const { refreshHfAuth } = useHfAuth();
-  if (authState === "ready") return null;
-  const msg = HF_GATE_MSG[authState];
   return (
-    <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-amber-500/30 bg-amber-500/5">
-      <Lock size={13} className="text-amber-600 dark:text-amber-400 flex-none" />
-      <span className="text-sm text-amber-600 dark:text-amber-400 flex-1">{msg}</span>
-      <button
-        onClick={() => { void refreshHfAuth(); }}
-        className="ml-auto px-2 py-1 rounded border border-amber-500/30 bg-amber-500/10 text-sm text-amber-600 dark:text-amber-400 hover:bg-amber-500/20 transition-colors cursor-pointer whitespace-nowrap"
-      >
-        토큰 재확인 →
-      </button>
-    </div>
+    <button
+      onClick={onClick}
+      title={title}
+      className="p-1.5 rounded-md text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all cursor-pointer"
+    >
+      <RefreshCw size={15} />
+    </button>
   );
 }

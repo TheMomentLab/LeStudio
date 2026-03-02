@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 import {
   PageHeader, StatusBadge, FieldRow, WireSelect, WireInput,
-  ProcessButtons, StickyControlBar, WireToggle, Chip, HfGateBanner, BlockerCard,
+  ProcessButtons, StickyControlBar, WireToggle, Chip, BlockerCard, RefreshButton,
 } from "../components/wireframe";
 import { useHfAuth } from "../hf-auth-context";
 import { cn } from "../components/ui/utils";
@@ -92,6 +92,11 @@ type ColabLinkResponse = {
   url?: string;
 };
 
+type HfGateBannerProps = {
+  authState: string;
+  level: "hf_read" | "hf_write";
+};
+
 const PRESETS: Record<PresetKey, { label: string; steps: number; tag: string }> = {
   quick:    { label: "Quick",    steps: 1000,  tag: "1K" },
   standard: { label: "Standard", steps: 50000, tag: "50K" },
@@ -111,10 +116,10 @@ const CHECKPOINTS_MOCK = [
 ];
 
 const STARTING_STEPS = [
-  { label: "CUDA Preflight 확인", delay: 400 },
-  { label: "데이터셋 로딩", delay: 300 },
-  { label: "모델 초기화", delay: 300 },
-  { label: "학습 루프 시작", delay: 200 },
+  { label: "CUDA Preflight Check", delay: 400 },
+  { label: "Loading Dataset", delay: 300 },
+  { label: "Initializing Model", delay: 300 },
+  { label: "Starting Training Loop", delay: 200 },
 ];
 
 // ─── Custom Tooltip ───────────────────────────────────────────────────────────
@@ -140,6 +145,18 @@ function GpuBar({ label, value, max, unit }: { label: string; value: number; max
       </div>
       <span className="text-sm font-mono text-zinc-400 w-24 text-right flex-none">
         {value} / {max} {unit} <span className="text-zinc-500">({pct}%)</span>
+      </span>
+    </div>
+  );
+}
+
+function HfGateBanner({ authState, level }: HfGateBannerProps) {
+  const requirement = level === "hf_write" ? "write" : "read";
+  return (
+    <div className="rounded-lg border border-amber-300/70 bg-amber-50/80 dark:border-amber-500/40 dark:bg-amber-950/30 px-3 py-2 text-sm text-amber-800 dark:text-amber-200 flex items-center gap-2">
+      <Lock size={14} className="flex-none" />
+      <span>
+        Hugging Face auth required ({requirement}). Current state: <span className="font-mono">{authState}</span>
       </span>
     </div>
   );
@@ -207,7 +224,7 @@ export function Training() {
   const handlePushToHub = useCallback(async () => {
     if (pushState !== "idle") return;
     if (!selectedRepoId || !selectedRepoId.includes("/")) {
-      const reason = "유효한 데이터셋 repo_id(user/repo)를 먼저 선택하세요.";
+      const reason = "Please select a valid dataset repo_id (user/repo) first.";
       setFlowError(reason);
       notifyError(reason);
       return;
@@ -225,7 +242,7 @@ export function Training() {
         train_dataset_source: datasetSource,
       });
       if (!uploaded.ok) {
-        const reason = uploaded.error ?? "Colab config 업로드 실패";
+        const reason = uploaded.error ?? "Failed to upload Colab config";
         setPushState("idle");
         setFlowError(reason);
         notifyError(reason);
@@ -253,7 +270,7 @@ export function Training() {
       setPushState("done");
       setTimeout(() => setPushState("idle"), 3000);
     } catch (error) {
-      const reason = parseBackendError(error, "Colab 준비 중 오류가 발생했습니다");
+      const reason = parseBackendError(error, "Error preparing Colab");
       setPushState("idle");
       setFlowError(reason);
       notifyError(reason);
@@ -410,14 +427,14 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
       const preflight = await apiGet<PreflightResponse>(`/api/train/preflight?device=${encodeURIComponent(preflightDevice)}`);
       const command = (preflight.command ?? "").trim();
       if (!command) {
-        const reason = "torchcodec fix 명령을 찾지 못했습니다. preflight를 다시 확인하세요.";
+        const reason = "Could not find torchcodec fix command. Please check preflight again.";
         setFlowError(reason);
         notifyError(reason);
         return;
       }
       const response = await apiPost<ActionResponse>("/api/train/install_torchcodec_fix", { command });
       if (!response.ok) {
-        const reason = response.error ?? "torchcodec fix 실행 실패";
+        const reason = response.error ?? "Failed to run torchcodec fix";
         setFlowError(reason);
         notifyError(reason);
         return;
@@ -425,7 +442,7 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
       setCudaFixRunning(true);
       setCudaState("installing");
     } catch (error) {
-      const reason = parseBackendError(error, "torchcodec fix 실행 중 오류가 발생했습니다");
+      const reason = parseBackendError(error, "Error running torchcodec fix");
       setFlowError(reason);
       notifyError(reason);
     }
@@ -556,7 +573,7 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
   return (
     <div className="flex flex-col h-full">
       {/* Top nav bar */}
-      <div className="flex items-center justify-between px-6 py-2 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-sm text-zinc-400">
+      <div className="grid grid-cols-[1fr_auto_1fr] items-center px-6 py-2 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-sm text-zinc-400">
         <Link to="/dataset" className="inline-flex items-center gap-1 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors">
           ← Dataset
         </Link>
@@ -567,7 +584,7 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
           <span className="text-zinc-300 dark:text-zinc-600">›</span>
           <Link to="/evaluation" className="hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors">Evaluation</Link>
         </div>
-        <Link to="/evaluation" className="inline-flex items-center gap-1 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors">
+        <Link to="/evaluation" className="justify-self-end inline-flex items-center gap-1 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors">
           Evaluation →
         </Link>
       </div>
@@ -578,22 +595,11 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
           {/* Header */}
           <PageHeader
             title="AI Training"
-            subtitle="녹화된 데이터셋으로 AI 정책을 학습하고 실시간으로 진행을 모니터링합니다"
-            status={
-              trainStatus === "running" ? "running"
-              : trainStatus === "starting" ? "warning"
-              : trainStatus === "blocked" ? "blocked"
-              : "idle"
-            }
-            statusLabel={
-              trainStatus === "running" ? "TRAINING"
-              : trainStatus === "starting" ? "STARTING"
-              : trainStatus === "blocked" ? "BLOCKED"
-              : "IDLE"
-            }
+            subtitle="Train AI policies on recorded datasets and monitor progress in real-time"
+            action={<RefreshButton onClick={() => { void refreshCheckpoints(); }} />}
           />
 
-          {flowError && <BlockerCard title="실행 차단" severity="error" reasons={[flowError]} />}
+          {flowError && <BlockerCard title="Execution Blocked" severity="error" reasons={[flowError]} />}
 
           {/* ─── IDLE: Settings ─────────────────────────────────────── */}
           {trainStatus === "idle" && !completed && (
@@ -603,12 +609,12 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
               {cudaState === "ok" ? (
                 <div className="flex items-center gap-2.5">
                   <CheckCircle2 size={14} className="text-emerald-600 dark:text-emerald-400 flex-none" />
-                  <span className="text-sm text-emerald-600 dark:text-emerald-400">CUDA Preflight 통과</span>
+                  <span className="text-sm text-emerald-600 dark:text-emerald-400">CUDA Preflight Passed</span>
                   <span className="text-sm text-zinc-500 font-mono">PyTorch 2.5.1+cu121 · RTX 3090 (24GB)</span>
                   <button
                     onClick={() => setCudaState("fail")}
                     className="ml-auto text-sm text-zinc-600 hover:text-zinc-400 cursor-pointer"
-                    title="데모: 실패 상태 보기"
+                    title="Demo: View failed state"
                   >
                     …
                   </button>
@@ -617,10 +623,10 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
                 <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-3.5 flex flex-col gap-2.5">
                   <div className="flex items-center gap-2">
                     <AlertTriangle size={14} className="text-red-600 dark:text-red-400 flex-none" />
-                    <span className="text-sm text-red-600 dark:text-red-400">CUDA Preflight 실패</span>
+                    <span className="text-sm text-red-600 dark:text-red-400">CUDA Preflight Failed</span>
                     <button onClick={() => setCudaState("ok")} className="ml-auto text-sm text-zinc-600 hover:text-zinc-400 cursor-pointer">✕</button>
                   </div>
-                  <p className="text-sm text-zinc-400">CUDA를 사용하려면 CUDA 버전용 PyTorch가 필요합니다.</p>
+                  <p className="text-sm text-zinc-400">CUDA requires PyTorch built for your CUDA version.</p>
                   {cudaState === "fail" && !cudaFixRunning && (
                     <div className="flex gap-2">
                       <button
@@ -640,16 +646,16 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
                   {cudaFixRunning && (
                     <div className="flex items-center gap-2 text-sm text-zinc-400">
                       <span className="size-1.5 rounded-full bg-zinc-400 animate-pulse" />
-                      설치 중...
+                      Installing...
                     </div>
                   )}
                 </div>
               )}
 
               {/* Training Config */}
-              <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 overflow-hidden">
+              <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden">
                 <div className="px-3 py-2 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800 flex items-center">
-                  <span className="text-sm font-medium text-zinc-600 dark:text-zinc-300">학습 설정</span>
+                  <span className="text-sm font-medium text-zinc-600 dark:text-zinc-300">Training Config</span>
                 </div>
                 <div className="p-4 flex flex-col gap-4">
 
@@ -727,7 +733,7 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
                         {["CUDA (GPU)", "CPU", "MPS (Apple Silicon)"].map((d) => <option key={d} value={d}>{d}</option>)}
                       </select>
                       {device === "MPS (Apple Silicon)" && (
-                        <p className="text-sm text-amber-600 dark:text-amber-400 mt-1">⚠ Colab에서는 CUDA가 자동 사용됩니다.</p>
+                        <p className="text-sm text-amber-600 dark:text-amber-400 mt-1">⚠ Colab automatically uses CUDA.</p>
                       )}
                     </div>
 
@@ -770,7 +776,7 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
                       className="flex items-center gap-1.5 text-sm text-zinc-400 hover:text-zinc-500 dark:hover:text-zinc-300 transition-colors cursor-pointer w-fit"
                     >
                       {advOpen ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
-                      고급 오버라이드
+                      Advanced Overrides
                     </button>
                     {advOpen && (
                       <div className="grid grid-cols-1 md:grid-cols-[1fr_1px_1fr] md:gap-0 gap-3 mt-3">
@@ -792,7 +798,7 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
                                 type="text"
                                 value={modelOutputRepo}
                                 onChange={(e) => setModelOutputRepo(e.target.value)}
-                                placeholder="username/model-name (선택)"
+                                placeholder="username/model-name (optional)"
                                 disabled={hfAuth !== "ready"}
                                 className={cn(
                                   "w-full h-7 px-2 rounded border text-sm outline-none placeholder:text-zinc-500 focus:border-blue-500 dark:focus:border-blue-400",
@@ -814,14 +820,14 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
               </div>
 
               {/* Colab 학습 설정 */}
-              <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 overflow-hidden">
+              <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden">
                 <button
                   onClick={() => setColabOpen(!colabOpen)}
                   className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800 flex items-center gap-2 cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-800/50 transition-colors"
                 >
                   <img src="/colab-logo.png" alt="" aria-hidden="true" className="size-3.5 object-contain" />
-                  <span className="text-sm font-medium text-zinc-600 dark:text-zinc-300">Colab 학습</span>
-                  <span className="text-sm text-zinc-400 ml-1">GPU가 없을 때 Google Colab으로 학습</span>
+                  <span className="text-sm font-medium text-zinc-600 dark:text-zinc-300">Colab Training</span>
+                  <span className="text-sm text-zinc-400 ml-1">Train on Google Colab when you don't have a GPU</span>
                   {colabOpen ? <ChevronUp size={10} className="ml-auto text-zinc-400" /> : <ChevronDown size={10} className="ml-auto text-zinc-400" />}
                 </button>
                 {colabOpen && (
@@ -833,7 +839,7 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
                     {/* Step 1: Push Dataset */}
                     <div className="flex items-center gap-3 flex-wrap">
                       <span className="flex-none size-5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold grid place-items-center leading-[0]">1</span>
-                      <p className="text-sm text-zinc-600 dark:text-zinc-300 font-medium">데이터셋을 HF Hub에 업로드</p>
+                      <p className="text-sm text-zinc-600 dark:text-zinc-300 font-medium">Upload dataset to HF Hub</p>
                       <code className="text-[11px] text-zinc-500 dark:text-zinc-400 bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded truncate">
                         {colabRepoId || selectedRepoId || "lerobot-user/pick_cube"}
                       </code>
@@ -862,7 +868,7 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
                     <div className="flex items-start gap-3">
                       <span className="flex-none size-5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold grid place-items-center leading-[0] mt-0.5">2</span>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm text-zinc-600 dark:text-zinc-300 font-medium mb-1.5">Config snippet을 Colab에 붙여넣기</p>
+                        <p className="text-sm text-zinc-600 dark:text-zinc-300 font-medium mb-1.5">Paste config snippet into Colab</p>
                         <div className="relative rounded border border-zinc-200 dark:border-zinc-700 bg-zinc-900 overflow-hidden">
                           <div className="flex items-center justify-between px-4 py-2 bg-zinc-800 border-b border-zinc-700">
                             <span className="text-sm text-zinc-400 font-mono">python</span>
@@ -888,7 +894,7 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
                     {/* Step 3: Open Colab */}
                     <div className="flex items-center gap-3 flex-wrap">
                       <span className="flex-none size-5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold grid place-items-center leading-[0]">3</span>
-                      <p className="text-sm text-zinc-600 dark:text-zinc-300 font-medium">Colab 노트북 열기 및 실행</p>
+                      <p className="text-sm text-zinc-600 dark:text-zinc-300 font-medium">Open and run Colab notebook</p>
                       <button
                         type="button"
                         onClick={() => { void handleOpenColab(); }}
@@ -908,7 +914,7 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
 
                     {device === "MPS (Apple Silicon)" && (
                       <p className="text-sm text-amber-600 dark:text-amber-400">
-                        ⚠ Colab에서는 MPS 대신 CUDA가 자동으로 사용됩니다.
+                        ⚠ Colab automatically uses CUDA instead of MPS.
                       </p>
                     )}
                   </div>
@@ -951,9 +957,9 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
             <div className="flex flex-col gap-4">
 
               {/* Progress + GPU row */}
-              <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 overflow-hidden">
+              <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden">
                 <div className="px-3 py-2 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
-                  <span className="text-sm font-medium text-zinc-600 dark:text-zinc-300">학습 진행</span>
+                  <span className="text-sm font-medium text-zinc-600 dark:text-zinc-300">Training Progress</span>
                   <StatusBadge status="running" label="RUNNING" pulse />
                 </div>
                 <div className="p-4 flex flex-col gap-4">
@@ -1004,15 +1010,15 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
                   </div>
 
                   {lossData.length === 0 && (
-                    <p className="text-sm text-zinc-400 italic">아직 학습 신호 없음... 잠시 후 차트에 표시됩니다.</p>
+                    <p className="text-sm text-zinc-400 italic">No training signals yet... will appear in chart shortly.</p>
                   )}
                 </div>
               </div>
 
               {/* Loss Chart — full width */}
-              <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 overflow-hidden">
+              <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden">
                 <div className="px-3 py-2 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800 flex items-center">
-                  <span className="text-sm font-medium text-zinc-600 dark:text-zinc-300">Loss 트렌드</span>
+                  <span className="text-sm font-medium text-zinc-600 dark:text-zinc-300">Loss Trend</span>
                 </div>
                 {lossData.length > 1 ? (
                   <div className="h-64 p-3">
@@ -1047,7 +1053,7 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
                   </div>
                 ) : (
                   <div className="h-40 flex items-center justify-center">
-                    <p className="text-sm text-zinc-400 italic">데이터 수집 중...</p>
+                    <p className="text-sm text-zinc-400 italic">Collecting data...</p>
                   </div>
                 )}
               </div>
@@ -1057,8 +1063,8 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
                 <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-3.5 flex items-start gap-2.5">
                   <AlertTriangle size={14} className="text-red-600 dark:text-red-400 flex-none mt-0.5" />
                   <div className="flex-1">
-                    <p className="text-sm text-red-600 dark:text-red-400 mb-1">GPU 메모리 부족 (OOM)</p>
-                    <p className="text-sm text-zinc-400">현재 배치 크기: 32. 16으로 줄이고 재시도할까요?</p>
+                    <p className="text-sm text-red-600 dark:text-red-400 mb-1">GPU Out of Memory (OOM)</p>
+                    <p className="text-sm text-zinc-400">Current batch size: 32. Reduce to 16 and retry?</p>
                   </div>
                   <button
                     onClick={() => { setOomDetected(false); void startTraining(); }}
@@ -1079,7 +1085,7 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
               <div className="flex items-center gap-3 px-4 py-3 rounded-lg border border-emerald-500/30 bg-emerald-500/5">
                 <CheckCircle2 size={16} className="text-emerald-600 dark:text-emerald-400 flex-none" />
                 <div>
-                  <span className="text-sm text-emerald-600 dark:text-emerald-400 font-medium">학습 완료</span>
+                  <span className="text-sm text-emerald-600 dark:text-emerald-400 font-medium">Training Complete</span>
                   <span className="text-sm text-zinc-400 ml-3">
                     {policyType} · {totalSteps.toLocaleString()} steps · Loss {latestLoss?.toFixed(5) ?? "—"}
                   </span>
@@ -1088,9 +1094,9 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
 
               {/* Loss Chart — final */}
               {lossData.length > 1 && (
-                <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 overflow-hidden">
+                <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden">
                   <div className="px-3 py-2 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800 flex items-center">
-                    <span className="text-sm font-medium text-zinc-600 dark:text-zinc-300">Loss 트렌드 (최종)</span>
+                    <span className="text-sm font-medium text-zinc-600 dark:text-zinc-300">Loss Trend (Final)</span>
                   </div>
                   <div className="h-48 p-3">
                     <ResponsiveContainer width="100%" height="100%">
@@ -1126,13 +1132,13 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
               )}
 
               {/* Checkpoints */}
-              <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 overflow-hidden">
+              <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden">
                 <div className="px-3 py-2 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
-                  <span className="text-sm font-medium text-zinc-600 dark:text-zinc-300">체크포인트 ({checkpointList.length})</span>
+                  <span className="text-sm font-medium text-zinc-600 dark:text-zinc-300">Checkpoints ({checkpointList.length})</span>
                   <button
                     onClick={() => { void refreshCheckpoints(); }}
                     className="text-zinc-400 hover:text-zinc-300 cursor-pointer p-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded"
-                    title="새로고침"
+                    title="Refresh"
                   >
                     <RefreshCw size={12} />
                   </button>
@@ -1159,13 +1165,13 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
                   to="/evaluation"
                   className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 text-sm text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
                 >
-                  <ArrowRight size={12} /> 정책 평가로 이동
+                  <ArrowRight size={12} /> Go to Policy Evaluation
                 </Link>
                 <button
                   onClick={() => { setShowCheckpoints(false); setCurrentStep(0); setLossData([]); }}
                   className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 text-sm text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
                 >
-                  <RotateCcw size={12} /> 새 학습 시작
+                  <RotateCcw size={12} /> Start New Training
                 </button>
               </div>
             </div>
@@ -1199,7 +1205,7 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
             </span>
           )}
           {completed && (
-            <span className="text-sm text-emerald-600 dark:text-emerald-400">학습 완료 ✓</span>
+            <span className="text-sm text-emerald-600 dark:text-emerald-400">Training Complete ✓</span>
           )}
         </div>
         <div className="flex items-center gap-3">

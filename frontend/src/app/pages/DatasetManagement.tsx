@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import {
   PageHeader, StatusBadge, WireSelect, WireInput, FieldRow,
-  WireBox, WireToggle, StickyControlBar, HfGateBanner,
+  WireBox, WireToggle, StickyControlBar, RefreshButton,
 } from "../components/wireframe";
 import { useHfAuth } from "../hf-auth-context";
 import { cn } from "../components/ui/utils";
@@ -116,6 +116,23 @@ type DatasetDetail = {
   episodes: DatasetEpisode[];
 };
 
+type HfGateBannerProps = {
+  authState: string;
+  level: "hf_read" | "hf_write";
+};
+
+function HfGateBanner({ authState, level }: HfGateBannerProps) {
+  const requirement = level === "hf_write" ? "write" : "read";
+  return (
+    <div className="rounded-lg border border-amber-300/70 bg-amber-50/80 dark:border-amber-500/40 dark:bg-amber-950/30 px-3 py-2 text-sm text-amber-800 dark:text-amber-200 flex items-center gap-2">
+      <Lock size={14} className="flex-none" />
+      <span>
+        Hugging Face auth required ({requirement}). Current state: <span className="font-mono">{authState}</span>
+      </span>
+    </div>
+  );
+}
+
 const MY_HUB_DATASETS = [
   { id: "lerobot-user/pick_cube", downloads: 18, likes: 3, size: "1.2 GB", modified: "2026-03-01", localSync: true },
   { id: "lerobot-user/place_cup", downloads: 7, likes: 1, size: "720 MB", modified: "2026-02-28", localSync: true },
@@ -137,6 +154,10 @@ function parseDatasetId(id: string): { user: string; repo: string } | null {
   const [user, repo] = id.split("/");
   if (!user || !repo) return null;
   return { user, repo };
+}
+
+function formatMetric(value: number | null | undefined, unit: string): string {
+  return Number.isFinite(value) ? `${value} ${unit}` : "—";
 }
 
 // ─── Sub-Components ──────────────────────────────────────────────────────────
@@ -182,7 +203,7 @@ function HubSearchPanel() {
     if (downloadJobs[repoId]) return;
 
     setDownloadProgress(repoId, 0);
-    setDownloadNotes((prev) => ({ ...prev, [repoId]: "다운로드 작업을 준비 중입니다..." }));
+    setDownloadNotes((prev) => ({ ...prev, [repoId]: "Preparing download job..." }));
 
     try {
       const started = await apiPost<HubDownloadStartResponse>("/api/hub/datasets/download", {
@@ -191,15 +212,15 @@ function HubSearchPanel() {
 
       if (!started.ok || !started.job_id) {
         clearDownloadUi(repoId);
-        addToast(started.error ?? "다운로드 작업을 시작하지 못했습니다.", "error");
+        addToast(started.error ?? "Failed to start download job.", "error");
         return;
       }
 
       setDownloadJobs((prev) => ({ ...prev, [repoId]: started.job_id as string }));
-      addToast(`다운로드 시작: ${repoId}`, "info");
+      addToast(`Download started: ${repoId}`, "info");
     } catch (error) {
       clearDownloadUi(repoId);
-      addToast(error instanceof Error ? error.message : "다운로드 요청 실패", "error");
+      addToast(error instanceof Error ? error.message : "Download request failed", "error");
     }
   };
 
@@ -221,7 +242,7 @@ function HubSearchPanel() {
               return next;
             });
             clearDownloadUi(repoId);
-            if (!cancelled) addToast(status.error ?? `다운로드 상태 조회 실패: ${repoId}`, "error");
+            if (!cancelled) addToast(status.error ?? `Failed to check download status: ${repoId}`, "error");
             continue;
           }
 
@@ -241,7 +262,7 @@ function HubSearchPanel() {
               return next;
             });
             setDownloadProgress(repoId, 100);
-            if (!cancelled) addToast(`다운로드 완료: ${repoId}`, "success");
+            if (!cancelled) addToast(`Download complete: ${repoId}`, "success");
             window.setTimeout(() => {
               if (!cancelled) clearDownloadUi(repoId);
             }, 1200);
@@ -256,7 +277,7 @@ function HubSearchPanel() {
             });
             clearDownloadUi(repoId);
             if (!cancelled) {
-              addToast(status.error ?? `다운로드 실패: ${repoId}`, "error");
+              addToast(status.error ?? `Download failed: ${repoId}`, "error");
             }
           }
         } catch (error) {
@@ -267,7 +288,7 @@ function HubSearchPanel() {
           });
           clearDownloadUi(repoId);
           if (!cancelled) {
-            addToast(error instanceof Error ? error.message : `다운로드 상태 조회 실패: ${repoId}`, "error");
+            addToast(error instanceof Error ? error.message : `Failed to check download status: ${repoId}`, "error");
           }
         }
       }
@@ -294,7 +315,7 @@ function HubSearchPanel() {
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Hub 전체 검색 — 데이터셋 ID, 태그, 키워드..."
+            placeholder="Search Hub — dataset ID, tags, keywords..."
             className="w-full h-9 pl-9 pr-3 rounded-lg bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 text-sm outline-none focus:border-zinc-400 dark:focus:border-zinc-500 transition-colors placeholder:text-zinc-400"
             onKeyDown={(e) => e.key === "Enter" && doSearch()}
           />
@@ -303,7 +324,7 @@ function HubSearchPanel() {
           onClick={doSearch}
           className="px-4 h-9 rounded-lg bg-zinc-900 dark:bg-zinc-100 text-zinc-50 dark:text-zinc-900 text-sm font-medium hover:opacity-90 transition-opacity"
         >
-          검색
+          Search
         </button>
       </div>
 
@@ -311,12 +332,12 @@ function HubSearchPanel() {
       {searched && (
         <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-300">
           <div className="px-3 py-2 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
-            <span className="text-sm font-medium text-zinc-600 dark:text-zinc-300">검색 결과 ({hubResults.length})</span>
-            <button onClick={() => setSearched(false)} className="text-sm text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors">닫기</button>
+            <span className="text-sm font-medium text-zinc-600 dark:text-zinc-300">Search Results ({hubResults.length})</span>
+            <button onClick={() => setSearched(false)} className="text-sm text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors">Close</button>
           </div>
           <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
             {hubResults.length === 0 ? (
-              <div className="px-4 py-6 text-sm text-zinc-400 text-center">검색 결과가 없습니다.</div>
+              <div className="px-4 py-6 text-sm text-zinc-400 text-center">No search results found.</div>
             ) : hubResults.map((r) => {
               const progress = downloading[r.id];
               const isDownloading = progress !== undefined;
@@ -381,11 +402,11 @@ function HubSearchPanel() {
         <div className="px-3 py-2 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Cloud size={13} className="text-zinc-400" />
-            <span className="text-sm font-medium text-zinc-600 dark:text-zinc-300">내 Hub 데이터셋</span>
-            <span className="text-sm text-zinc-400">{MY_HUB_DATASETS.length}개</span>
+            <span className="text-sm font-medium text-zinc-600 dark:text-zinc-300">My Hub Datasets</span>
+            <span className="text-sm text-zinc-400">{MY_HUB_DATASETS.length} items</span>
           </div>
           <a href="https://huggingface.co/lerobot-user" target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-sm text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors">
-            Hub 프로필 <ExternalLink size={10} />
+            Hub Profile <ExternalLink size={10} />
           </a>
         </div>
         <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
@@ -395,7 +416,7 @@ function HubSearchPanel() {
                 <div className="flex items-center gap-2">
                   <span className="font-mono text-sm font-medium text-blue-500 dark:text-blue-400">{ds.id}</span>
                   {ds.localSync && (
-                    <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-sm text-emerald-500 dark:text-emerald-400 border border-emerald-500/30">로컬 동기화됨</span>
+                    <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-sm text-emerald-500 dark:text-emerald-400 border border-emerald-500/30">Synced locally</span>
                   )}
                 </div>
                 <div className="flex items-center gap-3 text-sm text-zinc-400">
@@ -465,7 +486,7 @@ function VideoPlayerPanel({
         shouldAutoPlayRef.current = true;
         setSelectedEpisode(episodes[idx + 1].episode_index);
       } else {
-        addToast('마지막 에피소드입니다.', 'info');
+        addToast('Last episode.', 'info');
       }
     };
   }, [addToast]);
@@ -837,7 +858,7 @@ function AutoFlagPanelContent({
       `/api/datasets/${encodeURIComponent(parsed.user)}/${encodeURIComponent(parsed.repo)}/stats`,
     );
     if (!res.ok || !Array.isArray(res.episodes)) {
-      addToast(res.error ?? "stats 조회 실패", "error");
+      addToast(res.error ?? "Failed to fetch stats", "error");
       return;
     }
     setStats(res.episodes);
@@ -851,7 +872,7 @@ function AutoFlagPanelContent({
         { force: true },
       );
       if (!res.ok) {
-        addToast(res.error ?? "stats 재계산 실패", "error");
+        addToast(res.error ?? "Failed to recompute stats", "error");
         return;
       }
       if (!res.job_id) {
@@ -862,7 +883,7 @@ function AutoFlagPanelContent({
       setJobProgress(0);
       setJobPhase("queued");
     } catch (error) {
-      addToast(error instanceof Error ? error.message : "stats 재계산 실패", "error");
+      addToast(error instanceof Error ? error.message : "Failed to recompute stats", "error");
     }
   };
 
@@ -876,13 +897,13 @@ function AutoFlagPanelContent({
         { updates },
       );
       if (!res.ok) {
-        addToast(res.error ?? "일괄 태깅 실패", "error");
+        addToast(res.error ?? "Bulk tagging failed", "error");
         return;
       }
-      addToast(`Bad 태깅 완료: ${res.applied ?? flagged.length}개`, "success");
+      addToast(`Bulk tagging complete: ${res.applied ?? flagged.length} episodes`, "success");
       onTagsChanged();
     } catch (error) {
-      addToast(error instanceof Error ? error.message : "일괄 태깅 실패", "error");
+      addToast(error instanceof Error ? error.message : "Bulk tagging failed", "error");
     } finally {
       setTagging(false);
     }
@@ -899,7 +920,7 @@ function AutoFlagPanelContent({
       const status = await apiGet<StatsStatusResponse>(`/api/datasets/stats/status/${encodeURIComponent(jobId)}`);
       if (!status.ok) {
         setJobId("");
-        addToast(status.error ?? "stats 작업 실패", "error");
+        addToast(status.error ?? "Stats job failed", "error");
         return;
       }
       const state = String(status.status ?? "running");
@@ -919,7 +940,7 @@ function AutoFlagPanelContent({
   return (
     <div className="p-4 flex flex-col gap-4">
       <div className="flex items-center justify-between">
-        <span className="text-sm text-zinc-500">Auto-flag 기준: frames &lt; 30, motion &lt; 0.01, jerk &gt; 5.0</span>
+        <span className="text-sm text-zinc-500">Auto-flag criteria: frames &lt; 30, motion &lt; 0.01, jerk &gt; 5.0</span>
         <div className="flex items-center gap-2">
           {jobId && (
             <button
@@ -952,8 +973,8 @@ function AutoFlagPanelContent({
 
       <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-3">
         <div className="flex items-center justify-between mb-2">
-          <span className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">결과 리포트</span>
-          <span className="text-sm text-zinc-500">{flagged.length} / {totalEpisodes} 감지</span>
+          <span className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Results Report</span>
+          <span className="text-sm text-zinc-500">{flagged.length} / {totalEpisodes} detected</span>
         </div>
         <div className="max-h-28 overflow-auto space-y-1 mb-3">
           {flagged.slice(0, 6).map((ep) => (
@@ -961,14 +982,14 @@ function AutoFlagPanelContent({
               Episode {ep.episode_index}: frames {ep.frames}, movement {ep.movement.toFixed(3)}, jerk {ep.jerk_score.toFixed(3)}
             </div>
           ))}
-          {flagged.length === 0 && <div className="text-sm text-zinc-400">플래그된 에피소드가 없습니다.</div>}
+          {flagged.length === 0 && <div className="text-sm text-zinc-400">No flagged episodes.</div>}
         </div>
         <button
           onClick={() => { void handleBulkTag(); }}
           disabled={flagged.length === 0 || tagging}
           className="w-full py-1.5 rounded-lg bg-zinc-900 dark:bg-zinc-100 text-zinc-50 dark:text-zinc-900 text-sm font-medium hover:opacity-90 disabled:opacity-50"
         >
-          {tagging ? "태깅 중..." : `플래그된 ${flagged.length}개 에피소드를 Bad로 일괄 태그`}
+          {tagging ? "Tagging..." : `Bulk tag ${flagged.length} flagged episodes as Bad`}
         </button>
       </div>
     </div>
@@ -1010,7 +1031,7 @@ function CurationPanelContent({
     try {
       const target = newRepoId.trim();
       if (!target) {
-        addToast("새 Repo ID를 입력하세요", "error");
+        addToast("Enter a new Repo ID", "error");
         return;
       }
       const res = await apiPost<DeriveStartResponse>(
@@ -1018,14 +1039,14 @@ function CurationPanelContent({
         { new_repo_id: target, keep_indices: keepIndices },
       );
       if (!res.ok || !res.job_id) {
-        addToast(res.error ?? "derive 시작 실패", "error");
+        addToast(res.error ?? "Failed to start derive", "error");
         return;
       }
       setJobId(res.job_id);
       setJob({ status: "queued", phase: "queued", progress: 0, logs: [] });
-      addToast("파생 데이터셋 생성 시작", "info");
+      addToast("Creating derived dataset", "info");
     } catch (error) {
-      addToast(error instanceof Error ? error.message : "derive 시작 실패", "error");
+      addToast(error instanceof Error ? error.message : "Failed to start derive", "error");
     }
   };
 
@@ -1040,14 +1061,14 @@ function CurationPanelContent({
       const res = await apiGet<DeriveStatusResponse>(`/api/datasets/derive/status/${encodeURIComponent(jobId)}`);
       if (!res.ok) {
         setJobId("");
-        addToast(res.error ?? "derive 상태 조회 실패", "error");
+        addToast(res.error ?? "Failed to check derive status", "error");
         return;
       }
       setJob(res);
       const status = String(res.status ?? "running");
       if (status === "success") {
         setJobId("");
-        addToast("파생 데이터셋 생성 완료", "success");
+        addToast("Derived dataset created successfully", "success");
         onDerived(newRepoId.trim());
       }
       if (status === "error" || status === "cancelled") {
@@ -1063,7 +1084,7 @@ function CurationPanelContent({
     <div className="p-4 flex flex-col gap-4">
       <div className="flex gap-2">
         {[
-          { key: "filter", label: "현재 필터" },
+          { key: "filter", label: "Current Filter" },
           { key: "good", label: "Good Only" },
           { key: "exclude_bad", label: "Exclude Bad" },
         ].map((opt) => (
@@ -1085,14 +1106,14 @@ function CurationPanelContent({
       </div>
 
       <div className="flex items-center justify-between text-sm px-2">
-        <span className="text-zinc-400">결과 미리보기:</span>
+        <span className="text-zinc-400">Preview:</span>
         <div className="flex gap-4">
           <span className="text-zinc-700 dark:text-zinc-300 font-medium">Keep: {keepIndices.length} eps</span>
           <span className="text-zinc-400 font-medium">Drop: {Math.max(0, detail.total_episodes - keepIndices.length)} eps</span>
         </div>
       </div>
 
-      <FieldRow label="새 Repo ID">
+      <FieldRow label="New Repo ID">
         <WireInput
           value={newRepoId}
           onChange={(v) => {
@@ -1103,7 +1124,7 @@ function CurationPanelContent({
       </FieldRow>
 
       {job && (
-        <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 overflow-hidden">
+        <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden">
           <div className="px-3 py-2 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
             <div className="flex items-center gap-2">
               {running && <Loader2 size={12} className="text-zinc-400 animate-spin" />}
@@ -1141,7 +1162,7 @@ function CurationPanelContent({
             : "bg-zinc-900 dark:bg-zinc-100 text-zinc-50 dark:text-zinc-900 hover:opacity-90",
         )}
       >
-        파생 데이터셋 생성하기
+        Create Derived Dataset
       </button>
     </div>
   );
@@ -1182,7 +1203,19 @@ export function DatasetManagement() {
     }
   };
 
+  const loadDatasets = async () => {
+    apiGet<unknown>("/api/datasets").then((res) => {
+      const datasets = fromBackendDatasetList(res);
+      setLocalDatasets(datasets);
+      if (datasets.length > 0) {
+        setSelectedDataset(datasets[0]);
+        void fetchDetail(datasets[0].id);
+      }
+    });
+  };
+
   useEffect(() => {
+    void loadDatasets();
     apiGet<unknown>("/api/datasets").then((res) => {
       const datasets = fromBackendDatasetList(res);
       setLocalDatasets(datasets);
@@ -1230,13 +1263,13 @@ export function DatasetManagement() {
         `/api/datasets/${encodeURIComponent(parsed.user)}/${encodeURIComponent(parsed.repo)}/quality`,
       );
       if (!res.ok) {
-        addToast(res.error ?? "품질 검사 실패", "error");
+        addToast(res.error ?? "Quality check failed", "error");
         return;
       }
       setQualityData(res);
-      addToast("품질 검사 완료", "success");
+      addToast("Quality check complete", "success");
     } catch (error) {
-      addToast(error instanceof Error ? error.message : "품질 검사 실패", "error");
+      addToast(error instanceof Error ? error.message : "Quality check failed", "error");
     } finally {
       setQualityLoading(false);
     }
@@ -1252,15 +1285,15 @@ export function DatasetManagement() {
         { target_repo_id: selectedDataset.id },
       );
       if (!res.ok || !res.job_id) {
-        addToast(res.error ?? "Hub Push 시작 실패", "error");
+        addToast(res.error ?? "Failed to start Hub push", "error");
         setPushStatus({ status: "error", phase: "error", progress: 0, error: res.error });
         return;
       }
       setPushJobId(res.job_id);
       setPushStatus({ status: "queued", phase: "queued", progress: 5, logs: ["Upload job queued"] });
-      addToast("Hub Push 시작", "info");
+      addToast("Hub push started", "info");
     } catch (error) {
-      addToast(error instanceof Error ? error.message : "Hub Push 시작 실패", "error");
+      addToast(error instanceof Error ? error.message : "Failed to start Hub push", "error");
     }
   };
 
@@ -1285,7 +1318,7 @@ export function DatasetManagement() {
   return (
     <div className="flex flex-col h-full">
       {/* Top nav bar */}
-      <div className="flex items-center justify-between px-6 py-2 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-sm text-zinc-400">
+      <div className="grid grid-cols-[1fr_auto_1fr] items-center px-6 py-2 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-sm text-zinc-400">
         <Link to="/recording" className="inline-flex items-center gap-1 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors">
           ← Recording
         </Link>
@@ -1296,7 +1329,7 @@ export function DatasetManagement() {
           <span className="text-zinc-300 dark:text-zinc-600">›</span>
           <Link to="/training" className="hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors">Training</Link>
         </div>
-        <Link to="/training" className="inline-flex items-center gap-1 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors">
+        <Link to="/training" className="justify-self-end inline-flex items-center gap-1 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors">
           Training →
         </Link>
       </div>
@@ -1305,14 +1338,15 @@ export function DatasetManagement() {
         <div className="p-6 max-w-[1600px] mx-auto flex flex-col gap-6">
           <PageHeader
             title="Dataset Management"
-            subtitle="데이터셋 관리, 품질 검사, Hub 연동 및 큐레이션"
+            subtitle="Manage datasets, quality checks, Hub integration, and curation"
+            action={<RefreshButton onClick={() => { void loadDatasets(); }} />}
           />
 
           {/* Page-level Tabs */}
           <div className="flex gap-1 bg-zinc-100 dark:bg-zinc-800/50 p-1 rounded-lg w-fit mx-auto">
             {([
-              { key: "local", icon: <MonitorPlay size={13} />, label: "로컬 데이터셋" },
-              { key: "hub", icon: <Download size={13} />, label: "Hub 다운로드" },
+              { key: "local", icon: <MonitorPlay size={13} />, label: "Local Datasets" },
+              { key: "hub", icon: <Download size={13} />, label: "Hub Download" },
             ] as const).map(tab => (
               <button
                 key={tab.key}
@@ -1346,10 +1380,10 @@ export function DatasetManagement() {
 
             {/* Left Column: List (Fixed 320px) */}
             <div className="flex w-full flex-col gap-4 xl:sticky xl:top-6">
-              <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 overflow-hidden">
+              <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden">
                 <div className="px-3 py-2 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
-                  <span className="text-sm font-medium text-zinc-600 dark:text-zinc-300">로컬 데이터셋</span>
-                  <span className="text-sm text-zinc-400">{localDatasets.length}개</span>
+                  <span className="text-sm font-medium text-zinc-600 dark:text-zinc-300">Local Datasets</span>
+                  <span className="text-sm text-zinc-400">{localDatasets.length} items</span>
                 </div>
                 <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
                   {localDatasets.map((ds) => (
@@ -1384,7 +1418,7 @@ export function DatasetManagement() {
                 {/* Add link */}
                 <div className="px-3 py-2.5 border-t border-zinc-200 dark:border-zinc-800 text-center">
                   <Link to="/recording" className="text-sm text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 hover:underline">
-                    + 새 데이터셋 녹화하러 가기
+                    + Record new dataset
                   </Link>
                 </div>
               </div>
@@ -1394,34 +1428,23 @@ export function DatasetManagement() {
             <div className="flex flex-col gap-6">
 
               {/* Dataset Header / Actions */}
-              <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 overflow-hidden">
+              <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden">
                 {/* Header bar: title + actions */}
                 <div className="px-3 py-2 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
                   <div className="flex items-center gap-2 min-w-0">
                     <span className="text-sm font-medium font-mono text-zinc-700 dark:text-zinc-200 truncate">{selectedDataset?.id}</span>
-                    <StatusBadge status="ready" label="Local Ready" />
                   </div>
                   <div className="flex items-center gap-1.5 flex-none">
-                    <button
-                      onClick={() => { void handleInspectQuality(); }}
-                      className={cn("px-4 py-2 rounded-lg border text-sm font-medium transition-colors flex items-center gap-1.5", qualityData ? "bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800/30 text-emerald-700 dark:text-emerald-400" : "border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-300")}
-                    >
-                      {qualityLoading ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />} Quality
-                    </button>
-                    <button
-                      onClick={() => { void handlePushToHub(); }}
-                      disabled={hfAuth !== "ready"}
-                      className={cn(
-                        "px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-1.5 transition-all",
-                        hfAuth !== "ready"
-                          ? "border border-amber-500/30 bg-amber-500/5 text-amber-600 dark:text-amber-400 cursor-not-allowed"
-                          : "bg-zinc-900 dark:bg-zinc-100 text-zinc-50 dark:text-zinc-900 hover:opacity-90",
-                      )}
-                      title={hfAuth !== "ready" ? "HF token 필요" : "Hub에 업로드"}
-                    >
-                      {hfAuth !== "ready" ? <Lock size={12} /> : <Upload size={12} />}
-                      Hub Push
-                    </button>
+                    {hfAuth === "ready" ? (
+                      <button
+                        onClick={() => { void handlePushToHub(); }}
+                        className="p-1.5 rounded-md bg-zinc-900 dark:bg-zinc-100 text-zinc-50 dark:text-zinc-900 hover:opacity-90 transition-all"
+                        title="Upload to Hub"
+                        aria-label="Upload to Hub"
+                      >
+                        <Upload size={12} />
+                      </button>
+                    ) : null}
                     <button className="p-1 rounded text-zinc-400 hover:text-red-500 transition-colors">
                       <Trash2 size={14} />
                     </button>
@@ -1430,9 +1453,9 @@ export function DatasetManagement() {
                 {/* Sub-tabs */}
                 <div className="flex border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/30">
                   {([
-                    { key: "player", icon: <Play size={12} />, label: "재생" },
-                    { key: "quality", icon: <AlertTriangle size={12} />, label: "품질 검사" },
-                    { key: "curation", icon: <Filter size={12} />, label: "큐레이션" },
+                    { key: "player", icon: <Play size={12} />, label: "Playback" },
+                    { key: "quality", icon: <AlertTriangle size={12} />, label: "Quality Check" },
+                    { key: "curation", icon: <Filter size={12} />, label: "Curation" },
                   ] as const).map(tab => (
                     <button
                       key={tab.key}
@@ -1455,9 +1478,9 @@ export function DatasetManagement() {
                 {/* Info row */}
                 <div className="px-3 py-2.5 flex items-center justify-between border-b border-zinc-200 dark:border-zinc-800">
                   <div className="flex items-center gap-4 text-sm text-zinc-500">
-                    <span className="flex items-center gap-1"><MonitorPlay size={12} /> {selectedDataset?.episodes} eps</span>
-                    <span>{selectedDataset?.frames} frames</span>
-                    <span>{detailData ? `${detailData.fps} FPS` : "30 FPS"}</span>
+                    <span className="flex items-center gap-1"><MonitorPlay size={12} /> {formatMetric(selectedDataset?.episodes, "eps")}</span>
+                    <span>{formatMetric(selectedDataset?.frames, "frames")}</span>
+                    <span>{formatMetric(detailData?.fps, "FPS")}</span>
                     <span>{selectedDataset?.size}</span>
                     <span className="text-zinc-400">{selectedDataset?.modified}</span>
                   </div>
@@ -1503,7 +1526,7 @@ export function DatasetManagement() {
                          <p className="text-sm text-zinc-500 mt-0.5">Checked {Array.isArray(qualityData.checks) ? qualityData.checks.length : 0} items across {selectedDataset?.episodes} episodes.</p>
                        </div>
                        <Link to="/training" className="text-sm px-4 py-2 bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 rounded-lg border border-zinc-200 dark:border-zinc-700 font-medium hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors">
-                         → AI 학습 하러가기
+                         → Go to AI Training
                        </Link>
                      </div>
 
@@ -1524,7 +1547,7 @@ export function DatasetManagement() {
                 {detailTab === "player" && selectedDataset && (
                   detailLoading ? (
                     <div className="p-8 flex items-center justify-center gap-2 text-sm text-zinc-400">
-                      <Loader2 size={14} className="animate-spin" /> 에피소드 데이터 로딩 중...
+                      <Loader2 size={14} className="animate-spin" /> Loading episode data...
                     </div>
                   ) : detailData ? (
                     <VideoPlayerPanel
@@ -1537,7 +1560,7 @@ export function DatasetManagement() {
                       <div className="text-3xl opacity-30">
                         <AlertTriangle size={28} />
                       </div>
-                      <p className="text-sm text-zinc-400 max-w-xs">데이터를 불러올 수 없습니다.</p>
+                      <p className="text-sm text-zinc-400 max-w-xs">Unable to load data.</p>
                     </div>
                   )
                 )}
@@ -1576,19 +1599,16 @@ export function DatasetManagement() {
         </div>
       </div>
 
-      <StickyControlBar>
-        <div className="flex items-center gap-3 min-w-0">
-          <StatusBadge
-            status={pageTab === "local" && selectedDataset ? "ready" : "idle"}
-            label={pageTab === "local" && selectedDataset ? "READY" : "IDLE"}
-          />
-          {pageTab === "local" && selectedDataset && (
+      {pageTab === "local" && selectedDataset && (
+        <StickyControlBar>
+          <div className="flex items-center gap-3 min-w-0">
+            <StatusBadge status="ready" label="READY" />
             <span className="text-sm text-zinc-400 truncate">
-              {selectedDataset?.id} · {selectedDataset?.episodes} eps · {selectedDataset?.size}
+              {selectedDataset.id} · {selectedDataset.episodes} eps · {selectedDataset.size}
             </span>
-          )}
-        </div>
-      </StickyControlBar>
+          </div>
+        </StickyControlBar>
+      )}
     </div>
   );
 }

@@ -635,7 +635,6 @@ function RuntimeConsoleDrawer() {
             >
               {isRuntimeProcessRunning(procStatus, p) ? (
                 <span className="flex items-center gap-1">
-                  <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse" />
                   {PROCESS_LABELS[p]}
                 </span>
               ) : (
@@ -681,43 +680,7 @@ function RuntimeConsoleDrawer() {
         </div>
       </div>
 
-      {!collapsed && runningInfos.length > 0 && (
-        <div className="flex flex-col gap-1 p-2 border-b border-zinc-200 dark:border-zinc-800">
-          {runningInfos.map((info) => (
-            <div
-              key={info.process}
-              className="flex items-center gap-2 px-2 py-1 rounded bg-zinc-100/80 dark:bg-zinc-900/70"
-            >
-              <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              <button
-                className="text-[11px] font-mono text-zinc-600 dark:text-zinc-300 cursor-pointer hover:underline"
-                onClick={() => {
-                  const tab = PROCESS_TO_TAB[info.process];
-                  setActiveTab(tab);
-                }}
-                title="Open matching tab"
-              >
-                {info.process}
-              </button>
-              <span className="text-[11px] text-zinc-500 dark:text-zinc-400 truncate flex-1">{info.text}</span>
-              {typeof info.pct === "number" && (
-                <div className="w-24 h-1.5 rounded-full bg-zinc-200 dark:bg-zinc-700 overflow-hidden">
-                  <div
-                    className="h-full bg-zinc-700 dark:bg-zinc-200 transition-all"
-                    style={{ width: `${Math.round(info.pct)}%` }}
-                  />
-                </div>
-              )}
-              <button
-                className="text-[10px] px-1.5 py-0.5 rounded border border-red-500/40 text-red-600 dark:text-red-400 hover:bg-red-500/10 cursor-pointer"
-                onClick={() => { void handleStop(info.process); }}
-              >
-                Stop
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
+      {/* Running summary chips intentionally hidden to avoid duplicate process controls with Console header */}
 
       {!collapsed && (
         <div ref={logRef} className="flex-1 overflow-y-auto p-2 font-mono" style={{ fontSize: "11px" }}>
@@ -792,20 +755,20 @@ function Header({
   }[wsStatus];
 
   const hfLabel = hfAuth === "ready"
-    ? (hfUsername ?? "연결됨")
+    ? (hfUsername ?? "Connected")
     : hfAuth === "missing_token"
-      ? "토큰 없음"
+      ? "No Token"
       : hfAuth === "expired_token"
-        ? "만료됨"
-      : "무효";
+        ? "Expired"
+      : "Invalid";
 
   const hfTitle = hfAuth === "ready"
-    ? (hfUsername ? `Hugging Face 계정 연결됨: ${hfUsername}` : "Hugging Face 토큰이 정상 연결되어 있습니다")
+    ? (hfUsername ? `Hugging Face Account Connected: ${hfUsername}` : "Hugging Face token is properly connected")
     : hfAuth === "missing_token"
-      ? "Hugging Face 토큰이 설정되지 않았습니다"
+      ? "Hugging Face token is not configured"
       : hfAuth === "expired_token"
-        ? "Hugging Face 토큰이 만료되었습니다"
-      : "Hugging Face 토큰이 유효하지 않습니다";
+        ? "Hugging Face token has expired"
+      : "Hugging Face token is invalid";
 
   return (
     <header className="h-11 flex-none flex items-center gap-2 px-3 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 z-50">
@@ -876,7 +839,7 @@ function Header({
                     rel="noopener noreferrer"
                     className="text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors whitespace-nowrap flex-none"
                   >
-                    토큰 발급 →
+                    Get Token →
                   </a>
                 )}
               </div>
@@ -887,7 +850,7 @@ function Header({
                 <>
                   <div className="flex items-center gap-2">
                     <span className="size-2 rounded-full bg-emerald-400 flex-none" />
-                    <span className="text-sm text-zinc-700 dark:text-zinc-200">{hfUsername ?? "연결됨"}</span>
+                    <span className="text-sm text-zinc-700 dark:text-zinc-200">{hfUsername ?? "Connected"}</span>
                   </div>
                   <button
                     onClick={async () => {
@@ -895,9 +858,9 @@ function Header({
                       try {
                         await apiDelete<{ ok?: boolean }>("/api/hf/token");
                         await refreshHfAuth();
-                        addToast("HF 토큰이 삭제되었습니다.", "success");
+                        addToast("HF token deleted.", "success");
                       } catch {
-                        addToast("HF 토큰 삭제에 실패했습니다.", "error");
+                        addToast("Failed to delete HF token.", "error");
                       } finally {
                         setDeletingHfToken(false);
                       }
@@ -905,7 +868,7 @@ function Header({
                     disabled={deletingHfToken}
                     className="w-full px-2.5 py-1.5 rounded border border-red-500/30 bg-red-500/5 text-sm text-red-600 dark:text-red-400 hover:bg-red-500/10 disabled:opacity-60 disabled:cursor-not-allowed transition-colors cursor-pointer"
                   >
-                    {deletingHfToken ? "삭제 중..." : "토큰 삭제"}
+                    {deletingHfToken ? "Deleting..." : "Delete Token"}
                   </button>
                 </>
               ) : (
@@ -923,13 +886,13 @@ function Header({
                           if (result?.ok) {
                             setHfTokenInput("");
                             await refreshHfAuth();
-                            addToast("HF 토큰이 저장되었습니다.", "success");
+                            addToast("HF token saved.", "success");
                             setHfPopoverOpen(false);
                           } else {
-                            addToast(result?.error ?? "HF 토큰 저장에 실패했습니다.", "error");
+                            addToast(result?.error ?? "Failed to save HF token.", "error");
                           }
                         }).catch(() => {
-                          addToast("HF 토큰 저장에 실패했습니다.", "error");
+                          addToast("Failed to save HF token.", "error");
                         }).finally(() => {
                           setSavingHfToken(false);
                         });
@@ -941,20 +904,20 @@ function Header({
                   <button
                     onClick={async () => {
                       const token = hfTokenInput.trim();
-                      if (!token) { addToast("HF 토큰을 입력하세요.", "error"); return; }
+                      if (!token) { addToast("Enter HF token.", "error"); return; }
                       setSavingHfToken(true);
                       try {
                         const result = await apiPost<{ ok?: boolean; error?: string }>("/api/hf/token", { token });
                         if (result?.ok) {
                           setHfTokenInput("");
                           await refreshHfAuth();
-                          addToast("HF 토큰이 저장되었습니다.", "success");
+                          addToast("HF token saved.", "success");
                           setHfPopoverOpen(false);
                         } else {
-                          addToast(result?.error ?? "HF 토큰 저장에 실패했습니다.", "error");
+                          addToast(result?.error ?? "Failed to save HF token.", "error");
                         }
                       } catch {
-                        addToast("HF 토큰 저장에 실패했습니다.", "error");
+                        addToast("Failed to save HF token.", "error");
                       } finally {
                         setSavingHfToken(false);
                       }
@@ -962,7 +925,7 @@ function Header({
                     disabled={savingHfToken || !hfTokenInput.trim()}
                     className="w-full px-2.5 py-1.5 rounded border border-zinc-300 dark:border-zinc-600 bg-zinc-100 dark:bg-zinc-800 text-sm text-zinc-700 dark:text-zinc-200 hover:bg-zinc-200 dark:hover:bg-zinc-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors cursor-pointer"
                   >
-                    {savingHfToken ? "저장 중..." : "토큰 저장"}
+                    {savingHfToken ? "Saving..." : "Save Token"}
                   </button>
                 </>
               )}

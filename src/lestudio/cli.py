@@ -154,7 +154,7 @@ def command_serve(args):
         session_token=token,
     )
 
-    print(f"\U0001f916  LeStudio v{_version()}")
+    print(f"LeStudio v{_version()}")
     print(f"    lerobot: {lerobot_src}")
     print(f"    config:  {config_dir}")
     print(f"    Open (Local):   http://localhost:{args.port}")

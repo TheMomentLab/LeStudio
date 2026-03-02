@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
-import { RefreshCw, Camera, X } from "lucide-react";
+import { Camera, X, AlertCircle } from "lucide-react";
 import { apiGet, apiPost } from "../services/apiClient";
 import {
-  PageHeader, StatusBadge, WireBox, WireSelect,
+  PageHeader, StatusBadge, WireBox, WireSelect, EmptyState, RefreshButton,
 } from "../components/wireframe";
 import { toVideoName } from "../hooks/useCameraFeeds";
 
@@ -74,18 +74,18 @@ function labelForRole(role: string): string {
   return ROLE_LABELS[role] ?? role;
 }
 
-/** 기술적 에러 메시지를 사용자 친화적 한국어로 변환 */
+/** Convert technical error messages to user-friendly English */
 function friendlyError(raw: string): string {
   if (/unexpected end of json/i.test(raw) || /json\.parse/i.test(raw) || /failed to execute.*json/i.test(raw))
-    return "서버 응답을 처리할 수 없습니다. 백엔드가 실행 중인지 확인해주세요.";
+    return "Unable to process server response. Please check if the backend is running.";
   if (/failed to fetch/i.test(raw) || /network/i.test(raw) || /ECONNREFUSED/i.test(raw))
-    return "서버에 연결할 수 없습니다. 네트워크 상태를 확인해주세요.";
+    return "Cannot connect to server. Please check your network connection.";
   if (/timeout/i.test(raw))
-    return "서버 응답 시간이 초과되었습니다. 잠시 후 다시 시도해주세요.";
+    return "Server response timeout. Please try again later.";
   if (/404/i.test(raw))
-    return "요청한 API를 찾을 수 없습니다. 백엔드 버전을 확인해주세요.";
+    return "Requested API not found. Please check the backend version.";
   if (/500|internal server/i.test(raw))
-    return "서버 내부 오류가 발생했습니다. 백엔드 로그를 확인해주세요.";
+    return "Internal server error. Please check the backend logs.";
   return raw;
 }
 
@@ -173,7 +173,7 @@ export function CameraSetup() {
       if (!result.ok) {
         setError(result.error ?? "failed to apply mapping");
       } else {
-        setSaveMessage("매핑 규칙이 적용되었습니다.");
+        setSaveMessage("Mapping rules applied successfully.");
         await refresh();
       }
     } catch (saveError) {
@@ -192,7 +192,7 @@ export function CameraSetup() {
   return (
     <div className="flex flex-col h-full">
       {/* Top nav bar */}
-      <div className="flex items-center justify-between px-6 py-2 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-sm text-zinc-400">
+      <div className="grid grid-cols-[1fr_auto_1fr] items-center px-6 py-2 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-sm text-zinc-400">
         <Link to="/" className="inline-flex items-center gap-1 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors">
           ← System Status
         </Link>
@@ -203,30 +203,23 @@ export function CameraSetup() {
           <span className="text-zinc-300 dark:text-zinc-600">›</span>
           <Link to="/motor-setup" className="hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors">Motor Setup</Link>
         </div>
-        <Link to="/motor-setup" className="inline-flex items-center gap-1 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors">
+        <Link to="/motor-setup" className="justify-self-end inline-flex items-center gap-1 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors">
           Motor Setup →
         </Link>
       </div>
 
       <div className="flex-1 overflow-y-auto">
         <div className="p-6 flex flex-col gap-4 max-w-[1600px] mx-auto w-full">
-          <div className="flex items-start justify-between">
-            <PageHeader
-              title="Camera Setup"
-              subtitle="카메라 매핑 및 역할 설정"
-            />
-            <button
-              onClick={() => { void refresh(); }}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 text-sm font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all shadow-sm cursor-pointer"
-            >
-              <RefreshCw size={14} className="text-zinc-400" />
-              Refresh
-            </button>
-          </div>
+          <PageHeader
+            title="Camera Setup"
+            subtitle="Camera mapping and role assignment"
+            action={<RefreshButton onClick={() => { void refresh(); }} />}
+          />
 
           {error && (
-            <div className="px-3 py-2 rounded-lg border border-red-500/40 bg-red-500/10 text-sm text-red-700 dark:text-red-300">
-              {error}
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-red-500/30 bg-red-500/5">
+              <AlertCircle size={13} className="text-red-600 dark:text-red-400 flex-none" />
+              <span className="text-sm text-red-600 dark:text-red-400 flex-1">{error}</span>
             </div>
           )}
           {saveMessage && (
@@ -235,32 +228,32 @@ export function CameraSetup() {
             </div>
           )}
 
-          {/* udev 규칙 — 인라인 배지 + 토글 */}
+          {/* udev rules — inline badges + toggle */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <span className="text-sm text-zinc-500">udev 규칙</span>
-              <StatusBadge status={cameraRules.length > 0 ? "ready" : "warning"} label={cameraRules.length > 0 ? "감지됨" : "미적용"} />
+              <span className="text-sm text-zinc-500">udev rules</span>
+              <StatusBadge status={cameraRules.length > 0 ? "ready" : "warning"} label={cameraRules.length > 0 ? "Detected" : "Not applied"} />
               {rulesStatus?.needs_root_for_install && (
-                <StatusBadge status="warning" label="root 필요" />
+                <StatusBadge status="warning" label="Root required" />
               )}
               {rulesStatus?.install_needed && (
-                <StatusBadge status="warning" label="설치 필요" />
+                <StatusBadge status="warning" label="Installation needed" />
               )}
             </div>
             <button
               onClick={() => setUdevOpen(!udevOpen)}
               className="text-sm text-zinc-400 hover:text-zinc-300 cursor-pointer"
             >
-              {udevOpen ? "숨기기" : "상세 보기"}
+              {udevOpen ? "Hide" : "Show details"}
             </button>
           </div>
 
           {udevOpen && (
-            <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 overflow-hidden flex flex-col gap-0">
+            <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden flex flex-col gap-0">
               <table className="w-full text-sm border-collapse">
                 <thead>
                   <tr className="border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/30">
-                    {["Port", "SYMLINK", "MODE", "STATUS"].map((h) => (
+                    {["Port", "Symlink", "Mode", "Status"].map((h) => (
                       <th key={h} className="text-left py-1.5 px-3 text-zinc-400 font-normal">{h}</th>
                     ))}
                   </tr>
@@ -273,22 +266,22 @@ export function CameraSetup() {
                       <td className="py-1.5 px-3 font-mono text-zinc-500">{row.mode ?? "-"}</td>
                       <td className="py-1.5 px-3">
                         <span className={row.exists ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"}>
-                          {row.exists ? "Active" : "Missing"}
+                          {row.exists ? "Active" : "Not applied"}
                         </span>
                       </td>
                     </tr>
                   ))}
                   {cameraRules.length === 0 && (
                     <tr>
-                      <td colSpan={4} className="py-3 px-3 text-sm text-zinc-500">카메라 udev 규칙이 아직 없습니다.</td>
+                      <td colSpan={4} className="py-3 px-3 text-sm text-zinc-500">No camera udev rules yet.</td>
                     </tr>
                   )}
                 </tbody>
               </table>
-              <div className="border-t border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/20 px-3 py-2">
-                <div className="text-xs text-zinc-500 mb-1">rules verify</div>
+              <div className="border-t border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/20 px-3 py-2 flex items-center justify-between">
+                <span className="text-xs text-zinc-500">Rule verification</span>
                 {verifyResults.length === 0 ? (
-                  <div className="text-xs text-zinc-400">검증 결과가 없습니다.</div>
+                  <span className="text-xs text-zinc-400">No verification results.</span>
                 ) : (
                   <div className="flex flex-wrap gap-2">
                     {verifyResults.map((row, idx) => {
@@ -300,7 +293,7 @@ export function CameraSetup() {
                             ? "px-2 py-0.5 rounded border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-xs"
                             : "px-2 py-0.5 rounded border border-amber-500/30 text-amber-600 dark:text-amber-400 text-xs"}
                         >
-                          {(row.role ?? "unknown")}: {ok ? "ok" : "missing"}
+                          {(row.role ?? "unknown")}: {ok ? "OK" : "Not applied"}
                         </span>
                       );
                     })}
@@ -310,21 +303,21 @@ export function CameraSetup() {
             </div>
           )}
 
-          {/* 카메라 리스트 */}
-          <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 overflow-hidden">
+          {/* Camera list */}
+          <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden">
             <div className="px-3 py-2 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
-              <span className="text-sm text-zinc-500">카메라 ({cameras.length})</span>
+              <span className="text-sm text-zinc-500">Cameras ({cameras.length})</span>
               <div className="flex items-center gap-3 text-sm">
                 <span className="flex items-center gap-1">
                   <span className="size-1.5 rounded-full bg-emerald-400" />
-                  <span className="text-zinc-400">{mappedCount} / {cameras.length} 매핑됨</span>
+                  <span className="text-zinc-400">{mappedCount} / {cameras.length} mapped</span>
                 </span>
                 <button
                   onClick={() => { void handleSaveMapping(); }}
                   disabled={saving || loading}
                   className="px-2 py-1 rounded border border-zinc-200 dark:border-zinc-700 text-sm text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-60 cursor-pointer"
                 >
-                  {saving ? "적용 중..." : "매핑 적용"}
+                  {saving ? "Applying..." : "Apply mapping"}
                 </button>
               </div>
             </div>
@@ -334,9 +327,9 @@ export function CameraSetup() {
                 const dimmed = role === "(none)";
                 return (
                 <div key={cam.device}>
-                  {/* 카메라 행 */}
+                  {/* Camera row */}
                   <div className="flex items-center gap-4 px-4 py-3 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors border-b border-zinc-100 dark:border-zinc-800/50 last:border-0">
-                    {/* 카메라 아이콘 — 클릭 시 프리뷰 토글 */}
+                    {/* Camera icon — click to toggle preview */}
                     <div
                       onClick={() => togglePreview(cam.device)}
                       className={`size-12 rounded-lg bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center flex-none cursor-pointer overflow-hidden relative group${dimmed ? " opacity-40" : ""}`}
@@ -348,13 +341,13 @@ export function CameraSetup() {
                       )}
                     </div>
 
-                    {/* 정보 */}
+                    {/* Info */}
                     <div className={`flex-1 min-w-0${dimmed ? " opacity-40" : ""}`}>
                       <div className="text-sm text-zinc-700 dark:text-zinc-300 font-mono truncate">{cam.path}</div>
                       <div className="text-sm text-zinc-400">Port: {cam.kernels ?? "?"} · {cam.model ?? "Unknown"}</div>
                     </div>
 
-                    {/* 역할 선택 */}
+                    {/* Role selection */}
                     <div className="w-44 flex-none">
                       <WireSelect
                         value={labelForRole(role)}
@@ -367,7 +360,7 @@ export function CameraSetup() {
                     </div>
                   </div>
 
-                  {/* 확장 프리뷰 */}
+                  {/* Expanded preview */}
                   {activePreviews[cam.device] && (
                     <div className="px-3 pb-3">
                       <div className="relative rounded border border-zinc-200 dark:border-zinc-700 overflow-hidden bg-zinc-100 dark:bg-zinc-800 max-w-lg mx-auto">
@@ -396,7 +389,11 @@ export function CameraSetup() {
                 );
               })}
               {!loading && cameras.length === 0 && (
-                <div className="px-4 py-6 text-sm text-zinc-500">감지된 카메라가 없습니다. 장치 연결 후 Refresh를 눌러주세요.</div>
+                <EmptyState
+                  icon={<Camera size={28} />}
+                  message="No cameras detected. Connect devices and click Refresh."
+                  messageClassName="max-w-none whitespace-nowrap"
+                />
               )}
             </div>
           </div>

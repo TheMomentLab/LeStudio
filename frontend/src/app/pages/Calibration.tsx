@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Link } from "react-router";
-import { RefreshCw, Trash2, Ruler, AlertTriangle, Play, Bot } from "lucide-react";
+import { Trash2, Ruler, AlertTriangle, Play, Bot } from "lucide-react";
 import {
   PageHeader, Card, SectionHeader, WireSelect, WireInput, FieldRow,
-  ProcessButtons, ModeToggle, StatusBadge, EmptyState, StickyControlBar, BlockerCard
+  ProcessButtons, ModeToggle, StatusBadge, EmptyState, StickyControlBar, BlockerCard, RefreshButton
 } from "../components/wireframe";
 import { apiGet, apiPost, subscribeNonTrainChannel } from "../services/apiClient";
 import { useLeStudioStore } from "../store";
@@ -263,7 +263,7 @@ export function Calibration() {
   };
 
   const handleDeleteFile = async (file: CalibFile) => {
-    if (!window.confirm(`캘리브레이션 파일을 삭제하시겠습니까?\n\n${file.id} (${file.guessed_type})\n\n되돌릴 수 없습니다.`)) return;
+    if (!window.confirm(`Delete calibration file?\n\n${file.id} (${file.guessed_type})\n\nThis cannot be undone.`)) return;
     const res = await apiGet<ActionResponse>(
       `/api/calibrate/file?robot_type=${encodeURIComponent(file.guessed_type)}&robot_id=${encodeURIComponent(file.id)}`
     );
@@ -317,7 +317,7 @@ export function Calibration() {
   return (
     <div className="flex flex-col h-full">
       {/* Top nav bar */}
-      <div className="flex items-center justify-between px-6 py-2 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-sm text-zinc-400">
+      <div className="grid grid-cols-[1fr_auto_1fr] items-center px-6 py-2 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-sm text-zinc-400">
         <Link to="/motor-setup" className="inline-flex items-center gap-1 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors">
           ← Motor Setup
         </Link>
@@ -328,40 +328,34 @@ export function Calibration() {
           <span className="text-zinc-300 dark:text-zinc-600">›</span>
           <Link to="/teleop" className="hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors">Teleop</Link>
         </div>
-        <Link to="/teleop" className="inline-flex items-center gap-1 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors">
-          Teleop →
+        <Link to="/teleop" className="justify-self-end inline-flex items-center gap-1 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors">
+          Teleop ->
         </Link>
       </div>
 
       <div className="flex-1 overflow-y-auto">
         <div className="p-6 flex flex-col gap-4 max-w-[1600px] mx-auto w-full">
-          <div className="flex items-start justify-between">
-            <PageHeader
-              title="Calibration"
-              subtitle="관절 범위 측정 → 캘리브레이션 파일 생성"
-              status={running ? "running" : "ready"}
-            />
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => { void loadDevices(); void refreshFiles(); }}
-                className="flex items-center gap-1.5 text-sm text-zinc-400 hover:text-zinc-300 cursor-pointer"
-              >
-                <RefreshCw size={12} /> 새로고침
-              </button>
-              <ModeToggle options={["Single Arm", "Bi-Arm"]} value={mode} onChange={setMode} />
-            </div>
-          </div>
+          <PageHeader
+            title="Calibration"
+            subtitle="Measure joint ranges - Generate calibration file",
+            action={
+              <div className="flex items-center gap-3">
+                <ModeToggle options={["Single Arm", "Bi-Arm"]} value={mode} onChange={setMode} />
+                <RefreshButton onClick={() => { void loadDevices(); void refreshFiles(); }} />
+              </div>
+            }
+          />
 
           {/* Blockers */}
           {!running && conflictRunning.length > 0 && (
             <BlockerCard
-              title="캘리브레이션 차단"
+              title="Calibration blocked",
               severity="error"
-              reasons={conflictRunning.map((p) => `${p} 프로세스가 실행 중입니다`)}
+              reasons={conflictRunning.map((p) => `${p} process is running`)}
             />
           )}
           {!running && arms.length === 0 && (
-            <BlockerCard title="캘리브레이션 차단" reasons={["감지된 팔이 없습니다. USB 연결 후 새로고침하세요."]} />
+            <BlockerCard title="Calibration blocked" reasons={["No arms detected. Connect USB and refresh."]} />
           )}
 
           <div className="flex flex-col gap-6">
@@ -369,11 +363,11 @@ export function Calibration() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
               {/* Config Card */}
-              <Card title={isBiArm ? "Step 1 — Bi-Arm 설정" : "Step 1 — Single Arm 설정"}>
+              <Card title={isBiArm ? "Step 1 — Bi-Arm Setup" : "Step 1 — Single Arm Setup"}>
                 <div className="flex flex-col gap-3">
                   {isBiArm ? (
                     <>
-                      <FieldRow label="디바이스 타입">
+                      <FieldRow label="Arm role type">
                         <WireSelect
                           value={biType}
                           options={["bi_so_follower", "bi_so_leader"]}
@@ -383,48 +377,48 @@ export function Calibration() {
                           }}
                         />
                       </FieldRow>
-                      <FieldRow label="팔 ID">
-                        <WireInput value={biId} onChange={setBiId} placeholder="예: bimanual_follower" />
-                      </FieldRow>
-                      <FieldRow label="Left Arm Port">
+                      <FieldRow label="Left arm port">
                         <WireSelect
                           value={biLeftPort}
                           options={armPortOptions}
                           onChange={setBiLeftPort}
                         />
                       </FieldRow>
-                      <FieldRow label="Right Arm Port">
+                      <FieldRow label="Right arm port">
                         <WireSelect
                           value={biRightPort}
                           options={armPortOptions}
                           onChange={setBiRightPort}
                         />
                       </FieldRow>
-                      <p className="text-sm text-zinc-400">Both arms are calibrated sequentially in a single run.</p>
+                      <FieldRow label="Arm ID">
+                        <WireInput value={biId} onChange={setBiId} placeholder="e.g. bimanual_follower" />
+                      </FieldRow>
+                      <p className="text-sm text-zinc-400">Calibrate both arms sequentially.</p>
                     </>
                   ) : (
                     <>
                       {typeMismatch && (
                         <div className="flex items-center gap-1.5 text-sm text-amber-600 dark:text-amber-400 px-1">
                           <AlertTriangle size={12} className="flex-none" />
-                          타입과 포트가 일치하지 않습니다
+                          Type and port do not match
                         </div>
                       )}
-                      <FieldRow label="팔 역할 타입">
+                      <FieldRow label="Arm role type">
                         <WireSelect
                           value={armType}
                           options={armTypes.filter((t) => !t.startsWith("bi_"))}
                           onChange={setArmType}
                         />
                       </FieldRow>
-                      <FieldRow label="팔 포트">
+                      <FieldRow label="Arm port">
                         <WireSelect
                           value={port}
                           options={armPortOptions}
                           onChange={setPort}
                         />
                       </FieldRow>
-                      <FieldRow label="팔 ID">
+                      <FieldRow label="Arm ID">
                         <WireSelect value={armId} options={armIdOptions} onChange={setArmId} />
                       </FieldRow>
 
@@ -457,7 +451,7 @@ export function Calibration() {
 
               {/* Files Card */}
               <Card
-                title="기존 캘리브레이션 파일"
+                title="Existing calibration files",
                 action={
                   <div className="flex items-center gap-2">
                     <WireSelect
@@ -473,7 +467,7 @@ export function Calibration() {
               >
                 <div className="flex flex-col gap-1">
                   {filteredFiles.length === 0 ? (
-                    <p className="text-sm text-zinc-500 py-2">캘리브레이션 파일이 없습니다.</p>
+                    <p className="text-sm text-zinc-500 py-2">No calibration files.</p>
                   ) : filteredFiles.map((f) => (
                     <div
                       key={`${f.id}-${f.guessed_type}`}
@@ -486,7 +480,7 @@ export function Calibration() {
                     >
                       <span
                         className={`size-1.5 rounded-full flex-none ${fileHasMatchingArm(f, arms) ? "bg-emerald-400" : "bg-zinc-400"}`}
-                        title={fileHasMatchingArm(f, arms) ? "현재 연결된 팔과 매칭" : "매칭 안 됨"}
+                        title={fileHasMatchingArm(f, arms) ? "Matches connected arm" : "No match"}
                       />
                       <div className="flex-1 min-w-0">
                         <div className="text-sm text-zinc-700 dark:text-zinc-300 truncate">{f.id}</div>
@@ -506,11 +500,11 @@ export function Calibration() {
 
             {/* Connected Arms */}
             {arms.length > 0 && (
-              <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 overflow-hidden">
+              <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden">
                 <div className="px-3 py-2 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800 flex items-center">
-                  <span className="text-sm text-zinc-500">연결된 팔 ({arms.length})</span>
+                  <span className="text-sm text-zinc-500">Connected arms ({arms.length})</span>
                 </div>
-                <div className="divide-y divide-zinc-100 dark:divide-zinc-700">
+                <div className="divide-y divide-zinc-100 dark:divide-zinc-800/50">
                   {arms.map((arm, i) => (
                     <div key={arm.device} className="flex items-center gap-3 px-3 py-2">
                       <div className="size-7 rounded bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center">
@@ -529,7 +523,7 @@ export function Calibration() {
 
             {/* Live Motor Ranges */}
             <Card
-              title="실시간 모터 범위 시각화"
+              title="Live motor range visualization",
               badge={running ? <StatusBadge status="running" label="LIVE" pulse /> : undefined}
             >
               {running && motorRows.length > 0 ? (
@@ -541,7 +535,7 @@ export function Calibration() {
               ) : (
                 <EmptyState
                   icon={<Ruler size={28} />}
-                  message={running ? "모터 범위 데이터 수신 대기 중…" : "Start Calibration을 누르면 실시간 범위가 표시됩니다."}
+                  message={running ? "Waiting for motor range data…" : "Press Start Calibration to see live ranges."}
                 />
               )}
             </Card>
@@ -559,7 +553,7 @@ export function Calibration() {
           />
           {fileStatus === "found" && !running && (
             <span className="text-sm text-zinc-400">
-              캘리브레이션 파일 있음 · <Link to="/teleop" className="text-emerald-500 hover:underline">Teleop으로 →</Link>
+              Calibration file found · <Link to="/teleop" className="text-emerald-500 hover:underline">Go to Teleop -&gt;</Link>
             </span>
           )}
         </div>

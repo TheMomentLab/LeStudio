@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 import {
   PageHeader, StatusBadge, FieldRow,
-  ProcessButtons, StickyControlBar, BlockerCard
+  ProcessButtons, StickyControlBar, BlockerCard, RefreshButton
 } from "../components/wireframe";
 import { cn } from "../components/ui/utils";
 import {
@@ -335,7 +335,7 @@ export function Evaluation() {
   return (
     <div className="flex flex-col h-full">
       {/* Top nav bar */}
-      <div className="flex items-center justify-between px-6 py-2 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-sm text-zinc-400">
+      <div className="grid grid-cols-[1fr_auto_1fr] items-center px-6 py-2 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-sm text-zinc-400">
         <Link to="/training" className="inline-flex items-center gap-1 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors">
           ← Training
         </Link>
@@ -344,7 +344,7 @@ export function Evaluation() {
           <span className="text-zinc-300 dark:text-zinc-600">›</span>
           <span className="text-zinc-700 dark:text-zinc-200 font-medium">Evaluation</span>
         </div>
-        <div />
+        <div className="justify-self-end" />
       </div>
 
       <div className="flex-1 overflow-y-auto">
@@ -353,7 +353,8 @@ export function Evaluation() {
           {/* Header */}
           <PageHeader
             title="Policy Evaluation"
-            subtitle="학습된 AI 정책을 실제 로봇 또는 시뮬레이션 환경에서 평가합니다"
+            subtitle="Evaluate trained AI policies on real robots or simulated environments"
+            action={<RefreshButton onClick={() => { void refreshPreflight(); }} />}
           />
 
 
@@ -362,7 +363,7 @@ export function Evaluation() {
             <div className="flex items-center gap-3 px-4 py-3 rounded-lg border border-amber-500/30 bg-amber-500/5">
               <AlertTriangle size={16} className="text-amber-600 dark:text-amber-400 flex-none" />
               <div className="flex-1">
-                <span className="text-sm text-amber-600 dark:text-amber-400 font-medium">환경 플러그인 필요</span>
+                <span className="text-sm text-amber-600 dark:text-amber-400 font-medium">Environment plugin required</span>
                 <span className="text-sm text-zinc-400 ml-2">{gymModuleName}</span>
               </div>
               <button
@@ -380,9 +381,9 @@ export function Evaluation() {
             <div className="flex flex-col gap-4">
 
               {/* Eval Config — right wide */}
-              <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 overflow-hidden">
+              <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden">
                 <div className="px-3 py-2 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800 flex items-center">
-                  <span className="text-sm font-medium text-zinc-600 dark:text-zinc-300">평가 설정</span>
+                  <span className="text-sm font-medium text-zinc-600 dark:text-zinc-300">Evaluation Settings</span>
                 </div>
                 <div className="p-4 flex flex-col gap-4">
 
@@ -390,15 +391,15 @@ export function Evaluation() {
                   <div>
                     <div className="text-sm text-zinc-500 mb-1.5">Policy Source</div>
                     <div className="flex flex-col md:flex-row md:items-center gap-2">
-                      <div className="flex gap-1 bg-zinc-100 dark:bg-zinc-800/50 p-1 rounded-lg w-fit flex-none">
+                      <div className="flex gap-1 bg-zinc-100 dark:bg-zinc-800/50 p-0.5 rounded-lg w-fit flex-none">
                         <button
                           onClick={() => setPolicySource("local")}
-                          className={cn("flex items-center gap-1.5 px-3.5 py-1.5 rounded-md text-sm font-medium transition-all cursor-pointer", policySource === "local" ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-sm" : "text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300")}
+                          className={cn("flex items-center gap-1.5 px-3.5 py-1 rounded-md text-sm font-medium transition-all cursor-pointer", policySource === "local" ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-sm" : "text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300")}
                         >Local</button>
                         <button
                           onClick={() => setPolicySource("hf")}
                           title="Hugging Face"
-                          className={cn("flex items-center gap-1.5 px-3.5 py-1.5 rounded-md text-sm font-medium transition-all cursor-pointer", policySource === "hf" ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-sm" : "text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300")}
+                          className={cn("flex items-center gap-1.5 px-3.5 py-1 rounded-md text-sm font-medium transition-all cursor-pointer", policySource === "hf" ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-sm" : "text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300")}
                         >HF</button>
                       </div>
                       <div className="flex-1 min-w-0">
@@ -447,7 +448,7 @@ export function Evaluation() {
                       {!preflightOk && <div className="text-sm text-amber-600 dark:text-amber-400 mt-1">{preflightReason}</div>}
                     </div>
                     <div>
-                      <div className="text-sm text-zinc-500 mb-1.5">에피소드 수</div>
+                      <div className="text-sm text-zinc-500 mb-1.5">Number of Episodes</div>
                       <input
                         type="number"
                         value={numEpisodes}
@@ -473,12 +474,12 @@ export function Evaluation() {
                       <div className="text-sm text-zinc-500 mb-1.5">
                         Env Type
                         {envTypeFromCheckpoint && <span className="text-xs text-emerald-600 dark:text-emerald-400 ml-1.5">from checkpoint</span>}
-                        {envTypeMissing && <span className="text-xs text-red-500 ml-1.5">(required)</span>}
+                        {envTypeMissing && <span className="text-xs text-zinc-400 ml-1.5">(required)</span>}
                       </div>
                       <select
                         value={envType}
                         onChange={(e) => updateConfig({ eval_env_type: e.target.value })}
-                        className={cn("w-full h-7 px-2 rounded border bg-white dark:bg-zinc-800/50 text-zinc-700 dark:text-zinc-300 text-sm outline-none cursor-pointer focus:border-blue-500 dark:focus:border-blue-400", envTypeMissing ? "border-red-400" : "border-zinc-200 dark:border-zinc-700")}
+                        className="w-full h-7 px-2 rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-700 dark:text-zinc-300 text-sm outline-none cursor-pointer focus:border-blue-500 dark:focus:border-blue-400"
                       >
                         <option value="">— Select env type —</option>
                         {envTypes.map((et) => (
@@ -492,14 +493,14 @@ export function Evaluation() {
                       <div className="text-sm text-zinc-500 mb-1.5">
                         Task
                         {envTaskFromCheckpoint && <span className="text-xs text-emerald-600 dark:text-emerald-400 ml-1.5">from checkpoint</span>}
-                        {envTaskMissing && <span className="text-xs text-red-500 ml-1.5">(required)</span>}
+                        {envTaskMissing && <span className="text-xs text-zinc-400 ml-1.5">(required)</span>}
                       </div>
                       <input
                         type="text"
                         value={task}
                         placeholder="e.g. Pick up the block"
                         onChange={(e) => updateConfig({ eval_task: e.target.value })}
-                        className={cn("w-full h-7 px-2 rounded border bg-white dark:bg-zinc-800/50 text-zinc-700 dark:text-zinc-300 text-sm outline-none focus:border-blue-500 dark:focus:border-blue-400", envTaskMissing ? "border-red-400" : "border-zinc-200 dark:border-zinc-700")}
+                        className="w-full h-7 px-2 rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-700 dark:text-zinc-300 text-sm outline-none focus:border-blue-500 dark:focus:border-blue-400"
                       />
                     </div>
                   </div>
@@ -510,16 +511,16 @@ export function Evaluation() {
                     className="flex items-center gap-1.5 text-sm text-zinc-400 hover:text-zinc-500 dark:hover:text-zinc-300 transition-colors cursor-pointer w-fit"
                   >
                     {advOpen ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
-                    고급 설정
+                    Advanced Settings
                   </button>
                   {advOpen && (
                     <div className="pl-3 border-l-2 border-zinc-100 dark:border-zinc-800">
-                      <div className="text-sm text-zinc-500 mb-1.5">Dataset Override <span className="text-zinc-600">(선택)</span></div>
+                      <div className="text-sm text-zinc-500 mb-1.5">Dataset Override <span className="text-zinc-600">(optional)</span></div>
                       <input
                         type="text"
                         value={datasetOverride}
                         onChange={(e) => setDatasetOverride(e.target.value)}
-                        placeholder="다른 dataset repo로 override"
+                        placeholder="Override with different dataset repo"
                         className="w-full h-7 px-2 rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-700 dark:text-zinc-300 text-sm outline-none placeholder:text-zinc-500 focus:border-blue-500 dark:focus:border-blue-400"
                       />
                     </div>
@@ -534,9 +535,9 @@ export function Evaluation() {
                       >
                         <div className="flex items-center gap-2">
                           <Video size={12} className="text-emerald-600 dark:text-emerald-400" />
-                          <span className="text-sm font-medium text-zinc-600 dark:text-zinc-300">카메라 매핑</span>
+                          <span className="text-sm font-medium text-zinc-600 dark:text-zinc-300">Camera Mapping</span>
                           <span className="text-xs text-zinc-400">
-                            {Object.values(cameraMapping).filter(Boolean).length}/{imageKeysFromCheckpoint.length} 매핑됨
+                            {Object.values(cameraMapping).filter(Boolean).length}/{imageKeysFromCheckpoint.length} mapped
                           </span>
                         </div>
                         {cameraConfigOpen ? <ChevronUp size={10} className="text-zinc-500" /> : <ChevronDown size={10} className="text-zinc-500" />}
@@ -544,11 +545,11 @@ export function Evaluation() {
                       {cameraConfigOpen && (
                         <div className="flex flex-col gap-2">
                           <p className="text-sm text-zinc-400">
-                            Policy의 image key를 실제 카메라에 매핑합니다.
+                            Map policy image keys to actual cameras.
                           </p>
                           {mappedCamEntries.length === 0 && (
                             <p className="text-sm text-amber-600 dark:text-amber-400">
-                              매핑된 카메라가 없습니다. Device Setup에서 카메라를 먼저 설정하세요.
+                              No mapped cameras. Set up cameras in Device Setup first.
                             </p>
                           )}
                           {imageKeysFromCheckpoint.map((key) => (
@@ -561,7 +562,7 @@ export function Evaluation() {
                                 onChange={(e) => setCameraMapping((prev) => ({ ...prev, [key]: e.target.value }))}
                                 className="w-full h-7 px-2 rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-700 dark:text-zinc-300 text-sm outline-none cursor-pointer focus:border-blue-500 dark:focus:border-blue-400"
                               >
-                                <option value="">— 선택 —</option>
+                                <option value="">— Select —</option>
                                 {mappedCamEntries.map(([sym, path]) => (
                                   <option key={sym} value={sym}>{sym} ({path})</option>
                                 ))}
@@ -570,7 +571,7 @@ export function Evaluation() {
                           ))}
                           {Object.values(cameraMapping).some((v) => !v) && (
                             <p className="text-sm text-amber-600 dark:text-amber-400">
-                              ⚠ 매핑되지 않은 카메라가 있습니다. 평가 실행 시 오류가 발생할 수 있습니다.
+                              ⚠ Unmapped cameras detected. Evaluation may fail.
                             </p>
                           )}
                         </div>
@@ -588,7 +589,7 @@ export function Evaluation() {
             <div className="flex-1 flex flex-col items-center justify-center py-16 gap-6">
               <Loader2 size={32} className="text-zinc-400 animate-spin" />
               <div className="flex flex-col items-center gap-2">
-                <span className="text-sm text-zinc-500">평가를 시작하고 있습니다...</span>
+                <span className="text-sm text-zinc-500">Starting evaluation...</span>
                 <p className="text-sm text-zinc-400">
                   {selectedEnv?.label ?? envType} · {numEpisodes} episodes · {policyPath.split("/").pop() || policyPath}
                 </p>
@@ -601,9 +602,9 @@ export function Evaluation() {
             <div className="flex flex-col gap-4">
 
               {/* Progress */}
-              <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 overflow-hidden">
+              <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden">
                 <div className="px-3 py-2 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
-                  <span className="text-sm font-medium text-zinc-600 dark:text-zinc-300">평가 진행</span>
+                  <span className="text-sm font-medium text-zinc-600 dark:text-zinc-300">Evaluation Progress</span>
                   <StatusBadge status="running" label="RUNNING" pulse />
                 </div>
                 <div className="p-4 flex flex-col gap-4">
@@ -656,9 +657,9 @@ export function Evaluation() {
 
               {/* Reward Chart (live) */}
               {episodeResults.length > 0 && (
-                <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 overflow-hidden">
+                <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden">
                   <div className="px-3 py-2 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800 flex items-center">
-                    <span className="text-sm font-medium text-zinc-600 dark:text-zinc-300">에피소드별 Reward</span>
+                    <span className="text-sm font-medium text-zinc-600 dark:text-zinc-300">Reward per Episode</span>
                   </div>
                   <div className="h-56 p-3">
                     <ResponsiveContainer width="100%" height="100%">
@@ -705,7 +706,7 @@ export function Evaluation() {
                     progressStatus === "stopped" ? "text-zinc-500" :
                     "text-emerald-600 dark:text-emerald-400",
                   )}>
-                    {progressStatus === "error" ? "평가 오류" : progressStatus === "stopped" ? "평가 중단" : "평가 완료"}
+                    {progressStatus === "error" ? "Evaluation Error" : progressStatus === "stopped" ? "Evaluation Stopped" : "Evaluation Complete"}
                   </span>
                   <span className="text-sm text-zinc-400 ml-3">
                     {selectedEnv?.label ?? envType} · {doneEpisodes} episodes
@@ -751,12 +752,12 @@ export function Evaluation() {
               {episodeResults.length > 0 && (
                 <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 overflow-hidden">
                   <div className="px-3 py-2 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
-                    <span className="text-sm font-medium text-zinc-600 dark:text-zinc-300">에피소드별 Reward</span>
+                    <span className="text-sm font-medium text-zinc-600 dark:text-zinc-300">Reward per Episode</span>
                     <div className="flex items-center gap-4">
                       <div className="flex items-center gap-1.5"><span className="size-2 rounded-sm bg-emerald-500" /><span className="text-sm text-zinc-500">≥ 0.7</span></div>
                       <div className="flex items-center gap-1.5"><span className="size-2 rounded-sm bg-amber-500" /><span className="text-sm text-zinc-500">0.5–0.7</span></div>
                       <div className="flex items-center gap-1.5"><span className="size-2 rounded-sm bg-red-500" /><span className="text-sm text-zinc-500">&lt; 0.5</span></div>
-                      <span className="text-sm text-zinc-600">— 0.6 기준선</span>
+                      <span className="text-sm text-zinc-600">— 0.6 baseline</span>
                     </div>
                   </div>
                   <div className="h-56 p-3">
@@ -782,7 +783,7 @@ export function Evaluation() {
               {episodeResults.length > 0 && (
                 <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 overflow-hidden">
                   <div className="px-3 py-2 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800 flex items-center">
-                    <span className="text-sm font-medium text-zinc-600 dark:text-zinc-300">에피소드 상세 ({episodeResults.length})</span>
+                    <span className="text-sm font-medium text-zinc-600 dark:text-zinc-300">Episode Details ({episodeResults.length})</span>
                   </div>
                   <div className="divide-y divide-zinc-100 dark:divide-zinc-800/50 max-h-52 overflow-y-auto">
                     {episodeResults.map((r) => (
@@ -827,25 +828,25 @@ export function Evaluation() {
                   onClick={() => { void startEval(3); }}
                   className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-emerald-500/40 text-sm text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/20 transition-colors cursor-pointer"
                 >
-                  <RotateCcw size={12} /> 빠른 재실행 (3 ep)
+                  <RotateCcw size={12} /> Quick Rerun (3 ep)
                 </button>
                 <button
                   onClick={() => { setProgressStatus("idle"); }}
                   className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 text-sm text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
                 >
-                  <RotateCcw size={12} /> 새 평가 시작
+                  <RotateCcw size={12} /> Start New Evaluation
                 </button>
                 <Link
                   to="/training"
                   className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 text-sm text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
                 >
-                  <ArrowRight size={12} /> Train으로 이동
+                  <ArrowRight size={12} /> Go to Training
                 </Link>
                 <Link
                   to="/recording"
                   className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 text-sm text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
                 >
-                  <ArrowRight size={12} /> 새 데이터 녹화
+                  <ArrowRight size={12} /> Record New Data
                 </Link>
               </div>
             </div>

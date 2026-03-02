@@ -169,7 +169,7 @@ let storeState: LeStudioStoreState = {
   toasts: [],
   sidebarSignals: DEFAULT_SIDEBAR_SIGNALS,
   mobileSidebarOpen: false,
-  consoleHeight: 170,
+  consoleHeight: 120,
   ...actions,
 };
 
@@ -201,7 +201,7 @@ export function resetLeStudioState(overrides?: Partial<LeStudioConfig>): void {
     toasts: [],
     sidebarSignals: DEFAULT_SIDEBAR_SIGNALS,
     mobileSidebarOpen: false,
-    consoleHeight: 170,
+    consoleHeight: 120,
     ...actions,
   };
   notifyListeners();

@@ -2,9 +2,9 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { Link } from "react-router";
 import {
   PageHeader, Card, StatusBadge, WireSelect, WireInput, FieldRow,
-  ProcessButtons, WireToggle, ModeToggle, EmptyState, BlockerCard
+  ProcessButtons, WireToggle, ModeToggle, EmptyState, BlockerCard, RefreshButton
 } from "../components/wireframe";
-import { AlertCircle, AlertTriangle, Bot, Zap, RefreshCw, Ruler, Play, Check, Circle, Loader2, CornerDownLeft, RotateCcw } from "lucide-react";
+import { AlertCircle, AlertTriangle, Bot, Zap, Ruler, Play, Check, Circle, Loader2, CornerDownLeft, RotateCcw } from "lucide-react";
 import { cn } from "../components/ui/utils";
 import { apiDelete, apiGet, apiPost } from "../services/apiClient";
 import { useLeStudioStore } from "../store";
@@ -246,14 +246,14 @@ export function MotorSetup() {
   // ── Calibration (mock UI only — real API in Calibration page) ────────────
   const [calibMode, setCalibMode] = useState("Single Arm");
   const [calibArmType, setCalibArmType] = useState("so101_follower");
-  const [calibPort, setCalibPort] = useState("/dev/lerobot/follower_arm");
-  const [calibArmId, setCalibArmId] = useState("follower_arm_1");
+  const [calibPort, setCalibPort] = useState("");
+  const [calibArmId, setCalibArmId] = useState("");
   const [calibBiType, setCalibBiType] = useState("bi_so_follower");
   const [calibBiId, setCalibBiId] = useState("bimanual_follower");
-  const [calibBiLeftPort, setCalibBiLeftPort] = useState("/dev/follower_arm_1");
-  const [calibBiRightPort, setCalibBiRightPort] = useState("/dev/follower_arm_2");
+  const [calibBiLeftPort, setCalibBiLeftPort] = useState("");
+  const [calibBiRightPort, setCalibBiRightPort] = useState("");
   const [calibFiles, setCalibFiles] = useState<CalibrationFileItem[]>([]);
-  const [calibFileMeta, setCalibFileMeta] = useState<string>("파일 상태를 확인하세요.");
+  const [calibFileMeta, setCalibFileMeta] = useState<string>("Check file status.");
 
   // ── Setup Wizard ──────────────────────────────────────────────────────────
   const [wizardRunning, setWizardRunning] = useState(false);
@@ -273,7 +273,7 @@ export function MotorSetup() {
   // ── UI state ──────────────────────────────────────────────────────────────
   const [motorTab, setMotorTab] = useState("identify");
   const [identifyStep, setIdentifyStep] = useState<"idle" | "waiting" | "found" | "conflict">("idle");
-  const [identifyRole, setIdentifyRole] = useState("(없음)");
+  const [identifyRole, setIdentifyRole] = useState("(none)");
   const [_conflictTarget] = useState("");
   const [noPort, setNoPort] = useState(false);
   const [hasConflict, setHasConflict] = useState(false);
@@ -287,15 +287,21 @@ export function MotorSetup() {
       setArms(nextArms);
 
       // Auto-select port for Setup tab
-      if (nextArms.length > 0 && !setupPort) {
+      if (nextArms.length > 0) {
         const best = nextArms[0];
-        setSetupPort(best.path ?? `/dev/${best.device ?? "ttyUSB0"}`);
-        setMonPort(best.path ?? `/dev/${best.device ?? "ttyUSB0"}`);
+        const bestPort = best.path ?? `/dev/${best.device ?? "ttyUSB0"}`;
+        const second = nextArms[1] ?? nextArms[0];
+        const secondPort = second.path ?? `/dev/${second.device ?? "ttyUSB1"}`;
+        setSetupPort((prev) => prev || bestPort);
+        setMonPort((prev) => prev || bestPort);
+        setCalibPort((prev) => prev || bestPort);
+        setCalibBiLeftPort((prev) => prev || bestPort);
+        setCalibBiRightPort((prev) => prev || secondPort);
       }
     } catch {
       // ignore
     }
-  }, [setupPort]);
+  }, []);
 
   const loadUdevRules = useCallback(async () => {
     try {
@@ -383,13 +389,13 @@ export function MotorSetup() {
   // ─── Motor Monitor handlers ─────────────────────────────────────────────────
 
   const handleMonConnect = async () => {
-    if (!monPort) { setMonError("포트를 먼저 선택하세요."); return; }
+    if (!monPort) { setMonError("Select a port first."); return; }
     setMonConnecting(true);
     setMonError("");
     try {
       const res = await apiPost<MotorConnectResponse>("/api/motor/connect", { port: monPort });
       if (!res.ok) {
-        setMonError(res.error ?? "연결 실패");
+        setMonError(res.error ?? "Connection failed");
         return;
       }
       const ids = res.connected_ids ?? [];
@@ -398,7 +404,7 @@ export function MotorSetup() {
       setMonConnected(true);
       addToast(`Motor monitor connected (${ids.length} motors)`, "success");
     } catch (err) {
-      setMonError(err instanceof Error ? err.message : "연결 실패");
+      setMonError(err instanceof Error ? err.message : "Connection failed");
     } finally {
       setMonConnecting(false);
     }
@@ -501,10 +507,10 @@ export function MotorSetup() {
         const size = typeof res.size === "number" ? `${res.size} bytes` : "";
         setCalibFileMeta(`Found: ${id}.json ${modified || size ? `· ${[modified, size].filter(Boolean).join(" · ")}` : ""}`);
       } else {
-        setCalibFileMeta(`Missing: ${id}.json`);
+        setCalibFileMeta("");
       }
     } catch {
-      setCalibFileMeta("파일 상태를 확인하지 못했습니다.");
+      setCalibFileMeta("Failed to check file status.");
     }
   }, [calibArmId, calibArmType, calibBiId, calibBiType, calibMode]);
 
@@ -568,7 +574,7 @@ export function MotorSetup() {
     const armAssignments: Record<string, string> = {};
     for (const arm of arms) {
       if (!arm.serial) continue;
-      const roleLabel = armRoleMap[arm.device] ?? "(없음)";
+      const roleLabel = armRoleMap[arm.device] ?? "(none)";
       armAssignments[arm.serial] = toArmSymlink(roleLabel);
     }
 
@@ -578,13 +584,13 @@ export function MotorSetup() {
     });
 
     if (!result.ok) {
-      addToast(result.error ?? "팔 매핑 적용에 실패했습니다.", "error");
+      addToast(result.error ?? "Failed to apply arm mapping.", "error");
       setMappingApplied(false);
       return;
     }
 
     setMappingApplied(true);
-    addToast("팔 매핑 규칙이 적용되었습니다.", "success");
+    addToast("Arm mapping rules applied.", "success");
     await loadUdevRules();
   };
 
@@ -603,11 +609,11 @@ export function MotorSetup() {
   const wizardPressEnter = () => {
     if (!wizardRunning) return;
     if (!wizardConnectionConfirmed) {
-      setWizardError("현재 단계 모터만 연결되었는지 먼저 확인해 주세요.");
+      setWizardError("Confirm that only the current motor is connected.");
       return;
     }
     if (!wizardDetectedId.trim()) {
-      setWizardError("감지된 모터 ID를 입력해 주세요.");
+      setWizardError("Enter the detected motor ID.");
       return;
     }
 
@@ -636,7 +642,7 @@ export function MotorSetup() {
     const newState = [...wizardMotorState];
     newState[wizardStep] = "error";
     setWizardMotorState(newState);
-    setWizardError(`'${SETUP_MOTORS[wizardStep].name}' EEPROM 기록에 실패했습니다.`);
+    setWizardError(`Failed to write EEPROM for '${SETUP_MOTORS[wizardStep].name}'.`);
   };
 
   const wizardRetry = () => {
@@ -648,8 +654,8 @@ export function MotorSetup() {
 
   const wizardAllDone = wizardMotorState.every((s) => s === "done");
 
-  const mappedCount = Object.values(armRoleMap).filter((r) => r && r !== "(없음)").length;
-  const ARM_ROLES = ["(없음)", ...arms.map((a) => a.symlink ?? a.device ?? a.path)];
+  const mappedCount = Object.values(armRoleMap).filter((r) => r && r !== "(none)").length;
+  const ARM_ROLES = ["(none)", ...arms.map((a) => a.symlink ?? a.device ?? a.path)];
 
   const monPortLabel = arms.find((a) => a.path === monPort)?.symlink ?? monPort;
 
@@ -663,21 +669,28 @@ export function MotorSetup() {
     const roleMatched = role
       ? calibFiles.filter((f) => (f.guessed_type ?? "").toLowerCase().includes(role))
       : calibFiles;
-    const ids = Array.from(new Set(roleMatched.map((f) => f.id).filter(Boolean)));
+    return Array.from(new Set(roleMatched.map((f) => f.id).filter(Boolean)));
+  }, [calibArmType, calibFiles]);
 
-    if (calibArmId && !ids.includes(calibArmId)) {
-      ids.unshift(calibArmId);
+  const calibPortOptions = useMemo(
+    () => arms.map((a) => a.path ?? `/dev/${a.device}`),
+    [arms]
+  );
+
+  useEffect(() => {
+    if (calibArmIdOptions.length === 0) {
+      if (calibArmId !== "") setCalibArmId("");
+      return;
     }
-    if (ids.length === 0) {
-      ids.push(calibArmId || "follower_arm_1");
+    if (!calibArmIdOptions.includes(calibArmId)) {
+      setCalibArmId(calibArmIdOptions[0]);
     }
-    return ids;
-  }, [calibArmId, calibArmType, calibFiles]);
+  }, [calibArmId, calibArmIdOptions]);
 
   return (
     <div className="flex flex-col h-full">
       {/* Top nav bar */}
-      <div className="flex items-center justify-between px-6 py-2 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-sm text-zinc-400">
+      <div className="grid grid-cols-[1fr_auto_1fr] items-center px-6 py-2 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-sm text-zinc-400">
         <Link to="/camera-setup" className="inline-flex items-center gap-1 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors">
           ← Camera Setup
         </Link>
@@ -688,7 +701,7 @@ export function MotorSetup() {
           <span className="text-zinc-300 dark:text-zinc-600">›</span>
           <Link to="/teleop" className="hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors">Teleop</Link>
         </div>
-        <Link to="/teleop" className="inline-flex items-center gap-1 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors">
+        <Link to="/teleop" className="justify-self-end inline-flex items-center gap-1 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors">
           Teleop →
         </Link>
       </div>
@@ -697,16 +710,19 @@ export function MotorSetup() {
         <div className="p-6 flex flex-col gap-4 max-w-[1600px] mx-auto w-full">
           <PageHeader
             title="Motor Setup"
-            subtitle="팔 매핑, 모터 ID 설정 및 검증"
+            subtitle="Arm mapping, motor ID setup and verification"
             action={
-              <div className="flex items-center gap-2 text-sm text-zinc-400">
-                <span className="hidden sm:inline">Demo:</span>
-                <button onClick={() => setNoPort((v) => !v)} className={`px-2 py-0.5 rounded border cursor-pointer text-sm ${noPort ? "border-amber-500/50 text-amber-400 bg-amber-500/10" : "border-zinc-200 dark:border-zinc-700 text-zinc-500"}`}>
-                  no port
-                </button>
-                <button onClick={() => setHasConflict((v) => !v)} className={`px-2 py-0.5 rounded border cursor-pointer text-sm ${hasConflict ? "border-red-500/50 text-red-400 bg-red-500/10" : "border-zinc-200 dark:border-zinc-700 text-zinc-500"}`}>
-                  conflict
-                </button>
+              <div className="flex items-center gap-2">
+                {import.meta.env.DEV && <div className="flex items-center gap-2 text-sm text-zinc-400">
+                  <span className="hidden sm:inline">Demo:</span>
+                  <button onClick={() => setNoPort((v) => !v)} className={`px-2 py-0.5 rounded border cursor-pointer text-sm ${noPort ? "border-amber-500/50 text-amber-400 bg-amber-500/10" : "border-zinc-200 dark:border-zinc-700 text-zinc-500"}`}>
+                    no port
+                  </button>
+                  <button onClick={() => setHasConflict((v) => !v)} className={`px-2 py-0.5 rounded border cursor-pointer text-sm ${hasConflict ? "border-red-500/50 text-red-400 bg-red-500/10" : "border-zinc-200 dark:border-zinc-700 text-zinc-500"}`}>
+                    conflict
+                  </button>
+                </div>}
+                <RefreshButton onClick={() => { void loadDevices(); void loadUdevRules(); void loadArmTypes(); }} />
               </div>
             }
           />
@@ -714,11 +730,11 @@ export function MotorSetup() {
           <div className="flex flex-col gap-6">
             <div className="flex gap-1 bg-zinc-100 dark:bg-zinc-800/50 p-1 rounded-lg w-fit mx-auto">
               {[
-                { key: "identify", label: "팔 식별" },
-                { key: "mapping", label: "매핑" },
-                { key: "setup", label: "모터 설정" },
-                { key: "monitor", label: "모터 모니터" },
-                { key: "calibration", label: "캘리브레이션" },
+                { key: "identify", label: "Arm Identify" },
+                { key: "mapping", label: "Mapping" },
+                { key: "setup", label: "Motor Setup" },
+                { key: "monitor", label: "Motor Monitor" },
+                { key: "calibration", label: "Calibration" },
               ].map((tab) => (
                 <button
                   key={tab.key}
@@ -738,21 +754,16 @@ export function MotorSetup() {
             {/* udev 규칙 상태 — 공통 */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <span className="text-sm text-zinc-500">udev 규칙</span>
-                <StatusBadge status={armRules.length > 0 ? "ready" : "warning"} label={armRules.length > 0 ? "설치됨" : "미설치"} />
+                <span className="text-sm text-zinc-500">udev rules</span>
+                <StatusBadge status={armRules.length > 0 ? "ready" : "warning"} label={armRules.length > 0 ? "Installed" : "Not installed"} />
               </div>
               <div className="flex items-center gap-3">
-                <button
-                  onClick={() => { void loadDevices(); void loadUdevRules(); }}
-                  className="text-sm text-zinc-400 hover:text-zinc-300 cursor-pointer flex items-center gap-1"
-                >
-                  <RefreshCw size={11} /> 새로고침
-                </button>
+
                 <button
                   onClick={() => setUdevOpen(!udevOpen)}
                   className="text-sm text-zinc-400 hover:text-zinc-300 cursor-pointer"
                 >
-                  {udevOpen ? "숨기기" : "상세 보기"}
+                  {udevOpen ? "Hide" : "Details"}
                 </button>
               </div>
             </div>
@@ -770,7 +781,7 @@ export function MotorSetup() {
                   <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800/50">
                     {armRules.length === 0 ? (
                       <tr>
-                        <td colSpan={4} className="py-3 px-3 text-sm text-zinc-500">팔 udev 규칙이 아직 없습니다.</td>
+                        <td colSpan={4} className="py-3 px-3 text-sm text-zinc-500">No arm udev rules yet.</td>
                       </tr>
                     ) : armRules.map((row) => (
                       <tr key={`${row.kernel ?? "?"}-${row.symlink ?? "?"}`}>
@@ -793,16 +804,17 @@ export function MotorSetup() {
             {motorTab === "identify" && (
               <div className="flex flex-col gap-4">
                 {arms.length === 0 ? (
-                  <Card title={`연결된 팔 (${arms.length})`}>
+                  <Card title={`Connected Arms (${arms.length})`}>
                     <EmptyState
                       icon={<Zap size={28} />}
-                      message="감지된 팔이 없습니다. USB 연결 후 새로고침하세요."
+                      message="No arms detected. Connect USB and refresh."
+                      messageClassName="max-w-none whitespace-nowrap"
                     />
                   </Card>
                 ) : (
-                  <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 overflow-hidden">
+                  <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden">
                     <div className="px-3 py-2 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800 flex items-center">
-                      <span className="text-sm text-zinc-500">연결된 팔 ({arms.length})</span>
+                      <span className="text-sm text-zinc-500">Connected Arms ({arms.length})</span>
                     </div>
                     <div className="divide-y divide-zinc-100 dark:divide-zinc-800/50">
                       {arms.map((arm) => (
@@ -814,14 +826,14 @@ export function MotorSetup() {
                             <div className="text-sm text-zinc-700 dark:text-zinc-300 font-mono truncate">{arm.path}</div>
                             {arm.serial && <div className="text-sm text-zinc-400">S/N: {arm.serial}</div>}
                           </div>
-                          <StatusBadge status={arm.symlink ? "ready" : "warning"} label={arm.symlink ?? "no link"} />
+                          <StatusBadge status={arm.symlink ? "ready" : "warning"} label={arm.symlink ?? "no symlink"} />
                         </div>
                       ))}
                     </div>
 
                     {identifyStep === "idle" && (
                       <div className="px-3 py-2 border-t border-zinc-100 dark:border-zinc-800/50 flex items-center gap-3">
-                        <span className="text-sm text-zinc-500">팔 하나를 USB에서 분리 후 Start를 눌러주세요.</span>
+                        <span className="text-sm text-zinc-500">Disconnect one arm from USB, then click Start.</span>
                         <button
                           onClick={() => setIdentifyStep("waiting")}
                           className="ml-auto px-4 py-2 rounded border border-zinc-200 dark:border-zinc-700 text-sm text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 cursor-pointer whitespace-nowrap"
@@ -838,14 +850,14 @@ export function MotorSetup() {
                   <div className="flex flex-col gap-3">
                     <div className="flex items-center gap-2 px-3 py-2 rounded border border-amber-500/30 bg-amber-500/5">
                       <span className="size-2 rounded-full bg-amber-400 animate-pulse" />
-                      <span className="text-sm text-amber-400">팔을 다시 연결해주세요… 변경 감지 중 (1.5s 폴링)</span>
+                      <span className="text-sm text-amber-400">Reconnect the arm… Detecting changes (1.5s polling)</span>
                     </div>
                     <div className="flex items-center gap-3">
-                      <button onClick={() => setIdentifyStep("found")} className="text-sm text-zinc-400 hover:text-zinc-600 cursor-pointer underline w-fit">
-                        (데모: 감지됨)
-                      </button>
+                      {import.meta.env.DEV && <button onClick={() => setIdentifyStep("found")} className="text-sm text-zinc-400 hover:text-zinc-600 cursor-pointer underline w-fit">
+                        (Demo: detected)
+                      </button>}
                       <button onClick={() => setIdentifyStep("idle")} className="text-sm text-red-400 hover:text-red-500 cursor-pointer w-fit">
-                        취소
+                        Cancel
                       </button>
                     </div>
                   </div>
@@ -854,13 +866,13 @@ export function MotorSetup() {
                 {identifyStep === "found" && (
                   <div className="flex flex-col gap-3">
                     <div className="px-3 py-2.5 rounded border border-emerald-500/30 bg-emerald-500/5">
-                      <p className="text-sm text-emerald-400 mb-1.5">✓ 팔이 감지되었습니다. 아래에서 역할을 할당하세요.</p>
+                      <p className="text-sm text-emerald-400 mb-1.5">✓ Arm detected. Assign a role below.</p>
                     </div>
                     <div className="flex items-center gap-2">
                       <WireSelect value={identifyRole} options={ARM_ROLES} onChange={setIdentifyRole} />
                       <button
-                        onClick={() => { setIdentifyStep("idle"); setIdentifyRole("(없음)"); }}
-                        disabled={identifyRole === "(없음)"}
+                        onClick={() => { setIdentifyStep("idle"); setIdentifyRole("(none)"); }}
+                        disabled={identifyRole === "(none)"}
                         className="px-4 py-2 rounded-lg border border-emerald-500/50 bg-emerald-500/10 text-emerald-400 text-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         Assign
@@ -874,51 +886,66 @@ export function MotorSetup() {
             {/* ─── 매핑 탭 ───────────────────────────────────────────────── */}
             {motorTab === "mapping" && (
               <div className="flex flex-col gap-4">
-                <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 overflow-hidden">
-                  <div className="px-3 py-2 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
-                    <span className="text-sm text-zinc-500">팔 매핑 ({arms.length})</span>
+                <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex flex-col">
+                  <div className="flex items-center justify-between px-4 py-3 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800">
+                    <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Arm Mapping ({arms.length})</span>
+                      </div>
+                    </div>
                     <div className="flex items-center gap-3 text-sm">
                       <span className="flex items-center gap-1">
                         <span className={`size-1.5 rounded-full ${mappedCount === arms.length && arms.length > 0 ? "bg-emerald-400" : "bg-zinc-400"}`} />
-                        <span className="text-zinc-400">{mappedCount} / {arms.length} 완료</span>
+                        <span className="text-zinc-400">{mappedCount} / {arms.length} complete</span>
                       </span>
                     </div>
                   </div>
-                  <div className="divide-y divide-zinc-100 dark:divide-zinc-800/50">
+                  <div className="p-4 flex-1">
                     {arms.length === 0 ? (
-                      <div className="px-4 py-6 text-sm text-zinc-500">감지된 팔이 없습니다.</div>
-                    ) : arms.map((arm) => (
-                      <div key={arm.device} className="flex items-center gap-3 px-3 py-2.5">
-                        <div className="size-7 rounded bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center">
-                          <Bot size={14} className="text-zinc-500" />
+                      <div className="flex flex-col items-center justify-center py-8 gap-3 text-center">
+                        <div className="text-3xl opacity-30">
+                          <Zap size={28} />
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm text-zinc-700 dark:text-zinc-300 font-mono truncate">{arm.path}</div>
-                          {arm.serial && <div className="text-sm text-zinc-400">S/N: {arm.serial}</div>}
-                        </div>
-                        <div className="w-44 flex-none">
-                          <WireSelect
-                            value={armRoleMap[arm.device] ?? "(없음)"}
-                            options={["(없음)", "Follower Arm 1", "Follower Arm 2", "Leader Arm 1", "Leader Arm 2"]}
-                            onChange={(v) => {
-                              setArmRoleMap((prev) => ({ ...prev, [arm.device]: v }));
-                              setMappingApplied(false);
-                            }}
-                          />
-                        </div>
+                        <p className="text-sm text-zinc-400 max-w-none whitespace-nowrap">No arms detected. Connect USB and refresh.</p>
                       </div>
-                    ))}
+                    ) : (
+                      <div className="flex flex-col divide-y divide-zinc-100 dark:divide-zinc-800/50">
+                        {arms.map((arm) => (
+                          <div key={arm.device} className="flex items-center gap-3 py-2.5">
+                            <div className="size-7 rounded bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center">
+                              <Bot size={14} className="text-zinc-500" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm text-zinc-700 dark:text-zinc-300 font-mono truncate">{arm.path}</div>
+                              {arm.serial && <div className="text-sm text-zinc-400">S/N: {arm.serial}</div>}
+                            </div>
+                            <div className="w-44 flex-none">
+                              <WireSelect
+                                value={armRoleMap[arm.device] ?? "(none)"}
+                                options={["(none)", "Follower Arm 1", "Follower Arm 2", "Leader Arm 1", "Leader Arm 2"]}
+                                onChange={(v) => {
+                                  setArmRoleMap((prev) => ({ ...prev, [arm.device]: v }));
+                                  setMappingApplied(false);
+                                }}
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                  <div className="px-3 py-2 border-t border-zinc-100 dark:border-zinc-800/50 flex items-center justify-end">
-                    <button
-                      onClick={() => { void applyArmMapping(); }}
-                      disabled={mappingApplied || mappedCount === 0}
-                      className="px-3 py-1.5 rounded-lg border text-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed border-emerald-500/50 bg-emerald-500/10 text-emerald-400"
-                    >
-                      <Check size={12} className="inline mr-1" />
-                      적용
-                    </button>
-                  </div>
+                  {arms.length > 0 && (
+                    <div className="px-4 py-3 border-t border-zinc-100 dark:border-zinc-800/50 flex items-center justify-end">
+                      <button
+                        onClick={() => { void applyArmMapping(); }}
+                        disabled={mappingApplied || mappedCount === 0}
+                        className="px-3 py-1.5 rounded-lg border text-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed border-emerald-500/50 bg-emerald-500/10 text-emerald-400"
+                      >
+                        <Check size={12} className="inline mr-1" />
+                        Apply
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -928,16 +955,24 @@ export function MotorSetup() {
               <div className="flex flex-col gap-4">
                 {!wizardRunning && !wizardAllDone && (
                   <div className="flex flex-col gap-3">
-                    <FieldRow label="팔 역할 타입">
+                    {(noPort || arms.length === 0) && <BlockerCard title="Setup Blocked" reasons={["Cannot detect port. Check USB connection."]} />}
+                    {hasConflict && !noPort && (
+                      <BlockerCard
+                        title="Setup Blocked"
+                        severity="error"
+                        reasons={[{ text: "Teleop process is running", to: "/teleop" }]}
+                      />
+                    )}
+                    <FieldRow label="Arm Role Type">
                       <WireSelect
                         value={setupArmType}
                         options={armTypes}
                         onChange={setSetupArmType}
                       />
                     </FieldRow>
-                    <FieldRow label="팔 포트">
+                    <FieldRow label="Arm Port">
                       <WireSelect
-                        placeholder={noPort || arms.length === 0 ? "감지된 포트 없음" : undefined}
+                        placeholder={noPort || arms.length === 0 ? "No port detected" : undefined}
                         value={noPort || arms.length === 0 ? "" : setupPort}
                         options={noPort || arms.length === 0 ? [] : arms.map((a) => a.path ?? `/dev/${a.device}`)}
                         onChange={setSetupPort}
@@ -951,14 +986,6 @@ export function MotorSetup() {
                       >
                         <Play size={13} className="fill-current" /> Start Motor Setup
                       </button>
-                      {(noPort || arms.length === 0) && <BlockerCard title="설정 차단" reasons={["포트를 감지할 수 없습니다. USB 연결을 확인하세요."]} />}
-                      {hasConflict && !noPort && (
-                        <BlockerCard
-                          title="설정 차단"
-                          severity="error"
-                          reasons={[{ text: "Teleop 프로세스가 실행 중입니다", to: "/teleop" }]}
-                        />
-                      )}
                     </div>
                   </div>
                 )}
@@ -966,7 +993,7 @@ export function MotorSetup() {
                 {wizardRunning && (
                   <div className="flex flex-col gap-4">
                     <div className="flex items-center gap-2">
-                      <span className="text-sm text-zinc-500 flex-none">진행</span>
+                      <span className="text-sm text-zinc-500 flex-none">Progress</span>
                       <div className="flex-1 h-1.5 rounded-full bg-zinc-200 dark:bg-zinc-700 overflow-hidden">
                         <div
                           className="h-full bg-emerald-500 rounded-full transition-all duration-500"
@@ -1002,9 +1029,9 @@ export function MotorSetup() {
                               {motor.name}
                             </span>
                             <span className="text-sm text-zinc-400 font-mono flex-none">ID {motor.id}</span>
-                            {state === "done" && <span className="text-xs text-emerald-400 flex-none">설정됨</span>}
-                            {state === "writing" && <span className="text-xs text-emerald-400 flex-none">EEPROM 기록 중…</span>}
-                            {state === "error" && <span className="text-xs text-red-500 flex-none">실패</span>}
+                            {state === "done" && <span className="text-xs text-emerald-400 flex-none">Configured</span>}
+                            {state === "writing" && <span className="text-xs text-emerald-400 flex-none">Writing EEPROM…</span>}
+                            {state === "error" && <span className="text-xs text-red-500 flex-none">Failed</span>}
                           </div>
                         );
                       })}
@@ -1015,14 +1042,14 @@ export function MotorSetup() {
                         <div className="flex items-center gap-2">
                           <span className="size-2 rounded-full bg-emerald-400 animate-pulse flex-none" />
                           <p className="text-sm text-emerald-400">
-                            <span className="font-medium">'{SETUP_MOTORS[wizardStep].name}'</span> 모터만 연결하고 아래 버튼을 누르세요
+                            <span className="font-medium">'{SETUP_MOTORS[wizardStep].name}'</span> motor only connected, then click below
                           </p>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-                          <FieldRow label="감지된 ID">
-                            <WireInput value={wizardDetectedId} onChange={setWizardDetectedId} placeholder="예: 1" />
+                          <FieldRow label="Detected ID">
+                            <WireInput value={wizardDetectedId} onChange={setWizardDetectedId} placeholder="e.g., 1" />
                           </FieldRow>
-                          <FieldRow label="대상 ID">
+                          <FieldRow label="Target ID">
                             <WireInput value={String(SETUP_MOTORS[wizardStep].id)} />
                           </FieldRow>
                           <FieldRow label="Baud Rate">
@@ -1034,16 +1061,16 @@ export function MotorSetup() {
                             onClick={() => setWizardDetectedId(String((wizardStep + 1) * 11))}
                             className="px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-700 text-sm text-zinc-500 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800"
                           >
-                            감지값 자동 채우기
+                            Auto-fill detected value
                           </button>
-                          <WireToggle label="현재 단계 모터만 연결됨" checked={wizardConnectionConfirmed} onChange={setWizardConnectionConfirmed} />
+                          <WireToggle label="Only current motor connected" checked={wizardConnectionConfirmed} onChange={setWizardConnectionConfirmed} />
                         </div>
                         <button
                           onClick={wizardPressEnter}
                           disabled={!wizardConnectionConfirmed || !wizardDetectedId.trim()}
                           className="w-full px-4 py-3 rounded-lg border border-emerald-500/50 bg-emerald-500/10 text-emerald-400 text-sm font-medium cursor-pointer hover:bg-emerald-500/20 transition-colors flex items-center justify-center gap-2"
                         >
-                          <CornerDownLeft size={14} /> 연결 완료 (Enter)
+                          <CornerDownLeft size={14} /> Connection Complete (Enter)
                         </button>
                       </div>
                     )}
@@ -1052,7 +1079,7 @@ export function MotorSetup() {
                       <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-4 flex items-center gap-3">
                         <Loader2 size={16} className="text-zinc-400 animate-spin flex-none" />
                         <p className="text-sm text-zinc-400">
-                          '{SETUP_MOTORS[wizardStep].name}' 모터에 ID {SETUP_MOTORS[wizardStep].id} / Baud {wizardBaudRate} 기록 중…
+                          '{SETUP_MOTORS[wizardStep].name}' motor writing ID {SETUP_MOTORS[wizardStep].id} / Baud {wizardBaudRate}…
                         </p>
                       </div>
                     )}
@@ -1062,7 +1089,7 @@ export function MotorSetup() {
                         <AlertCircle size={14} className="text-red-500 flex-none" />
                         <p className="text-sm text-red-400 flex-1">{wizardError}</p>
                         <button onClick={wizardRetry} className="flex-none px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-700 text-xs text-zinc-500 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800 flex items-center gap-2">
-                          <RotateCcw size={12} /> 재시도
+                          <RotateCcw size={12} /> Retry
                         </button>
                       </div>
                     )}
@@ -1074,7 +1101,7 @@ export function MotorSetup() {
                         disabled={wizardMotorState[wizardStep] !== "waiting"}
                         className="text-xs px-2 py-0.5 rounded border border-zinc-200 dark:border-zinc-700 text-zinc-500 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
                       >
-                        에러 시뮬
+                        Simulate Error
                       </button>
                       <button
                         onClick={() => {
@@ -1088,7 +1115,7 @@ export function MotorSetup() {
                         }}
                         className="text-xs px-2 py-0.5 rounded border border-red-500/30 text-red-500 cursor-pointer"
                       >
-                        중지
+                        Stop
                       </button>
                     </div>
                   </div>
@@ -1099,7 +1126,7 @@ export function MotorSetup() {
                     <div className="flex items-center gap-2">
                       <Check size={16} className="text-emerald-500" />
                       <p className="text-sm text-emerald-400 font-medium">
-                        모터 설정 완료 — 6개 모터 ID가 EEPROM에 기록되었습니다
+                        Motor setup complete — 6 motor IDs written to EEPROM
                       </p>
                     </div>
                     <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
@@ -1122,13 +1149,13 @@ export function MotorSetup() {
                         }}
                         className="px-4 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 text-sm text-zinc-500 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800"
                       >
-                        다시 실행
+                        Run Again
                       </button>
                       <button
                         onClick={() => setMotorTab("monitor")}
                         className="px-4 py-2 rounded-lg border border-emerald-500/50 bg-emerald-500/10 text-emerald-400 text-sm cursor-pointer"
                       >
-                        모터 모니터로 검증 →
+                        Verify with Motor Monitor →
                       </button>
                     </div>
                   </div>
@@ -1195,8 +1222,8 @@ export function MotorSetup() {
 
                 {monConnected && freewheel && (
                   <div className="px-3 py-2 rounded border border-amber-500/30 bg-amber-500/5 text-sm text-amber-400">
-                    <span className="block">⚠ Freewheel 활성화</span>
-                    <span className="text-sm text-amber-400/60 block mt-0.5">모터 잠금이 해제되었습니다. Move 버튼이 비활성화됩니다.</span>
+                    <span className="block">⚠ Freewheel enabled</span>
+                    <span className="text-sm text-amber-400/60 block mt-0.5">Motor lock released. Move button disabled.</span>
                   </div>
                 )}
 
@@ -1216,15 +1243,15 @@ export function MotorSetup() {
                 )}
 
                 {!monConnected && !monConnecting && (
-                  <Card title="실시간 모터 상태">
+                  <Card title="Real-time Motor Status">
                     <div className="flex flex-col items-center justify-center py-8 gap-3 text-center">
                       <div className="text-3xl opacity-30">
                         <Zap size={28} />
                       </div>
                       <p className="text-sm text-zinc-400">
                         {setupRunning
-                          ? "⚠ Motor Setup이 실행 중입니다. 먼저 중지하세요."
-                          : "포트에 연결하면 각 모터 상태가 표시됩니다 (100ms 폴링)"}
+                          ? "⚠ Motor Setup is running. Stop it first."
+                          : "Connect to port to see motor status (100ms polling)"}
                       </p>
                     </div>
                   </Card>
@@ -1235,56 +1262,75 @@ export function MotorSetup() {
             {/* ─── 캘리브레이션 탭 ──────────────────────────────────────── */}
             {motorTab === "calibration" && (
               <div className="flex flex-col gap-6">
+                {arms.length === 0 && (
+                  <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-amber-500/30 bg-amber-500/5">
+                    <AlertTriangle size={13} className="text-amber-600 dark:text-amber-400 flex-none" />
+                    <span className="text-sm text-amber-600 dark:text-amber-400 flex-1">No connected devices. Connect USB and refresh.</span>
+                  </div>
+                )}
+
                 <div className="flex items-center justify-between">
                   <ModeToggle options={["Single Arm", "Bi-Arm"]} value={calibMode} onChange={setCalibMode} />
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <Card title={calibMode === "Single Arm" ? "Single Arm 설정" : "Bi-Arm 설정"}>
+                  <Card title={calibMode === "Single Arm" ? "Single Arm Setup" : "Bi-Arm Setup"}>
                     <div className="flex flex-col gap-3">
                       {calibMode === "Single Arm" ? (
                         <>
                           {calibTypeMismatch && (
                             <div className="flex items-center gap-1.5 text-sm text-amber-400 px-1">
                               <AlertTriangle size={12} className="flex-none" />
-                              타입과 포트가 일치하지 않습니다
+                              Type and port do not match
                             </div>
                           )}
-                          <FieldRow label="팔 역할 타입">
-                            <WireSelect value={calibArmType} options={armTypes} onChange={setCalibArmType} />
+                          <FieldRow label="Arm Role Type">
+                            <WireSelect value={calibArmType} options={armTypes} onChange={setCalibArmType} disabled={arms.length === 0} />
                           </FieldRow>
-                          <FieldRow label="팔 포트">
+                          <FieldRow label="Arm Port">
                             <WireSelect
+                              placeholder={calibPortOptions.length === 0 ? "No port detected" : undefined}
                               value={calibPort}
-                              options={arms.length > 0 ? arms.map((a) => a.path ?? `/dev/${a.device}`) : [calibPort]}
+                              options={calibPortOptions}
                               onChange={setCalibPort}
+                              disabled={arms.length === 0}
                             />
                           </FieldRow>
-                          <FieldRow label="팔 ID">
-                            <WireSelect value={calibArmId} options={calibArmIdOptions} onChange={setCalibArmId} />
+                          <FieldRow label="Arm ID">
+                            <WireSelect
+                              placeholder={calibArmIdOptions.length === 0 ? "No calibration files" : undefined}
+                              value={calibArmId}
+                              options={calibArmIdOptions}
+                              onChange={setCalibArmId}
+                              disabled={arms.length === 0}
+                            />
                           </FieldRow>
                         </>
                       ) : (
                         <>
-                          <FieldRow label="디바이스 타입">
-                            <WireSelect value={calibBiType} options={["bi_so_follower", "bi_so_leader"]} onChange={setCalibBiType} />
-                          </FieldRow>
-                          <FieldRow label="팔 ID">
-                            <WireInput value={calibBiId} onChange={setCalibBiId} />
+                          <FieldRow label="Arm Role Type">
+                            <WireSelect value={calibBiType} options={["bi_so_follower", "bi_so_leader"]} onChange={setCalibBiType} disabled={arms.length === 0} />
                           </FieldRow>
                           <FieldRow label="Left Arm Port">
                             <WireSelect
+                              placeholder={calibPortOptions.length === 0 ? "No port detected" : undefined}
                               value={calibBiLeftPort}
-                              options={arms.length > 0 ? arms.map((a) => a.path ?? `/dev/${a.device}`) : [calibBiLeftPort]}
+                              options={calibPortOptions}
                               onChange={setCalibBiLeftPort}
+                              disabled={arms.length === 0}
                             />
                           </FieldRow>
                           <FieldRow label="Right Arm Port">
                             <WireSelect
+                              placeholder={calibPortOptions.length === 0 ? "No port detected" : undefined}
                               value={calibBiRightPort}
-                              options={arms.length > 0 ? arms.map((a) => a.path ?? `/dev/${a.device}`) : [calibBiRightPort]}
+                              options={calibPortOptions}
                               onChange={setCalibBiRightPort}
+                              disabled={arms.length === 0}
                             />
+                          </FieldRow>
+                          <FieldRow label="Arm ID">
+                            <WireInput value={calibBiId} onChange={setCalibBiId} disabled={arms.length === 0} />
                           </FieldRow>
                         </>
                       )}
@@ -1293,15 +1339,17 @@ export function MotorSetup() {
                         onStart={() => { void handleCalibrationStart(); }}
                         onStop={() => { void handleCalibrationStop(); }}
                         startLabel={<><Play size={13} className="fill-current" /> Start Calibration</>}
-                        disabled={calibTypeMismatch}
+                        disabled={calibTypeMismatch || arms.length === 0}
                       />
-                      <div className="text-sm text-zinc-400">{calibFileMeta}</div>
+                      {calibFileMeta ? <div className="text-sm text-zinc-400">{calibFileMeta}</div> : null}
                     </div>
                   </Card>
 
-                  <Card title="기존 캘리브레이션 파일">
+                  <Card title="Existing Calibration Files" className="min-h-[300px]">
                     {calibFiles.length === 0 ? (
-                      <EmptyState icon={<Ruler size={28} />} message="캘리브레이션 파일이 없습니다." />
+                      <div className="flex min-h-[220px] items-center justify-center">
+                        <EmptyState icon={<Ruler size={28} />} message="No calibration files." />
+                      </div>
                     ) : (
                       <div className="flex flex-col gap-2">
                         {calibFiles.map((file) => (
@@ -1316,7 +1364,7 @@ export function MotorSetup() {
                               onClick={() => { void handleCalibrationDelete(file); }}
                               className="px-2 py-1 rounded border border-red-500/30 text-red-500 text-xs hover:bg-red-500/10"
                             >
-                              삭제
+                              Delete
                             </button>
                           </div>
                         ))}

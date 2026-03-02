@@ -19,7 +19,7 @@ import {
 import {
   PageHeader, StatusBadge, WireSelect,
   FieldRow, ProcessButtons, ModeToggle, StickyControlBar,
-  WireBox, BlockerCard,
+  WireBox, BlockerCard, RefreshButton,
 } from "../components/wireframe";
 import { toVideoName, useCameraFeeds } from "../hooks/useCameraFeeds";
 
@@ -40,14 +40,16 @@ type CameraCheckResponse = Record<string, boolean>;
 
 type DevicesResponse = {
   cameras: Array<{ device: string; path: string; kernels: string; symlink: string; model: string }>;
-  arms: unknown[];
+  arms: Array<{ device: string; path: string; symlink?: string | null }>;
 };
 
+type CalibFile = { id: string; guessed_type: string };
+
 const LOADING_STEPS = [
-  "팔 연결 중...",
-  "카메라 열기...",
-  "스트림 초기화...",
-  "준비 완료",
+  "Connecting arm...",
+  "Opening camera...",
+  "Initializing stream...",
+  "Ready",
 ];
 
 export function Teleop() {
@@ -67,6 +69,16 @@ export function Teleop() {
   const [cameraStats, setCameraStats] = useState<Record<string, { fps: number; mbps: number }>>({});
   const [cameraPathOk, setCameraPathOk] = useState<Record<string, boolean>>({});
   const [camerasMapped, setCamerasMapped] = useState<{ role: string; path: string }[]>([]);
+  const [armPortOptions, setArmPortOptions] = useState<string[]>([]);
+  const [followerIdOptions, setFollowerIdOptions] = useState<string[]>([]);
+  const [leaderIdOptions, setLeaderIdOptions] = useState<string[]>([]);
+  const [bimanualIdOptions, setBimanualIdOptions] = useState<string[]>([]);
+  const [selectedFollowerPort, setSelectedFollowerPort] = useState("");
+  const [selectedLeaderPort, setSelectedLeaderPort] = useState("");
+  const [selectedFollowerId, setSelectedFollowerId] = useState("");
+  const [selectedLeaderId, setSelectedLeaderId] = useState("");
+  const [selectedBimanualId, setSelectedBimanualId] = useState("");
+  const [refreshKey, setRefreshKey] = useState(0);
   const running = phase === "running";
   const feedTargets = useMemo(
     () => camerasMapped.map((cam) => ({ id: cam.role, videoName: toVideoName(cam.path) })),
@@ -160,6 +172,30 @@ export function Teleop() {
         .filter((cam) => cam.symlink)
         .map((cam) => ({ role: cam.symlink, path: `/dev/lerobot/${cam.symlink}` }));
       setCamerasMapped(mapped);
+
+      const ports = Array.from(
+        new Set(
+          (devResult.arms ?? [])
+            .map((arm) => (arm.symlink ? `/dev/${arm.symlink}` : arm.path))
+            .filter((value): value is string => Boolean(value))
+        )
+      );
+      setArmPortOptions(ports);
+      setSelectedFollowerPort((prev) => (prev && ports.includes(prev) ? prev : ports[0] ?? ""));
+      setSelectedLeaderPort((prev) => (prev && ports.includes(prev) ? prev : ports[0] ?? ""));
+
+      const calibResult = await apiGet<{ files?: CalibFile[] }>("/api/calibrate/list");
+      const files = calibResult.files ?? [];
+      const followers = Array.from(new Set(files.filter((f) => f.guessed_type.includes("follower")).map((f) => f.id)));
+      const leaders = Array.from(new Set(files.filter((f) => f.guessed_type.includes("leader")).map((f) => f.id)));
+      const bimanual = Array.from(new Set(files.filter((f) => f.guessed_type.startsWith("bi_")).map((f) => f.id)));
+      setFollowerIdOptions(followers);
+      setLeaderIdOptions(leaders);
+      setBimanualIdOptions(bimanual);
+      setSelectedFollowerId((prev) => (prev && followers.includes(prev) ? prev : followers[0] ?? ""));
+      setSelectedLeaderId((prev) => (prev && leaders.includes(prev) ? prev : leaders[0] ?? ""));
+      setSelectedBimanualId((prev) => (prev && bimanual.includes(prev) ? prev : bimanual[0] ?? ""));
+
       if (mapped.length > 0) {
         const pathCheck = await apiPost<CameraCheckResponse>("/api/camera/check_paths", {
           paths: mapped.map((cam) => cam.path),
@@ -168,7 +204,7 @@ export function Teleop() {
       }
     };
     void run();
-  }, []);
+  }, [refreshKey]);
 
   useEffect(() => {
     if (!flowError) return;
@@ -209,7 +245,7 @@ export function Teleop() {
   return (
     <div className="flex flex-col h-full">
       {/* Top nav bar */}
-      <div className="flex items-center justify-between px-6 py-2 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-sm text-zinc-400">
+      <div className="grid grid-cols-[1fr_auto_1fr] items-center px-6 py-2 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-sm text-zinc-400">
         <Link to="/motor-setup" className="inline-flex items-center gap-1 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors">
           ← Motor Setup
         </Link>
@@ -220,7 +256,7 @@ export function Teleop() {
           <span className="text-zinc-300 dark:text-zinc-600">›</span>
           <Link to="/recording" className="hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors">Recording</Link>
         </div>
-        <Link to="/recording" className="inline-flex items-center gap-1 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors">
+        <Link to="/recording" className="justify-self-end inline-flex items-center gap-1 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors">
           Recording →
         </Link>
       </div>
@@ -228,23 +264,20 @@ export function Teleop() {
       <div className="flex-1 overflow-y-auto">
         <div className="p-6 flex flex-col gap-4 max-w-[1600px] mx-auto w-full">
           {/* Header */}
-          <div className="flex items-start justify-between">
-            <PageHeader
-              title="Teleop"
-              subtitle="실시간 원격 조작 + 멀티 카메라 피드"
-              status={running ? "running" : phase === "loading" ? "warning" : "ready"}
-              statusLabel={running ? "TELEOP ACTIVE" : phase === "loading" ? "STARTING..." : "READY"}
-            />
-            {phase === "idle" && (
-              <ModeToggle
-                options={["Single Arm", "Bi-Arm"]}
-                value={mode}
-                onChange={setMode}
-              />
-            )}
-          </div>
+          <PageHeader
+            title="Teleop"
+            subtitle="Real-time teleoperation + multi-camera feed"
+            action={
+              <div className="flex items-center gap-3">
+                {phase === "idle" && (
+                  <ModeToggle options={["Single Arm", "Bi-Arm"]} value={mode} onChange={setMode} />
+                )}
+                <RefreshButton onClick={() => setRefreshKey(k => k + 1)} />
+              </div>
+            }
+          />
 
-          {flowError && <BlockerCard title="실행 차단" severity="error" reasons={[flowError]} />}
+          {flowError && <BlockerCard title="Execution Blocked" severity="error" reasons={[flowError]} />}
 
           {/* ─── IDLE: Sub-tabs for settings ─── */}
           {phase === "idle" && (
@@ -272,7 +305,7 @@ export function Teleop() {
               {/* Motor Setting Tab */}
               {teleopTab === "motor" && (
                 <div className="flex flex-col gap-3">
-                  <p className="text-sm text-zinc-400">로봇과 조종 방식을 선택하세요.</p>
+                  <p className="text-sm text-zinc-400">Select robot type and control method.</p>
                   <FieldRow label="Robot Type">
                     <WireSelect value="so101_follower" options={["so101_follower", "so100_follower", "aloha"]} />
                   </FieldRow>
@@ -281,21 +314,34 @@ export function Teleop() {
                   </FieldRow>
 
                   <div className="border-t border-zinc-100 dark:border-zinc-800 pt-3 flex flex-col gap-2">
-                    <p className="text-sm text-zinc-400">연결할 디바이스 포트를 선택하세요.</p>
+                    <p className="text-sm text-zinc-400">Select device port to connect.</p>
                     {mode === "Single Arm" ? (
                       <>
                         <FieldRow label="Follower Port">
-                          <WireSelect value="/dev/lerobot/follower_arm" options={["/dev/lerobot/follower_arm"]} />
+                          <WireSelect
+                            placeholder={armPortOptions.length === 0 ? "No ports detected" : undefined}
+                            value={selectedFollowerPort}
+                            options={armPortOptions}
+                            onChange={setSelectedFollowerPort}
+                          />
                         </FieldRow>
                         <FieldRow label="Leader Port">
-                          <WireSelect value="/dev/lerobot/leader_arm" options={["/dev/lerobot/leader_arm"]} />
+                          <WireSelect
+                            placeholder={armPortOptions.length === 0 ? "No ports detected" : undefined}
+                            value={selectedLeaderPort}
+                            options={armPortOptions}
+                            onChange={setSelectedLeaderPort}
+                          />
                         </FieldRow>
                       </>
                     ) : (
                       <>
                         {["Left Follower", "Right Follower", "Left Leader", "Right Leader"].map((label) => (
                           <FieldRow key={label} label={label}>
-                            <WireSelect placeholder={`${label} Port`} options={["/dev/lerobot/follower_arm", "/dev/lerobot/leader_arm"]} />
+                            <WireSelect
+                              placeholder={armPortOptions.length === 0 ? "No ports detected" : `${label} Port`}
+                              options={armPortOptions}
+                            />
                           </FieldRow>
                         ))}
                       </>
@@ -303,33 +349,48 @@ export function Teleop() {
                   </div>
 
                   <div className="border-t border-zinc-100 dark:border-zinc-800 pt-3 flex flex-col gap-2">
-                    <p className="text-sm text-zinc-400">캘리브레이션 프로필을 선택하세요.</p>
+                    <p className="text-sm text-zinc-400">Select calibration profile.</p>
                     {mode === "Single Arm" ? (
                       <>
                         <FieldRow label="Follower ID">
-                          <WireSelect value="follower_arm_1" options={["follower_arm_1", "follower_arm_0"]} />
+                          <WireSelect
+                            placeholder={followerIdOptions.length === 0 ? "No calibration files" : undefined}
+                            value={selectedFollowerId}
+                            options={followerIdOptions}
+                            onChange={setSelectedFollowerId}
+                          />
                         </FieldRow>
                         <FieldRow label="Leader ID">
-                          <WireSelect value="leader_arm_1" options={["leader_arm_1"]} />
+                          <WireSelect
+                            placeholder={leaderIdOptions.length === 0 ? "No calibration files" : undefined}
+                            value={selectedLeaderId}
+                            options={leaderIdOptions}
+                            onChange={setSelectedLeaderId}
+                          />
                         </FieldRow>
                       </>
                     ) : (
                       <FieldRow label="Robot ID">
-                        <WireSelect value="bimanual_follower" options={["bimanual_follower"]} />
+                        <WireSelect
+                          placeholder={bimanualIdOptions.length === 0 ? "No calibration files" : undefined}
+                          value={selectedBimanualId}
+                          options={bimanualIdOptions}
+                          onChange={setSelectedBimanualId}
+                        />
                       </FieldRow>
                     )}
                 </div>
               </div>
               )}
 
-              {/* Camera Setting Tab — 설정 위, 프리뷰 아래 */}
+              {/* Camera Setting Tab — settings above, preview below */}
               {teleopTab === "camera" && (
                 <div className="flex flex-col gap-4">
                   {/* Camera settings — full width */}
-                  <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 overflow-hidden">
+                  <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden">
                     <div className="px-3 py-2 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
-                      <span className="text-sm text-zinc-500">카메라 피드 설정</span>
-                      <StatusBadge status={validCameraCount === camerasMapped.length ? "ready" : "warning"} label={`${validCameraCount}/${camerasMapped.length} 사용 가능`} />
+                      <span className="text-sm text-zinc-500">Camera feed settings</span>
+                      <StatusBadge status={validCameraCount === camerasMapped.length ? "ready" : "warning"} label={`${validCameraCount}/${camerasMapped.length} available`} />
                     </div>
                     <div className="p-4 flex flex-col gap-3">
                       {camerasMapped.map((cam) => (
@@ -345,16 +406,16 @@ export function Teleop() {
                         onClick={() => setAdvStreamOpen(!advStreamOpen)}
                         className="flex items-center gap-1 text-sm text-zinc-400 hover:text-zinc-600 cursor-pointer"
                       >
-                        고급 스트림 설정
+                        Advanced stream settings
                         {advStreamOpen ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
                       </button>
 
                       {advStreamOpen && (
                         <div className="flex flex-col gap-2 pl-2 border-l-2 border-zinc-100 dark:border-zinc-800">
-                          <FieldRow label="코덱">
+                          <FieldRow label="Codec">
                             <WireSelect value="MJPG" options={["MJPG", "YUYV"]} />
                           </FieldRow>
-                          <FieldRow label="해상도">
+                          <FieldRow label="Resolution">
                             <WireSelect value="640×480" options={["1280×720", "800×600", "640×480", "320×240"]} />
                           </FieldRow>
                           <FieldRow label="FPS">
@@ -379,7 +440,7 @@ export function Teleop() {
                               <img src={frameSrc} alt={`${cam.role} preview`} className="h-full w-full object-cover" />
                             ) : (
                               <div className="h-full w-full flex items-center justify-center">
-                                <span className="text-sm text-zinc-600">대기 중...</span>
+                                <span className="text-sm text-zinc-600">Waiting...</span>
                               </div>
                             )}
                           </div>
@@ -424,7 +485,7 @@ export function Teleop() {
           {/* ─── RUNNING: Camera feed focus ─── */}
           {phase === "running" && (
             <div className="flex flex-col gap-4">
-              {/* Runtime Status — 인라인 */}
+              {/* Runtime Status — inline */}
               <div className="flex flex-wrap items-center gap-3 px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-800">
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-zinc-400">Arm:</span>
@@ -436,7 +497,7 @@ export function Teleop() {
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-zinc-400">Conflict:</span>
-                  <StatusBadge status="idle" label="없음" />
+                  <StatusBadge status="idle" label="None" />
                 </div>
               </div>
 
@@ -458,7 +519,7 @@ export function Teleop() {
                           )
                         ) : (
                           <div className="absolute inset-0 flex items-center justify-center text-zinc-600">
-                            <span className="text-sm flex items-center gap-1"><Pause size={10} className="fill-current" /> 일시정지</span>
+                            <span className="text-sm flex items-center gap-1"><Pause size={10} className="fill-current" /> Paused</span>
                           </div>
                         )}
 
@@ -517,7 +578,7 @@ export function Teleop() {
 
           {(phase === "idle" || phase === "running") && (
             <div className="flex items-center gap-2">
-              <span className="text-sm text-zinc-400 whitespace-nowrap">속도:</span>
+              <span className="text-sm text-zinc-400 whitespace-nowrap">Speed:</span>
               <WireSelect
                 value={speed}
                 options={["0.1x", "0.25x", "0.5x", "0.75x", "1.0x"]}
