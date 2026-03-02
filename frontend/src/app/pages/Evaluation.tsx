@@ -424,7 +424,7 @@ export function Evaluation() {
                     )}
                     <button
                       onClick={() => { setDeviceLabel("CPU"); void refreshPreflight(); }}
-                      className="text-sm text-zinc-500 hover:text-zinc-300 transition-colors cursor-pointer"
+                      className="px-2.5 py-1 rounded border border-zinc-600 text-zinc-400 text-sm cursor-pointer hover:bg-zinc-800 transition-colors"
                     >Use CPU</button>
                   </>
                 )}
