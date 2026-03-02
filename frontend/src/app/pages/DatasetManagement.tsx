@@ -1431,7 +1431,7 @@ export function DatasetManagement() {
               <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden">
                 {!selectedDataset ? (
                   <div className="flex flex-col items-center justify-center py-12 gap-3 text-center">
-                    <Database size={28} className="text-zinc-300 dark:text-zinc-600" />
+                    <Search size={28} className="text-zinc-300 dark:text-zinc-600" />
                     <p className="text-sm text-zinc-400">Select a dataset to view details.</p>
                   </div>
                 ) : (<>
@@ -1601,6 +1601,7 @@ export function DatasetManagement() {
                     }}
                   />
                 )}
+                </>)}
               </div>
 
             </div>

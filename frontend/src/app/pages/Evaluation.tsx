@@ -488,15 +488,15 @@ export function Evaluation() {
                       {!preflightOk && (
                         <div className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3.5 flex flex-col gap-2.5">
                           <div className="flex items-center gap-2">
-                            <AlertTriangle size={14} className="text-amber-600 dark:text-amber-400 flex-none" />
-                            <span className="text-sm text-amber-600 dark:text-amber-400">{preflightReason || "Device preflight failed. Evaluation is blocked."}</span>
+                            <AlertTriangle size={14} className="text-amber-400 flex-none" />
+                            <span className="text-sm text-amber-400">{preflightReason || "Device preflight failed. Evaluation is blocked."}</span>
                           </div>
                           {preflightAction === "install_torch_cuda" && (
                             <div className="flex gap-2">
                               <button
                                 onClick={() => { void installCudaTorch(); }}
                                 disabled={installing}
-                                className="px-3 py-1.5 rounded border border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400 text-sm font-medium cursor-pointer hover:bg-amber-500/20 transition-all disabled:opacity-50"
+                                className="px-3 py-1.5 rounded border border-amber-500/50 bg-amber-500/10 text-amber-400 text-sm font-medium cursor-pointer hover:bg-amber-500/20 transition-all disabled:opacity-50"
                               >
                                 {installing ? "Installing..." : "Install CUDA PyTorch (Nightly)"}
                               </button>
@@ -507,7 +507,7 @@ export function Evaluation() {
                               <button
                                 onClick={() => { void runPreflightFix(); }}
                                 disabled={installing}
-                                className="px-3 py-1.5 rounded border border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400 text-sm font-medium cursor-pointer hover:bg-amber-500/20 transition-all disabled:opacity-50"
+                                className="px-3 py-1.5 rounded border border-amber-500/50 bg-amber-500/10 text-amber-400 text-sm font-medium cursor-pointer hover:bg-amber-500/20 transition-all disabled:opacity-50"
                               >
                                 {installing ? "Installing..." : preflightFixLabel}
                               </button>
@@ -526,7 +526,7 @@ export function Evaluation() {
                               <button
                                 onClick={() => { void runPreflightFix(); }}
                                 disabled={installing}
-                                className="px-3 py-1.5 rounded border border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400 text-sm font-medium cursor-pointer hover:bg-amber-500/20 transition-all disabled:opacity-50"
+                                className="px-3 py-1.5 rounded border border-amber-500/50 bg-amber-500/10 text-amber-400 text-sm font-medium cursor-pointer hover:bg-amber-500/20 transition-all disabled:opacity-50"
                               >
                                 {installing ? "Installing..." : "Run Fix"}
                               </button>

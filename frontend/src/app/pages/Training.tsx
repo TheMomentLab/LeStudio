@@ -339,7 +339,6 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
         setCudaState("fail");
         const reason = preflight.reason ?? "train preflight failed";
         setPreflightReason(reason);
-        setFlowError(reason);
         notifyError(reason);
         return;
       }
@@ -625,7 +624,7 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
             action={<RefreshButton onClick={() => { void refreshCheckpoints(); }} />}
           />
 
-          {flowError && <BlockerCard title="Execution Blocked" severity="error" reasons={[flowError]} />}
+          {flowError && cudaState !== "fail" && <BlockerCard title="Execution Blocked" severity="error" reasons={[flowError]} />}
 
           {/* ─── IDLE: Settings ─────────────────────────────────────── */}
           {trainStatus === "idle" && !completed && (
@@ -648,24 +647,24 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
                   )}
                 </div>
               ) : (
-                <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-3.5 flex flex-col gap-2.5">
+                <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3.5 flex flex-col gap-2.5">
                   <div className="flex items-center gap-2">
-                    <AlertTriangle size={14} className="text-red-600 dark:text-red-400 flex-none" />
-                    <span className="text-sm text-red-600 dark:text-red-400">CUDA Preflight Failed</span>
-                    {import.meta.env.DEV && <button onClick={() => setCudaState("ok")} className="ml-auto text-sm text-zinc-600 hover:text-zinc-400 cursor-pointer">✕</button>}
+                    <AlertTriangle size={14} className="text-amber-400 flex-none" />
+                    <span className="text-sm text-amber-400">CUDA Preflight Failed</span>
+                    {import.meta.env.DEV && <button onClick={() => setCudaState("ok")} className="ml-auto text-sm text-zinc-500 hover:text-zinc-400 cursor-pointer">✕</button>}
                   </div>
                   <p className="text-sm text-zinc-400">{preflightReason || "CUDA requires PyTorch built for your CUDA version."}</p>
                   {cudaState === "fail" && !cudaFixRunning && (
                     <div className="flex gap-2">
                       <button
                         onClick={handleInstallCuda}
-                        className="px-4 py-2 rounded-lg border border-red-500/40 bg-red-500/10 text-red-600 dark:text-red-400 text-sm font-medium cursor-pointer hover:bg-red-500/20 shadow-sm transition-all"
+                        className="px-3 py-1.5 rounded-lg border border-amber-500/50 bg-amber-500/10 text-amber-400 text-sm font-medium cursor-pointer hover:bg-amber-500/20 shadow-sm transition-all"
                       >
                         Install CUDA PyTorch (Nightly)
                       </button>
                       <button
                         onClick={() => { void handleInstallTorchcodecFix(); }}
-                        className="px-4 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 text-sm font-medium cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-800 shadow-sm transition-all"
+                        className="px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-700 text-zinc-500 text-sm font-medium cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800 shadow-sm transition-all"
                       >
                         Run Fix
                       </button>
@@ -673,7 +672,7 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
                   )}
                   {cudaFixRunning && (
                     <div className="flex items-center gap-2 text-sm text-zinc-400">
-                      <span className="size-1.5 rounded-full bg-zinc-400 animate-pulse" />
+                      <Loader2 size={12} className="animate-spin" />
                       Installing...
                     </div>
                   )}
