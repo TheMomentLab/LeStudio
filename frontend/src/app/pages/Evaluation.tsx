@@ -134,16 +134,15 @@ export function Evaluation() {
 
   const evalBlockers = useMemo(() => {
     const blockers: string[] = [];
-    if (!preflightOk) blockers.push(preflightReason || "Device preflight failed");
     if (noLocalCheckpoint) blockers.push("No checkpoint selected");
     if (envTypeMissing) blockers.push("Env Type is required");
     if (envTaskMissing) blockers.push("Task is required");
     if (envType && !installedEnvSet.has(envType)) blockers.push(`${envType} environment not installed`);
     if (conflictProcess) blockers.push(`${conflictProcess} process running`);
     return blockers;
-  }, [preflightOk, preflightReason, noLocalCheckpoint, envTypeMissing, envTaskMissing, envType, installedEnvSet, conflictProcess]);
+  }, [noLocalCheckpoint, envTypeMissing, envTaskMissing, envType, installedEnvSet, conflictProcess]);
 
-  const evalReady = evalBlockers.length === 0;
+  const evalReady = evalBlockers.length === 0 && preflightOk;
   const preflightFixLabel = preflightAction === "install_python_dep" ? "Install Missing Packages" : "Run Fix";
   const selectedEnv = envTypes.find((e) => e.type === envType);
   // Stats (for chart results)

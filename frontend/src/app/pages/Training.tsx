@@ -653,14 +653,14 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
               ) : (
                 <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3.5 flex flex-col gap-2.5">
                   <div className="flex items-center gap-2">
-                    <AlertTriangle size={14} className="text-amber-600 dark:text-amber-400 flex-none" />
-                    <span className="text-sm font-medium text-amber-600 dark:text-amber-400">Preflight Failed</span>
+                    <AlertTriangle size={14} className="text-amber-400 flex-none" />
+                    <span className="text-sm font-medium text-amber-400">Preflight Failed</span>
                     {import.meta.env.DEV && <button onClick={() => { setCudaState("ok"); setPreflightAction(null); }} className="ml-auto text-sm text-zinc-500 hover:text-zinc-400 cursor-pointer">✕</button>}
                   </div>
                   <p className="text-sm text-zinc-400">{preflightReason || "Environment check failed."}</p>
                   {!cudaFixRunning && preflightAction === "install_torch_cuda" && (
                     <div className="flex gap-2">
-                      <button onClick={handleInstallCuda} className="px-3 py-1.5 rounded border border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400 text-sm font-medium cursor-pointer hover:bg-amber-500/20 transition-all">
+                      <button onClick={handleInstallCuda} className="px-3 py-1.5 rounded border border-amber-500/50 bg-amber-500/10 text-amber-400 text-sm font-medium cursor-pointer hover:bg-amber-500/20 transition-all">
                         Install CUDA PyTorch (Nightly)
                       </button>
                       <button onClick={() => { void handleInstallTorchcodecFix(); }} className="px-3 py-1.5 rounded border border-zinc-200 dark:border-zinc-700 text-zinc-500 text-sm font-medium cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-all">
@@ -672,7 +672,7 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
                     <div className="flex gap-2">
                       <button
                         onClick={() => { void handleInstallTorchcodecFix(); }}
-                        className="px-3 py-1.5 rounded border border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400 text-sm font-medium cursor-pointer hover:bg-amber-500/20 transition-all"
+                        className="px-3 py-1.5 rounded border border-amber-500/50 bg-amber-500/10 text-amber-400 text-sm font-medium cursor-pointer hover:bg-amber-500/20 transition-all"
                       >
                         Auto Fix
                       </button>
