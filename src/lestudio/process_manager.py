@@ -148,19 +148,23 @@ class ProcessManager:
         self.seen_translations.pop(name, None)
         env = {
             **os.environ,
-            "PYTHONPATH": str(self.lerobot_src) + ":" + os.environ.get("PYTHONPATH", ""),
+            "PYTHONPATH": str(self.lerobot_src) + os.pathsep + os.environ.get("PYTHONPATH", ""),
             "PYTHONUNBUFFERED": "1",
         }
         try:
-            proc = subprocess.Popen(
-                args,
+            popen_kwargs: dict = dict(
+                args=args,
                 env=env,
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 bufsize=0,
-                start_new_session=True,
             )
+            if sys.platform == 'win32':
+                popen_kwargs['creationflags'] = subprocess.CREATE_NEW_PROCESS_GROUP
+            else:
+                popen_kwargs['start_new_session'] = True
+            proc = subprocess.Popen(**popen_kwargs)
             self.procs[name] = proc
             threading.Thread(target=self._reader, args=(name, proc), daemon=True).start()
             return True
@@ -171,39 +175,50 @@ class ProcessManager:
     def stop(self, name: str):
         proc = self.procs.pop(name, None)
         if proc and proc.poll() is None:
-            try:
-                pgid = os.getpgid(proc.pid)
-            except (ProcessLookupError, OSError):
-                pgid = None
-
-            try:
-                if pgid is not None:
-                    os.killpg(pgid, signal.SIGINT)
-                else:
-                    proc.send_signal(signal.SIGINT)
-                proc.wait(timeout=5)
-                return
-            except subprocess.TimeoutExpired:
-                pass
-
-            if pgid is not None:
+            if sys.platform == 'win32':
+                # Windows: no process groups via os.killpg; terminate tree
                 try:
-                    os.killpg(pgid, signal.SIGTERM)
-                except ProcessLookupError:
+                    proc.send_signal(signal.CTRL_BREAK_EVENT)
+                    proc.wait(timeout=5)
                     return
+                except (subprocess.TimeoutExpired, OSError):
+                    pass
+                proc.kill()
             else:
-                proc.terminate()
+                # Unix: use process group for clean shutdown
+                try:
+                    pgid = os.getpgid(proc.pid)
+                except (ProcessLookupError, OSError):
+                    pgid = None
 
-            try:
-                proc.wait(timeout=3)
-            except subprocess.TimeoutExpired:
+                try:
+                    if pgid is not None:
+                        os.killpg(pgid, signal.SIGINT)
+                    else:
+                        proc.send_signal(signal.SIGINT)
+                    proc.wait(timeout=5)
+                    return
+                except subprocess.TimeoutExpired:
+                    pass
+
                 if pgid is not None:
                     try:
-                        os.killpg(pgid, signal.SIGKILL)
+                        os.killpg(pgid, signal.SIGTERM)
                     except ProcessLookupError:
                         return
                 else:
-                    proc.kill()
+                    proc.terminate()
+
+                try:
+                    proc.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    if pgid is not None:
+                        try:
+                            os.killpg(pgid, signal.SIGKILL)
+                        except ProcessLookupError:
+                            return
+                    else:
+                        proc.kill()
 
     def send_input(self, name: str, text: str) -> bool:
         proc = self.procs.get(name)

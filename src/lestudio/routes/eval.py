@@ -248,7 +248,10 @@ def create_router(state: AppState) -> APIRouter:
         results = []
         for entry in KNOWN_ENV_TYPES:
             module_name = entry.get("module") or f"gym_{entry['type']}"
-            installed = importlib.util.find_spec(module_name) is not None
+            try:
+                installed = importlib.util.find_spec(module_name) is not None
+            except (ModuleNotFoundError, ValueError):
+                installed = False
             results.append({
                 "type": entry["type"],
                 "label": entry["label"],
