@@ -382,8 +382,10 @@ export function Recording() {
                   <FieldRow label="Task Description">
                     <WireInput value={recordTask} onChange={setRecordTask} placeholder="Pick the red cube and place it..." />
                   </FieldRow>
-                  <div className="flex flex-col gap-2 pt-1">
-                    <WireToggle label="Resume — continue recording to existing dataset" checked={resumeEnabled} onChange={setResumeEnabled} />
+                  <div className="flex flex-col gap-2.5 pt-1">
+                    <div className="flex items-center gap-2">
+                      <WireToggle label="Resume — continue recording to existing dataset" checked={resumeEnabled} onChange={setResumeEnabled} />
+                    </div>
                     <div className="flex items-center gap-2">
                       <WireToggle
                         label="Push to Hub — auto-upload after completion"
@@ -436,7 +438,7 @@ export function Recording() {
                         {["Left Follower", "Right Follower", "Left Leader", "Right Leader"].map((label) => (
                           <FieldRow key={label} label={label}>
                             <WireSelect
-                              placeholder={armPortOptions.length === 0 ? "감지된 포트 없음" : `${label} Port`}
+                              placeholder={armPortOptions.length === 0 ? "No ports detected" : `${label} Port`}
                               options={armPortOptions}
                             />
                           </FieldRow>

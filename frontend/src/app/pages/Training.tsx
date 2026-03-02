@@ -699,7 +699,7 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
                                 : "text-zinc-400 hover:text-zinc-500 cursor-pointer",
                               hfAuth !== "ready" && "opacity-40 cursor-not-allowed"
                             )}
-                            title={hfAuth !== "ready" ? "HF 토큰 필요" : undefined}
+                            title={hfAuth !== "ready" ? "HF token required — configure in header" : "Load dataset from Hugging Face Hub"}
                           >
                             {hfAuth !== "ready" && <Lock size={10} />}
                             HF

@@ -1438,14 +1438,19 @@ export function DatasetManagement() {
                     {hfAuth === "ready" ? (
                       <button
                         onClick={() => { void handlePushToHub(); }}
-                        className="p-1.5 rounded-md bg-zinc-900 dark:bg-zinc-100 text-zinc-50 dark:text-zinc-900 hover:opacity-90 transition-all"
+                        disabled={!selectedDataset}
+                        className="p-1.5 rounded-md bg-zinc-900 dark:bg-zinc-100 text-zinc-50 dark:text-zinc-900 hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
                         title="Upload to Hub"
                         aria-label="Upload to Hub"
                       >
                         <Upload size={12} />
                       </button>
                     ) : null}
-                    <button className="p-1 rounded text-zinc-400 hover:text-red-500 transition-colors">
+                    <button
+                      disabled={!selectedDataset}
+                      className="p-1 rounded text-zinc-400 hover:text-red-500 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-zinc-400 transition-colors"
+                      title="Delete dataset"
+                    >
                       <Trash2 size={14} />
                     </button>
                   </div>

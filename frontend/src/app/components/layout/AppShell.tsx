@@ -82,8 +82,8 @@ function Sidebar({ collapsed, onClose }: { collapsed: boolean; onClose?: () => v
       )}
 
       <div className="p-2 flex flex-col gap-0.5 flex-1">
-        {NAV_GROUPS.map((group) => (
-          <div key={group.id} className="mb-1">
+        {NAV_GROUPS.map((group, idx) => (
+          <div key={group.id} className={cn("mb-1", idx > 0 && "mt-1 pt-1 border-t border-zinc-200/60 dark:border-zinc-800/60")}>
             {/* Group Header */}
             {!collapsed && (
               <button
@@ -663,7 +663,7 @@ function RuntimeConsoleDrawer() {
             className={cn(
               "px-2 py-1 text-[10px] font-mono rounded border cursor-pointer",
               running
-                ? "border-red-500/40 text-red-600 dark:text-red-400 hover:bg-red-500/10"
+                ? "border-red-500/60 text-red-600 dark:text-red-400 bg-red-500/10 hover:bg-red-500/20 font-semibold"
                 : "border-zinc-300 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400 opacity-50 cursor-not-allowed",
             )}
             onClick={() => { if (running) void handleStop(activeProcess); }}
@@ -704,8 +704,8 @@ function RuntimeConsoleDrawer() {
             onChange={(e) => setStdinValue(e.target.value)}
             onKeyDown={onInputKeyDown}
             placeholder={running
-              ? "stdin — press Enter to send (empty Enter sends default/newline)"
-              : "command — type and press Enter to run /api/process/:name/command"
+              ? "stdin — press Enter to send (empty = newline)"
+              : "Enter command and press Enter to run"
             }
             className="flex-1 bg-transparent text-sm font-mono text-zinc-700 dark:text-zinc-300 placeholder:text-zinc-500 outline-none"
           />
@@ -933,7 +933,7 @@ function Header({
           </PopoverContent>
         </Popover>
 
-        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded border border-zinc-200 dark:border-zinc-700">
+        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded border border-zinc-200 dark:border-zinc-700" title={`WebSocket: ${wsStatus}`}>
           <span className={cn("size-2 rounded-full", wsColor)} />
           <span className="text-sm text-zinc-500 dark:text-zinc-400">WS</span>
         </div>
