@@ -187,6 +187,7 @@ export function Training() {
   const [cudaState, setCudaState] = useState<CudaState>("ok");
   const [cudaFixRunning, setCudaFixRunning] = useState(false);
   const [preflightReason, setPreflightReason] = useState<string>("");
+  const [preflightAction, setPreflightAction] = useState<string | null>(null);
 
   // Progress
   const [currentStep, setCurrentStep] = useState(0);
@@ -339,6 +340,7 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
         setCudaState("fail");
         const reason = preflight.reason ?? "train preflight failed";
         setPreflightReason(reason);
+        setPreflightAction(preflight.action ?? null);
         notifyError(reason);
         return;
       }
@@ -492,9 +494,11 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
         if (res.ok) {
           setCudaState("ok");
           setPreflightReason(res.reason ?? "");
+          setPreflightAction(null);
         } else {
           setCudaState("fail");
-          setPreflightReason(res.reason ?? "CUDA preflight failed");
+          setPreflightReason(res.reason ?? "Preflight check failed");
+          setPreflightAction(res.action ?? null);
         }
       } catch {
         // preflight fetch failed — leave current state
@@ -624,17 +628,17 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
             action={<RefreshButton onClick={() => { void refreshCheckpoints(); }} />}
           />
 
-          {flowError && cudaState !== "fail" && <BlockerCard title="Execution Blocked" severity="error" reasons={[flowError]} />}
+          {flowError && cudaState === "ok" && <BlockerCard title="Execution Blocked" severity="error" reasons={[flowError]} />}
 
           {/* ─── IDLE: Settings ─────────────────────────────────────── */}
           {trainStatus === "idle" && !completed && (
             <div className="flex flex-col gap-4">
 
-              {/* CUDA Preflight — inline badge */}
+              {/* Preflight — inline badge */}
               {cudaState === "ok" ? (
                 <div className="flex items-center gap-2.5">
                   <CheckCircle2 size={14} className="text-emerald-600 dark:text-emerald-400 flex-none" />
-                  <span className="text-sm text-emerald-600 dark:text-emerald-400">CUDA Preflight Passed</span>
+                  <span className="text-sm text-emerald-600 dark:text-emerald-400">Preflight Passed</span>
                   {preflightReason && <span className="text-sm text-zinc-500 font-mono">{preflightReason}</span>}
                   {import.meta.env.DEV && (
                     <button
@@ -649,31 +653,35 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
               ) : (
                 <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3.5 flex flex-col gap-2.5">
                   <div className="flex items-center gap-2">
-                    <AlertTriangle size={14} className="text-amber-400 flex-none" />
-                    <span className="text-sm text-amber-400">CUDA Preflight Failed</span>
-                    {import.meta.env.DEV && <button onClick={() => setCudaState("ok")} className="ml-auto text-sm text-zinc-500 hover:text-zinc-400 cursor-pointer">✕</button>}
+                    <AlertTriangle size={14} className="text-amber-600 dark:text-amber-400 flex-none" />
+                    <span className="text-sm font-medium text-amber-600 dark:text-amber-400">Preflight Failed</span>
+                    {import.meta.env.DEV && <button onClick={() => { setCudaState("ok"); setPreflightAction(null); }} className="ml-auto text-sm text-zinc-500 hover:text-zinc-400 cursor-pointer">✕</button>}
                   </div>
-                  <p className="text-sm text-zinc-400">{preflightReason || "CUDA requires PyTorch built for your CUDA version."}</p>
-                  {cudaState === "fail" && !cudaFixRunning && (
+                  <p className="text-sm text-zinc-400">{preflightReason || "Environment check failed."}</p>
+                  {!cudaFixRunning && preflightAction === "install_torch_cuda" && (
                     <div className="flex gap-2">
-                      <button
-                        onClick={handleInstallCuda}
-                        className="px-3 py-1.5 rounded-lg border border-amber-500/50 bg-amber-500/10 text-amber-400 text-sm font-medium cursor-pointer hover:bg-amber-500/20 shadow-sm transition-all"
-                      >
+                      <button onClick={handleInstallCuda} className="px-3 py-1.5 rounded border border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400 text-sm font-medium cursor-pointer hover:bg-amber-500/20 transition-all">
                         Install CUDA PyTorch (Nightly)
                       </button>
+                      <button onClick={() => { void handleInstallTorchcodecFix(); }} className="px-3 py-1.5 rounded border border-zinc-200 dark:border-zinc-700 text-zinc-500 text-sm font-medium cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-all">
+                        Run Fix
+                      </button>
+                    </div>
+                  )}
+                  {!cudaFixRunning && preflightAction && preflightAction !== "install_torch_cuda" && (
+                    <div className="flex gap-2">
                       <button
                         onClick={() => { void handleInstallTorchcodecFix(); }}
-                        className="px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-700 text-zinc-500 text-sm font-medium cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800 shadow-sm transition-all"
+                        className="px-3 py-1.5 rounded border border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400 text-sm font-medium cursor-pointer hover:bg-amber-500/20 transition-all"
                       >
-                        Run Fix
+                        Auto Fix
                       </button>
                     </div>
                   )}
                   {cudaFixRunning && (
                     <div className="flex items-center gap-2 text-sm text-zinc-400">
                       <Loader2 size={12} className="animate-spin" />
-                      Installing...
+                      <span>Fix in progress… check console for details</span>
                     </div>
                   )}
                 </div>
