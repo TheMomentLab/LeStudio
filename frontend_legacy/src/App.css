@@ -1,4 +1,0 @@
-/* App-level overrides — intentionally minimal.
- * All shared styles live in index.css (CSS variables, layout, components).
- * Do NOT add .card or .logo overrides here — they conflict with the design system.
- */

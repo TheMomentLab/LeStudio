@@ -78,3 +78,4 @@ wireframe_test/**/devserver.log
 wireframe_test/ux_audit/
 wireframe_test/workflow_audit/
 wireframe_test/test_*.png
+frontend_legacy/
