@@ -224,12 +224,6 @@ export function BlockerCard({
   );
 }
 
-// ─── Error Banner ─────────────────────────────────────────────────────────────
-export function ErrorBanner({ message }: { message: string | null }) {
-  if (!message) return null;
-  return <BlockerCard title="Execution Blocked" severity="error" reasons={[message]} />;
-}
-
 // ─── Process Buttons ──────────────────────────────────────────────────────────
 export function ProcessButtons({
   running,
@@ -392,30 +386,6 @@ export function PageHeader({
   );
 }
 
-// ─── Chip Tag ─────────────────────────────────────────────────────────────────
-export function Chip({
-  label,
-  color = "default",
-  icon,
-}: {
-  label: string;
-  color?: "default" | "green" | "amber" | "blue" | "red";
-  icon?: string;
-}) {
-  const map = {
-    default: "bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700",
-    green: "bg-emerald-500/10 text-emerald-500 border-emerald-500/30",
-    amber: "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/40",
-    blue: "bg-blue-500/10 text-blue-400 border-blue-500/30",
-    red: "bg-red-500/10 text-red-400 border-red-500/30",
-  };
-  return (
-    <span className={cn("inline-flex items-center gap-1 px-2 py-0.5 rounded border text-sm", map[color])}>
-      {icon && <span>{icon}</span>}
-      {label}
-    </span>
-  );
-}
 
 // ─── Sticky Control Bar ───────────────────────────────────────────────────────
 export function StickyControlBar({ children }: { children: React.ReactNode }) {
