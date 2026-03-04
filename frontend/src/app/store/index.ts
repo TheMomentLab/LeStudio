@@ -15,9 +15,8 @@ const ACTIVE_TAB_STORAGE_KEY = "lestudio.active-tab";
 
 const VALID_TABS = new Set<AppTab>([
   "status",
-  "device-setup",
+  "camera-setup",
   "motor-setup",
-  "calibrate",
   "teleop",
   "record",
   "dataset",
@@ -229,9 +228,8 @@ export type { LeStudioStoreState };
 
 export const ACTIVE_TAB_TOKENS: AppTab[] = [
   "status",
-  "device-setup",
+  "camera-setup",
   "motor-setup",
-  "calibrate",
   "teleop",
   "record",
   "dataset",
@@ -240,25 +238,24 @@ export const ACTIVE_TAB_TOKENS: AppTab[] = [
 ];
 
 export function mapPathnameToActiveTab(pathname: string): AppTab {
-  if (pathname.startsWith("/camera-setup")) return "device-setup";
+  if (pathname.startsWith("/camera-setup")) return "camera-setup";
   if (pathname.startsWith("/motor-setup")) return "motor-setup";
   if (pathname.startsWith("/teleop")) return "teleop";
-  if (pathname.startsWith("/recording")) return "record";
+  if (pathname.startsWith("/record")) return "record";
   if (pathname.startsWith("/dataset")) return "dataset";
-  if (pathname.startsWith("/training")) return "train";
-  if (pathname.startsWith("/evaluation")) return "eval";
-  if (pathname.startsWith("/calibrate")) return "calibrate";
+  if (pathname.startsWith("/train")) return "train";
+  if (pathname.startsWith("/eval")) return "eval";
   return "status";
 }
 
 export function mapActiveTabToPath(tab: AppTab): string {
-  if (tab === "device-setup") return "/camera-setup";
-  if (tab === "motor-setup" || tab === "calibrate") return "/motor-setup";
+  if (tab === "camera-setup") return "/camera-setup";
+  if (tab === "motor-setup") return "/motor-setup";
   if (tab === "teleop") return "/teleop";
-  if (tab === "record") return "/recording";
+  if (tab === "record") return "/record";
   if (tab === "dataset") return "/dataset";
-  if (tab === "train") return "/training";
-  if (tab === "eval") return "/evaluation";
+  if (tab === "train") return "/train";
+  if (tab === "eval") return "/eval";
   return "/";
 }
 

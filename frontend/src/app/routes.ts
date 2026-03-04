@@ -15,7 +15,7 @@ export const router = createBrowserRouter([
       { path: "camera-setup", Component: CameraSetup },
       { path: "motor-setup", Component: MotorSetup },
       { path: "teleop", Component: Teleop },
-      { path: "recording", Component: Recording },
+      { path: "record", Component: Recording },
       {
         path: "dataset",
         lazy: async () => ({
@@ -23,13 +23,13 @@ export const router = createBrowserRouter([
         }),
       },
       {
-        path: "training",
+        path: "train",
         lazy: async () => ({
           Component: (await import("./pages/Training")).Training,
         }),
       },
       {
-        path: "evaluation",
+        path: "eval",
         lazy: async () => ({
           Component: (await import("./pages/Evaluation")).Evaluation,
         }),

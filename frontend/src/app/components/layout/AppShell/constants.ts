@@ -15,7 +15,7 @@ export const NAV_GROUPS = [
     id: "hardware",
     label: "Hardware",
     items: [
-      { path: "/", label: "System Status", icon: Monitor },
+      { path: "/", label: "Status", icon: Monitor },
       { path: "/motor-setup", label: "Motor Setup", icon: Settings },
       { path: "/camera-setup", label: "Camera Setup", icon: Camera },
     ],
@@ -25,7 +25,7 @@ export const NAV_GROUPS = [
     label: "Operate",
     items: [
       { path: "/teleop", label: "Teleop", icon: Play },
-      { path: "/recording", label: "Recording", icon: Video },
+      { path: "/record", label: "Record", icon: Video },
     ],
   },
   {
@@ -39,8 +39,8 @@ export const NAV_GROUPS = [
     id: "ml",
     label: "ML",
     items: [
-      { path: "/training", label: "Training", icon: Brain },
-      { path: "/evaluation", label: "Evaluation", icon: FlaskConical },
+      { path: "/train", label: "Train", icon: Brain },
+      { path: "/eval", label: "Eval", icon: FlaskConical },
     ],
   },
 ];
@@ -61,13 +61,12 @@ export const PROCESS_LABELS: Record<RuntimeProcessName, string> = {
 export const TAB_TO_PROCESS: Partial<Record<string, RuntimeProcessName>> = {
   teleop: "teleop",
   record: "record",
-  calibrate: "calibrate",
   "motor-setup": "motor_setup",
   train: "train",
   eval: "eval",
 };
 
-export const PROCESS_TO_TAB: Record<RuntimeProcessName, "teleop" | "record" | "calibrate" | "motor-setup" | "train" | "eval"> = {
+export const PROCESS_TO_TAB: Record<RuntimeProcessName, "teleop" | "record" | "motor-setup" | "train" | "eval"> = {
   teleop: "teleop",
   record: "record",
   calibrate: "motor-setup",

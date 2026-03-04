@@ -7,7 +7,7 @@
 
 [Hugging Face LeRobot](https://github.com/huggingface/lerobot)을 위한 웹 기반 GUI 워크벤치 — 하드웨어 설정부터 정책 평가까지 전체 파이프라인을 지원합니다. CLI 중심의 LeRobot 워크플로우를 브라우저 인터페이스로 대체합니다.
 
-**[문서](https://themomentlab.github.io/lestudio/)** · **[기여 가이드](CONTRIBUTING.md)** · **[변경 이력](docs/release-checklist.md)**
+**[문서](https://themomentlab.github.io/lestudio/)** · **[기여 가이드](CONTRIBUTING.md)** · **[변경 이력](CHANGELOG.md)**
 
 > [English README](README.md)
 
@@ -15,11 +15,11 @@
 
 | 상태 | 녹화 |
 |---|---|
-| ![Status](docs/assets/screenshot-status.png) | ![Record](docs/assets/screenshot-record.png) |
+| ![Status](docs_public/assets/screenshot-status.png) | ![Record](docs_public/assets/screenshot-record.png) |
 
 | 데이터셋 | 학습 |
 |---|---|
-| ![Dataset](docs/assets/screenshot-dataset.png) | ![Train](docs/assets/screenshot-train.png) |
+| ![Dataset](docs_public/assets/screenshot-dataset.png) | ![Train](docs_public/assets/screenshot-train.png) |
 
 ## 기능
 
@@ -162,14 +162,13 @@ LESTUDIO_RUN_HW_SMOKE=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q -m 
 ## 워크플로우 가이드
 
 1. **Status** — 카메라와 팔이 감지되고 프로세스 상태가 정상인지 확인.
-2. **Mapping** — 장치를 안정적인 심볼릭 링크(`top_cam_1`, `follower_arm_1` 등)에 바인딩하고 udev 규칙 적용.
-3. **Motor Setup** — 하드웨어에 필요한 경우 모터 설정 실행.
-4. **Calibration** — follower/leader 팔 캘리브레이션 및 생성된 파일 검증.
-5. **Teleop** — preflight 점검으로 동작 및 카메라 피드 검증.
-6. **Record** — 목표 작업에 대한 에피소드 녹화.
-7. **Dataset** — 에피소드 검토, 데이터 큐레이션, Hugging Face Hub push.
-8. **Train** — 학습 시작 및 실시간 loss/메트릭 모니터링.
-9. **Eval** — 정책 평가 실행으로 루프 완성.
+2. **Motor Setup** — 장치 매핑(udev 규칙), 팔 식별, 모터 설정, 캘리브레이션 실행.
+3. **Camera Setup** — 카메라 스트림 및 USB 대역폭 확인.
+4. **Teleop** — preflight 점검으로 동작 및 카메라 피드 검증.
+5. **Record** — 목표 작업에 대한 에피소드 녹화.
+6. **Dataset** — 에피소드 검토, 데이터 큐레이션, Hugging Face Hub push.
+7. **Train** — 학습 시작 및 실시간 loss/메트릭 모니터링.
+8. **Eval** — 정책 평가 실행으로 루프 완성.
 
 ## 라이선스
 

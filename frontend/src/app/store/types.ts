@@ -1,8 +1,7 @@
 export type AppTab =
   | "status"
-  | "device-setup"
+  | "camera-setup"
   | "motor-setup"
-  | "calibrate"
   | "teleop"
   | "record"
   | "dataset"

@@ -48,4 +48,4 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ---
 
 For detailed release process and validation gates, see
-`docs/release-checklist.md`.
+`docs/release-checklist.md` (local only, not tracked in git).

@@ -6,9 +6,9 @@ const DESKTOP_NOTIFY_COOLDOWN_MS = 5000;
 const desktopNotifyCooldown = new Map<string, number>();
 
 function processLabel(process: ProcessName): string {
-  if (process === "record") return "Recording";
-  if (process === "train") return "Training";
-  if (process === "eval") return "Evaluation";
+  if (process === "record") return "Record";
+  if (process === "train") return "Train";
+  if (process === "eval") return "Eval";
   return "Teleop";
 }
 
@@ -71,14 +71,14 @@ export function notifyProcessStopRequested(process: ProcessName): void {
 
 export function notifyProcessCompleted(process: ProcessName): void {
   if (process === "train") {
-    notifySuccess("Training completed.");
-    notifyDesktop("LeStudio", "Training completed.", "proc-train-complete");
+    notifySuccess("Train completed.");
+    notifyDesktop("LeStudio", "Train completed.", "proc-train-complete");
     return;
   }
 
   if (process === "record") {
-    notifyInfo("Recording session ended.");
-    notifyDesktop("LeStudio", "Recording session ended.", "proc-record-end");
+    notifyInfo("Record session ended.");
+    notifyDesktop("LeStudio", "Record session ended.", "proc-record-end");
   }
 }
 

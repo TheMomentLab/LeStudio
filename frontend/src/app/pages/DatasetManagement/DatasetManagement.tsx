@@ -311,7 +311,7 @@ export function DatasetManagement() {
                 </div>
                 {/* Add link */}
                 <div className="px-3 py-2.5 border-t border-zinc-200 dark:border-zinc-800 text-center">
-                  <Link to="/recording" className="text-sm text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 hover:underline">
+                  <Link to="/record" className="text-sm text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 hover:underline">
                     + Record new dataset
                   </Link>
                 </div>
@@ -424,7 +424,7 @@ export function DatasetManagement() {
                         <h4 className="font-medium text-sm text-zinc-800 dark:text-zinc-200">Quality Assessment Report</h4>
                         <p className="text-sm text-zinc-500 mt-0.5">Checked {Array.isArray(qualityData.checks) ? qualityData.checks.length : 0} items across {selectedDataset?.episodes} episodes.</p>
                       </div>
-                      <Link to="/training" className="text-sm px-4 py-2 bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 rounded-lg border border-zinc-200 dark:border-zinc-700 font-medium hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors">
+                      <Link to="/train" className="text-sm px-4 py-2 bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 rounded-lg border border-zinc-200 dark:border-zinc-700 font-medium hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors">
                         → Go to AI Training
                       </Link>
                     </div>

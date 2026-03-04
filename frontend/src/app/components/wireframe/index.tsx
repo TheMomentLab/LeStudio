@@ -580,14 +580,14 @@ export function RefreshButton({
 
 // ─── Stepper Nav ──────────────────────────────────────────────────────────────
 const PIPELINE_STEPS = [
-  { path: "/", label: "System Status" },
+  { path: "/", label: "Status" },
   { path: "/motor-setup", label: "Motor Setup" },
   { path: "/camera-setup", label: "Camera Setup" },
   { path: "/teleop", label: "Teleop" },
-  { path: "/recording", label: "Recording" },
+  { path: "/record", label: "Record" },
   { path: "/dataset", label: "Dataset" },
-  { path: "/training", label: "Training" },
-  { path: "/evaluation", label: "Evaluation" },
+  { path: "/train", label: "Train" },
+  { path: "/eval", label: "Eval" },
 ] as const;
 
 export function StepperNav({ currentPath }: { currentPath: string }) {

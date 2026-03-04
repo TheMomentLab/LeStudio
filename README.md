@@ -7,17 +7,17 @@
 
 A web-based GUI workbench for [Hugging Face LeRobot](https://github.com/huggingface/lerobot) — covering the full pipeline from hardware setup to policy evaluation. Replaces the CLI-heavy LeRobot workflow with a browser-based interface.
 
-**[Documentation](https://themomentlab.github.io/lestudio/)** · **[Contributing](CONTRIBUTING.md)** · **[Changelog](docs/release-checklist.md)** · **[한국어](README.ko.md)**
+**[Documentation](https://themomentlab.github.io/lestudio/)** · **[Contributing](CONTRIBUTING.md)** · **[Changelog](CHANGELOG.md)** · **[한국어](README.ko.md)**
 
 ## Screenshots
 
 | Status | Record |
 |---|---|
-| ![Status](docs/assets/screenshot-status.png) | ![Record](docs/assets/screenshot-record.png) |
+| ![Status](docs_public/assets/screenshot-status.png) | ![Record](docs_public/assets/screenshot-record.png) |
 
 | Dataset | Train |
 |---|---|
-| ![Dataset](docs/assets/screenshot-dataset.png) | ![Train](docs/assets/screenshot-train.png) |
+| ![Dataset](docs_public/assets/screenshot-dataset.png) | ![Train](docs_public/assets/screenshot-train.png) |
 
 ## Features
 
@@ -159,14 +159,13 @@ LESTUDIO_RUN_HW_SMOKE=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q -m 
 ## Workflow Guide
 
 1. **Status** — Confirm cameras and arms are visible and process status is healthy.
-2. **Mapping** — Bind devices to stable symlinks (`top_cam_1`, `follower_arm_1`, …) and apply udev rules.
-3. **Motor Setup** — Run motor setup if needed for your hardware.
-4. **Calibration** — Calibrate follower/leader arms and verify the generated files.
-5. **Teleop** — Validate motion and camera feeds with preflight checks.
-6. **Record** — Capture episodes for your target task.
-7. **Dataset** — Inspect episodes, curate data, and push to Hugging Face Hub.
-8. **Train** — Start training and monitor loss/metrics in real time.
-9. **Eval** — Run policy evaluation to close the loop.
+2. **Motor Setup** — Map devices to stable symlinks (udev rules), identify arms, run motor setup, and calibrate.
+3. **Camera Setup** — Verify camera streams and USB bandwidth.
+4. **Teleop** — Validate motion and camera feeds with preflight checks.
+5. **Record** — Capture episodes for your target task.
+6. **Dataset** — Inspect episodes, curate data, and push to Hugging Face Hub.
+7. **Train** — Start training and monitor loss/metrics in real time.
+8. **Eval** — Run policy evaluation to close the loop.
 
 ## License
 

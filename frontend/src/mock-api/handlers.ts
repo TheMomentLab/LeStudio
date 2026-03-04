@@ -124,9 +124,9 @@ const state: MockState = {
   ],
   history: [
     { type: "Calibration", ts: "2026-03-01 13:45", meta: "follower_arm — 6 motors" },
-    { type: "Recording", ts: "2026-03-01 12:10", meta: "lerobot/pick_cube — 12 episodes" },
-    { type: "Training", ts: "2026-03-01 10:00", meta: "ACT — 50K steps, loss: 0.0023" },
-    { type: "Evaluation", ts: "2026-02-28 17:30", meta: "Success rate: 8/10" },
+    { type: "Record", ts: "2026-03-01 12:10", meta: "lerobot/pick_cube — 12 episodes" },
+    { type: "Train", ts: "2026-03-01 10:00", meta: "ACT — 50K steps, loss: 0.0023" },
+    { type: "Eval", ts: "2026-02-28 17:30", meta: "Success rate: 8/10" },
   ],
 };
 

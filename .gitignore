@@ -97,8 +97,8 @@ uiux-audit/
 *.bmp
 *.webp
 
-# Allow intentional images in docs and frontend
-!docs/assets/**
+# Allow intentional images in docs_public and frontend
+!docs_public/assets/**
 !frontend/public/**
 
 # ============================================================
@@ -116,3 +116,11 @@ wireframe_test/test_*.png
 # Legacy / deprecated
 # ============================================================
 frontend_legacy/
+
+# ============================================================
+# Internal docs (local-only, not published)
+# ============================================================
+docs/
+
+
+uiux-audit/

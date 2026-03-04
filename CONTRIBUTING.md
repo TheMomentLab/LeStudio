@@ -32,7 +32,7 @@ npm run dev
 
 Restart guidance (what to restart after frontend/backend changes):
 
-- See `docs/developer-manual.md`
+- See `docs_public/developer-guide.md`
 
 ## Non-Negotiable Architecture Rule
 
@@ -80,7 +80,7 @@ LESTUDIO_RUN_HW_SMOKE=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 -m pytest -q -m
 1. Explain behavioral impact and risks clearly.
 2. Include validation commands and outcomes in the PR description.
 3. Keep commits focused and reviewable.
-4. Follow the release gate in [docs/release-checklist.md](docs/release-checklist.md) for release-facing changes.
+4. Follow the release gate in [CHANGELOG.md](CHANGELOG.md) for release-facing changes.
 
 ## Security Reporting
 

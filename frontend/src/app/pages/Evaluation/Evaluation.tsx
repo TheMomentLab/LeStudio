@@ -388,7 +388,7 @@ export function Evaluation() {
               severity="warning"
               reasons={[
                 reason,
-                ...(reason === "No checkpoint selected" ? [{ text: "Go to Train", to: "/training" }] : []),
+                ...(reason === "No checkpoint selected" ? [{ text: "Go to Train", to: "/train" }] : []),
               ]}
             />
           ))}

@@ -336,13 +336,13 @@ export function EvalResultsPanel({
           <RotateCcw size={12} /> Start New Evaluation
         </button>
         <Link
-          to="/training"
+          to="/train"
           className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 text-sm text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
         >
           <ArrowRight size={12} /> Go to Training
         </Link>
         <Link
-          to="/recording"
+          to="/record"
           className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 text-sm text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
         >
           <ArrowRight size={12} /> Record New Data
