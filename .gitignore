@@ -1,3 +1,6 @@
+# ============================================================
+# Python
+# ============================================================
 __pycache__/
 *.py[cod]
 *$py.class
@@ -31,44 +34,76 @@ ENV/
 env.bak/
 venv.bak/
 
-# IDEs
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# Project specific
-config.json
-*.log
-src/lerobot/
-
-# AGENTS.md
-AGENTS.md
-
-
-# Local oh-my-codex runtime artifacts
-.omx/
-
-
-# Build artifacts
-site/
-.coverage
-coverage.xml
-
-# Training outputs
-outputs/
-node_modules
+# ============================================================
+# Node / Frontend
+# ============================================================
+node_modules/
+/package.json
+/package-lock.json
 
 # Frontend source libraries (must be tracked)
 !frontend/src/lib/
 !frontend/src/lib/**
 
-# Local workspace/runtime artifacts
+# ============================================================
+# IDEs & Editors
+# ============================================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ============================================================
+# Testing & Coverage
+# ============================================================
+.coverage
+coverage.xml
+htmlcov/
+.pytest_cache/
+
+# ============================================================
+# Build artifacts
+# ============================================================
+site/
+outputs/
+
+# ============================================================
+# Project specific
+# ============================================================
+config.json
+*.log
+src/lerobot/
+
+# AGENTS.md (auto-generated, local only)
+AGENTS.md
+
+# ============================================================
+# Local workspace / runtime artifacts
+# ============================================================
 .claude/
+.omx/
 nul
 rollback_help.txt
 
+# ============================================================
+# Screenshots & audit images (local reference only)
+# ============================================================
+uiux-audit/
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+*.webp
+
+# Allow intentional images in docs and frontend
+!docs/assets/**
+!frontend/public/**
+
+# ============================================================
 # wireframe_test generated artifacts
+# ============================================================
 wireframe_test/node_modules/
 wireframe_test/dist/
 wireframe_test/*.log
@@ -76,4 +111,8 @@ wireframe_test/**/devserver.log
 wireframe_test/ux_audit/
 wireframe_test/workflow_audit/
 wireframe_test/test_*.png
+
+# ============================================================
+# Legacy / deprecated
+# ============================================================
 frontend_legacy/
