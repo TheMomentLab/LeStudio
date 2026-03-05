@@ -7,19 +7,19 @@ LEROBOT_PATH ?= lerobot
 
 ## install: Init submodule + install both (editable, no-deps for lerobot)
 install:
-	git submodule update --init --recursive
+	git submodule update --init "$(LEROBOT_PATH)"
 	pip install --no-deps -e "$(LEROBOT_PATH)"
 	pip install -e .
 
 ## install-full: Same as install but resolves all lerobot dependencies (may change torch)
 install-full:
-	git submodule update --init --recursive
+	git submodule update --init "$(LEROBOT_PATH)"
 	pip install -e "$(LEROBOT_PATH)"
 	pip install -e .
 
 ## dev: Init submodule + install with dev dependencies (no-deps for lerobot)
 dev:
-	git submodule update --init --recursive
+	git submodule update --init "$(LEROBOT_PATH)"
 	pip install --no-deps -e "$(LEROBOT_PATH)"
 	pip install -e ".[dev]"
 
