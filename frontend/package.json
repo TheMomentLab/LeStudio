@@ -6,9 +6,7 @@
   "scripts": {
     "build": "tsc --noEmit && vite build",
     "dev": "vite",
-    "preview": "vite preview",
-    "contract:check": "node ./scripts/check-openapi-contract.mjs",
-    "contract:update": "node ./scripts/check-openapi-contract.mjs --update"
+    "preview": "vite preview"
   },
   "dependencies": {
     "@radix-ui/react-popover": "^1.1.15",
