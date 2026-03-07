@@ -77,10 +77,11 @@ export const CHECKPOINTS_MOCK = [
 ];
 
 export const STARTING_STEPS = [
-  { label: "CUDA Preflight Check", pattern: /cuda backend detected|no accelerated backend|using cuda|using cpu/i },
-  { label: "Loading Dataset",      pattern: /Creating dataset/i },
-  { label: "Initializing Model",   pattern: /Creating policy/i },
-  { label: "Starting Training Loop", pattern: /Start offline training|cfg\.steps=/i },
+  { label: "CUDA Preflight Check",  pattern: /cuda backend detected|no accelerated backend|using cuda|using cpu/i },
+  { label: "Loading Dataset",       pattern: /Creating dataset/i },
+  { label: "Initializing Model",    pattern: /Creating policy/i },
+  { label: "Validating Config",     pattern: /cfg\.steps=|Effective batch size/i },
+  { label: "Starting Training Loop", pattern: /Start offline training/i },
 ];
 
 export type LossTooltipEntry = {
