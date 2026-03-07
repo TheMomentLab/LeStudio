@@ -9,6 +9,7 @@ from pathlib import Path
 from fastapi import APIRouter
 
 from lestudio.command_builders import build_eval_args
+from lestudio._streaming import stop_all_streamers_for_process, unlock_cameras
 from lestudio._train_helpers import (
     _check_cuda_runtime_compat,
     _check_torchcodec_compat,
@@ -202,6 +203,10 @@ def create_router(state: AppState) -> APIRouter:
                     "ok": False,
                     "error": f"{reason} Switch Compute Device to CPU/MPS or install a CUDA-compatible PyTorch build.",
                 }
+
+        # Release camera preview streamers so eval can open cameras
+        stop_all_streamers_for_process()
+        unlock_cameras()
 
         try:
             args = build_eval_args(state.python_exe, data)
