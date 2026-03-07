@@ -300,7 +300,7 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
       setFlowError(reason);
       notifyError(reason);
     }
-  }, [config, customSteps, datasetSource, device, hfDatasetRepoId, lrValue, modelOutputRepo, policyType, selectedLocalDataset]);
+  }, [batchSize, config, customSteps, datasetSource, device, hfDatasetRepoId, lrValue, modelOutputRepo, policyType, selectedLocalDataset]);
 
   const stopTraining = useCallback(async () => {
     const stop = await apiPost<ActionResponse>("/api/process/train/stop");
