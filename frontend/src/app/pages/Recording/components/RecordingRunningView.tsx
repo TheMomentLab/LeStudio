@@ -6,7 +6,6 @@ type CameraMapping = { role: string; path: string };
 type RecordingRunningViewProps = {
   camerasMapped: CameraMapping[];
   cameraFrames: Record<string, string | null>;
-  cameraStats: Record<string, { fps: number; mbps: number }>;
   pausedFeeds: Record<string, boolean>;
   currentEp: number;
   totalEps: number;
@@ -17,7 +16,6 @@ type RecordingRunningViewProps = {
 export function RecordingRunningView({
   camerasMapped,
   cameraFrames,
-  cameraStats,
   pausedFeeds,
   currentEp,
   totalEps,
@@ -71,9 +69,8 @@ export function RecordingRunningView({
                 )}
 
                 {/* Overlays */}
-                <div className="absolute top-2 left-2 flex items-center gap-1.5">
+                <div className="absolute top-2 left-2">
                   <span className="px-1.5 py-0.5 rounded bg-red-500/80 text-white text-sm font-mono">REC</span>
-                  <span className="px-1.5 py-0.5 rounded bg-black/60 text-white text-sm font-mono">{Math.round(cameraStats[cam.role]?.fps ?? 30)} fps</span>
                 </div>
                 <button
                   onClick={() => onToggleFeed(cam.role)}

@@ -67,8 +67,15 @@ def install_camera_patch():
             jpeg_queue[name] = frame
 
     def jpeg_writer():
+        import json as _json
         import cv2
         write_count = 0
+        # Per-camera FPS tracking
+        cam_frame_count: dict[str, int] = {}
+        cam_stat_ts: dict[str, float] = {}
+        cam_fps: dict[str, float] = {}
+        stats_path = "/dev/shm/lerobot_cam_stats.json"
+        last_stats_write = 0.0
 
         while True:
             time.sleep(0.01)
@@ -76,6 +83,8 @@ def install_camera_patch():
                 items = list(jpeg_queue.items())
                 jpeg_queue.clear()
 
+            now = time.monotonic()
+            fps_updated = False
             for name, img in items:
                 try:
                     if img is None:
@@ -94,10 +103,31 @@ def install_camera_patch():
                         f.write(jpg.tobytes())
                     os.replace(tmp_path, out_path)
                     write_count += 1
+
+                    # Track per-camera FPS
+                    cam_frame_count[name] = cam_frame_count.get(name, 0) + 1
+                    if name not in cam_stat_ts:
+                        cam_stat_ts[name] = now
+                    elapsed = now - cam_stat_ts[name]
+                    if elapsed >= 1.0:
+                        cam_fps[name] = round(cam_frame_count[name] / elapsed, 1)
+                        cam_frame_count[name] = 0
+                        cam_stat_ts[name] = now
+                        fps_updated = True
+
                     if write_count % 30 == 0:
                         _write_status(f"writer: writes={write_count} last={name} ts={time.time():.3f}")
                 except (OSError, ValueError, cv2.error):
                     _write_status(f"writer: encode/write exception for {name}")
+
+            # Write FPS stats to SHM whenever they update (decoupled from frame loop)
+            if fps_updated or (cam_fps and now - last_stats_write >= 1.0):
+                try:
+                    with open(stats_path, "w", encoding="utf-8") as sf:
+                        _json.dump(cam_fps, sf)
+                    last_stats_write = now
+                except OSError:
+                    pass
 
     threading.Thread(target=jpeg_writer, daemon=True).start()
 

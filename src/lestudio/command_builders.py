@@ -6,15 +6,25 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-def dataset_cache_path(repo_id: str) -> Path:
+def dataset_cache_path(repo_id: str, root: str | None = None) -> Path:
+    """Return the local path where a dataset is stored.
+
+    If *root* is given (local mode), the dataset lives at ``<root>/<repo_id>``.
+    Otherwise it falls back to the default HuggingFace cache location.
+    """
+    if root:
+        return Path(root).expanduser() / repo_id
     return Path.home() / ".cache" / "huggingface" / "lerobot" / repo_id
 
 
 def resolve_record_resume(cfg: dict) -> tuple[bool, bool]:
     requested_resume = bool(cfg.get("record_resume"))
     repo_id = str(cfg.get("record_repo_id", "user/dataset"))
-    cache_dir = dataset_cache_path(repo_id)
-    
+    if "/" not in repo_id:
+        repo_id = f"local/{repo_id}"
+    root = cfg.get("record_dataset_root") or None
+    cache_dir = dataset_cache_path(repo_id, root)
+
     if not requested_resume:
         if cache_dir.exists():
             shutil.rmtree(cache_dir, ignore_errors=True)
@@ -22,10 +32,10 @@ def resolve_record_resume(cfg: dict) -> tuple[bool, bool]:
 
     meta_path = cache_dir / "meta" / "tasks.parquet"
     enabled = meta_path.exists()
-    
+
     if cache_dir.exists() and not enabled:
         shutil.rmtree(cache_dir, ignore_errors=True)
-        
+
     return True, enabled
 
 
@@ -41,7 +51,19 @@ def build_teleop_args(python_exe: str, cfg: dict) -> list[str]:
     }
     speed_key = str(cfg.get("teleop_speed", "0.5"))
     max_rel = _SPEED_TO_MAX_REL.get(speed_key, 15.0)
-    if cfg.get("robot_mode") == "bi":
+
+    # Build camera config dict so the robot reads camera frames
+    # (needed by camera_patch to write SHM files for live preview)
+    cameras = cfg.get("cameras", {})
+    cam_dict = {}
+    for name, path in cameras.items():
+        if path:
+            if not path.startswith("/dev/"):
+                path = f"/dev/{path}"
+            cam_dict[name] = {"type": "opencv", "index_or_path": path, "width": 640, "height": 480, "fps": 30, "fourcc": "MJPG"}
+
+    is_bi = cfg.get("robot_mode") == "bi"
+    if is_bi:
         args = [
             python_exe,
             "-m",
@@ -54,6 +76,10 @@ def build_teleop_args(python_exe: str, cfg: dict) -> list[str]:
             f'--teleop.right_arm_config.port={cfg["right_leader_port"]}',
             "--display_data=false",
         ]
+        if cam_dict:
+            cam_str = json.dumps(cam_dict)
+            args.append(f"--robot.cameras={{}}")
+            args.append(f"--robot.left_arm_config.cameras={cam_str}")
         if max_rel is not None:
             args.append(f"--robot.left_arm_config.max_relative_target={max_rel}")
             args.append(f"--robot.right_arm_config.max_relative_target={max_rel}")
@@ -70,20 +96,36 @@ def build_teleop_args(python_exe: str, cfg: dict) -> list[str]:
         f'--teleop.id={cfg.get("teleop_id", "leader_arm_1")}',
         "--display_data=false",
     ]
+    if cam_dict:
+        cam_str = json.dumps(cam_dict)
+        args.append(f"--robot.cameras={cam_str}")
     if max_rel is not None:
         args.append(f"--robot.max_relative_target={max_rel}")
     return args
 
 
 def build_record_args(python_exe: str, cfg: dict, resume_enabled: bool) -> list[str]:
+    repo_id = cfg.get("record_repo_id", "user/dataset")
+    dataset_root = cfg.get("record_dataset_root")
+
+    # lerobot requires repo_id in "user/name" format (sanity_check_dataset_name).
+    # For local-only datasets, ensure the slash exists.
+    if "/" not in str(repo_id):
+        repo_id = f"local/{repo_id}"
+
     base = [
-        f'--dataset.repo_id={cfg.get("record_repo_id", "user/dataset")}',
+        f"--dataset.repo_id={repo_id}",
         f'--dataset.num_episodes={cfg.get("record_episodes", 50)}',
         f'--dataset.single_task={cfg.get("record_task", "task")}',
         "--display_data=false",
         "--dataset.vcodec=h264",
         "--dataset.push_to_hub=true" if cfg.get("record_push_to_hub") else "--dataset.push_to_hub=false",
     ]
+    # Local dataset root — lerobot uses root as-is (does NOT append repo_id),
+    # so we must build the full path: <user_root>/<repo_id>
+    if dataset_root:
+        full_root = Path(dataset_root).expanduser() / repo_id
+        base.append(f"--dataset.root={full_root}")
     if resume_enabled:
         base.append("--resume=true")
 

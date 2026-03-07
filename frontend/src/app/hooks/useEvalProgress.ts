@@ -89,7 +89,7 @@ export function useEvalProgress({
 }: UseEvalProgressArgs) {
   // ── Aggregate state ──────────────────────────────────────────────────────
   const [progressStatus, setProgressStatus] =
-    useState<EvalProgressStatus>("idle");
+    useState<EvalProgressStatus>(() => running ? "running" : "idle");
   const [doneEpisodes, setDoneEpisodes] = useState(0);
   const [targetEpisodes, setTargetEpisodes] = useState<number | null>(null);
   const [meanReward, setMeanReward] = useState<number | null>(null);
@@ -110,7 +110,9 @@ export function useEvalProgress({
   const [episodeResults, setEpisodeResults] = useState<EpisodeResult[]>([]);
 
   // ── Refs ──────────────────────────────────────────────────────────────────
-  const processedLogsRef = useRef(0);
+  // When remounting while process is running, skip existing logs to avoid
+  // old end-markers triggering false idle/stopped state.
+  const processedLogsRef = useRef(running ? evalLogLines.length : 0);
   const perEpisodeRewardRef = useRef<Record<number, number>>({});
   const perEpisodeDataRef = useRef<
     Record<number, { reward: number; success: boolean; frames: number }>

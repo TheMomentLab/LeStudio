@@ -7,7 +7,6 @@ type CameraMapping = { role: string; path: string };
 type RecordingCameraTabProps = {
   camerasMapped: CameraMapping[];
   cameraFrames: Record<string, string | null>;
-  cameraStatsRows: Array<{ role: string; fps: number }>;
   advStreamOpen: boolean;
   setAdvStreamOpen: (value: boolean) => void;
 };
@@ -15,7 +14,6 @@ type RecordingCameraTabProps = {
 export function RecordingCameraTab({
   camerasMapped,
   cameraFrames,
-  cameraStatsRows,
   advStreamOpen,
   setAdvStreamOpen,
 }: RecordingCameraTabProps) {

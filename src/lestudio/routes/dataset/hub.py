@@ -192,7 +192,6 @@ def register_routes(router: APIRouter, state: AppState):
         token = data.token.strip() if data else ""
         if not token:
             return {"ok": False, "error": "token is required"}
-            return {"ok": False, "error": "token is required"}
         try:
             token_file.parent.mkdir(parents=True, exist_ok=True)
             token_file.write_text(token)

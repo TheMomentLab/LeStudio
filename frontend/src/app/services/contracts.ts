@@ -194,11 +194,12 @@ export function toBackendRecordPayload(input: {
   task: string;
   resume: boolean;
   pushToHub: boolean;
+  datasetRoot?: string;
   cameras: CameraMapping[];
   config: LeStudioConfig;
 }): RecordLike {
   const cfg = asRecord(input.config) ?? {};
-  return {
+  const payload: RecordLike = {
     ...buildBaseProcessPayload(input.config, input.modeLabel, input.cameras),
     record_repo_id: input.repoId || getString(cfg, "record_repo_id", "user/dataset"),
     record_episodes: Math.max(1, Math.floor(input.totalEpisodes || 1)),
@@ -206,6 +207,10 @@ export function toBackendRecordPayload(input: {
     record_resume: input.resume,
     record_push_to_hub: input.pushToHub,
   };
+  if (input.datasetRoot) {
+    payload.record_dataset_root = input.datasetRoot;
+  }
+  return payload;
 }
 
 function mapPolicyLabelToTrainPolicy(policyLabel: string): string {

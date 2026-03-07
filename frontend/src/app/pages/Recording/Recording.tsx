@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { Link } from "react-router";
 import { Play } from "lucide-react";
 import { apiGet, apiPost } from "../../services/apiClient";
-import { useLeStudioStore } from "../../store";
+import { useLeStudioStore, getLeStudioState } from "../../store";
 import {
   extractPreflightReason,
   getConfigBool,
@@ -42,10 +42,6 @@ type ActionResponse = {
   event?: string;
 };
 
-type CameraStatsResponse = {
-  cameras?: Record<string, { fps: number; mbps: number }>;
-};
-
 type DevicesResponse = {
   cameras: Array<{ device: string; path: string; kernels: string; symlink: string; model: string }>;
   arms: Array<{ device: string; path: string; symlink?: string | null }>;
@@ -61,8 +57,9 @@ const LOADING_STEPS = [
 
 export function Recording() {
   const config = useLeStudioStore((s) => s.config);
+  const recordRunningOnBackend = useLeStudioStore((s) => !!s.procStatus.record);
   const [mode, setMode] = useState("Single Arm");
-  const [phase, setPhase] = useState<RecPhase>("idle");
+  const [phase, setPhase] = useState<RecPhase>(() => recordRunningOnBackend ? "running" : "idle");
   const [loadingStep, setLoadingStep] = useState(0);
   const [currentEp, setCurrentEp] = useState(0);
   const [totalEps, setTotalEps] = useState(50);
@@ -74,11 +71,14 @@ export function Recording() {
   const [flowError, setFlowError] = useState<string | null>(null);
   const lastErrorAtRef = useRef(0);
   const prevRunningRef = useRef(false);
-  const [cameraStats, setCameraStats] = useState<Record<string, { fps: number; mbps: number }>>({});
   const { hfAuth } = useHfAuth();
   const hfUsername = useLeStudioStore((s) => s.hfUsername);
   const [recordRepoId, setRecordRepoId] = useState(() =>
     getConfigString(config, "record_repo_id", ""),
+  );
+  const [datasetStorageMode, setDatasetStorageMode] = useState<"local" | "hf">("local");
+  const [localDatasetRoot, setLocalDatasetRoot] = useState(() =>
+    getConfigString(config, "record_dataset_root", "~/.cache/huggingface/lerobot"),
   );
   const [recordTask, setRecordTask] = useState(() => getConfigString(config, "record_task", ""));
   const [availableDatasets, setAvailableDatasets] = useState<string[]>([]);
@@ -127,7 +127,8 @@ export function Recording() {
         repoId: recordRepoId.trim(),
         task: recordTask.trim(),
         resume: resumeEnabled,
-        pushToHub: hfAuth === "ready" && pushToHub,
+        pushToHub: datasetStorageMode === "hf" && hfAuth === "ready" && pushToHub,
+        datasetRoot: datasetStorageMode === "local" ? localDatasetRoot.trim() : undefined,
         cameras: camerasMapped,
         config,
       });
@@ -213,6 +214,26 @@ export function Recording() {
   const recordLogs = useLeStudioStore((s) => s.logLines["record"]);
   const loadingStartIdxRef = useRef(0);
   const loadingStepRef = useRef(0);
+
+  // Sync phase with backend process status
+  useEffect(() => {
+    if (phase === "idle" && recordRunningOnBackend) {
+      const logs = getLeStudioState().logLines["record"] ?? [];
+      loadingStartIdxRef.current = logs.length;
+      // Restore episode counter from existing logs
+      let latestEp = -1;
+      for (const line of logs) {
+        const m = /Recording episode (\d+)/i.exec(line.text);
+        if (m) latestEp = Number(m[1]);
+      }
+      if (latestEp >= 0) setCurrentEp(latestEp);
+      setPhase("running");
+    } else if (phase !== "idle" && !recordRunningOnBackend) {
+      setPhase("idle");
+      setStartAccepted(false);
+      setActionPending(false);
+    }
+  }, [recordRunningOnBackend]);
 
   useEffect(() => {
     if (phase !== "loading" || !startAccepted) return;
@@ -336,22 +357,6 @@ export function Recording() {
     prevRunningRef.current = running;
   }, [running]);
 
-  useEffect(() => {
-    if (phase !== "running") return;
-
-    const poll = async () => {
-      const result = await apiGet<CameraStatsResponse>("/api/camera/stats");
-      setCameraStats(result.cameras ?? {});
-    };
-
-    void poll();
-    const timer = setInterval(() => {
-      void poll();
-    }, 2000);
-
-    return () => clearInterval(timer);
-  }, [phase]);
-
   // Keyboard shortcuts: → Save, ← Discard, Esc Stop
   useEffect(() => {
     if (!running) return;
@@ -364,11 +369,6 @@ export function Recording() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [running, handleSave, handleDiscard, handleStop]);
-
-  const cameraStatsRows = camerasMapped.map((cam) => ({
-    role: cam.role,
-    fps: cameraStats[cam.role]?.fps ?? 30,
-  }));
 
   return (
     <div className="flex flex-col h-full">
@@ -413,11 +413,15 @@ export function Recording() {
                   pushToHub={pushToHub}
                   hfAuth={hfAuth}
                   availableDatasets={availableDatasets}
+                  datasetStorageMode={datasetStorageMode}
+                  localDatasetRoot={localDatasetRoot}
                   setTotalEps={setTotalEps}
                   setRecordRepoId={setRecordRepoId}
                   setRecordTask={setRecordTask}
                   setResumeEnabled={setResumeEnabled}
                   setPushToHub={setPushToHub}
+                  setDatasetStorageMode={setDatasetStorageMode}
+                  setLocalDatasetRoot={setLocalDatasetRoot}
                 />
               )}
 
@@ -445,7 +449,6 @@ export function Recording() {
                 <RecordingCameraTab
                   camerasMapped={camerasMapped}
                   cameraFrames={cameraFrames}
-                  cameraStatsRows={cameraStatsRows}
                   advStreamOpen={advStreamOpen}
                   setAdvStreamOpen={setAdvStreamOpen}
                 />
@@ -459,7 +462,6 @@ export function Recording() {
             <RecordingRunningView
               camerasMapped={camerasMapped}
               cameraFrames={cameraFrames}
-              cameraStats={cameraStats}
               pausedFeeds={pausedFeeds}
               currentEp={currentEp}
               totalEps={totalEps}

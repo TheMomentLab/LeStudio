@@ -63,6 +63,56 @@ def main():
     from lestudio.camera_patch import install_camera_patch
     install_camera_patch()
     record_mod = _install_stdin_bridge()
+    try:
+        record_mod.main()
+    except FileNotFoundError as exc:
+        if "parquet" in str(exc) and "episodes" in str(exc):
+            _auto_clean_broken_cache_and_retry(exc, record_mod)
+        else:
+            raise
+
+
+def _auto_clean_broken_cache_and_retry(exc: FileNotFoundError, record_mod):
+    """Clean corrupted local dataset cache and retry without resume.
+
+    When ``--resume=true`` hits a broken dataset (locally cached or on Hub),
+    delete the local cache and retry with ``resume=False`` so lerobot
+    creates a fresh dataset instead of trying to load corrupted metadata.
+    """
+    import re
+    import shutil
+    import sys
+    from pathlib import Path
+
+    msg = str(exc)
+    # Extract path from error message like:
+    #   "…: /home/…/.cache/huggingface/lerobot/user/dataset/meta/episodes"
+    m = re.search(r"(/\S+/meta(?:/\S*)?)", msg)
+    if not m:
+        raise exc
+
+    meta_path = Path(m.group(1))
+    # Go up to dataset root: …/<user>/<dataset>/meta/… → …/<user>/<dataset>
+    cache_root = meta_path
+    while cache_root.name != "meta" and cache_root.parent != cache_root:
+        cache_root = cache_root.parent
+    cache_root = cache_root.parent  # now at …/<user>/<dataset>
+
+    if not cache_root.exists():
+        raise exc
+    # Safety: only clean known dataset directories (HF cache or explicit --dataset.root)
+    is_hf_cache = "huggingface" in str(cache_root) or ".cache" in str(cache_root)
+    has_meta = (cache_root / "meta").exists() or (cache_root / "meta").is_dir()
+    if not (is_hf_cache or has_meta):
+        raise exc
+
+    print(f"[record-bridge] Broken dataset cache detected, cleaning: {cache_root}", flush=True)
+    shutil.rmtree(cache_root, ignore_errors=True)
+
+    # Strip --resume=true from sys.argv so the retry creates a fresh dataset
+    sys.argv = [a for a in sys.argv if not a.startswith("--resume")]
+
+    print("[record-bridge] Retrying record without resume…", flush=True)
     record_mod.main()
 
 

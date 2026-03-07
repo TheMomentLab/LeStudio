@@ -3,7 +3,7 @@ import { Link } from "react-router";
 import { ChevronDown, ChevronUp, Play, Pause, Loader2, CheckCircle2, Camera } from "lucide-react";
 import { cn } from "../components/ui/utils";
 import { apiGet, apiPost } from "../services/apiClient";
-import { useLeStudioStore } from "../store";
+import { useLeStudioStore, getLeStudioState } from "../store";
 import {
   extractPreflightReason,
   parseBackendError,
@@ -33,11 +33,6 @@ type ActionResponse = {
   error?: string;
 };
 
-type CameraStatsResponse = {
-  cameras?: Record<string, { fps: number; mbps: number }>;
-};
-
-
 type DevicesResponse = {
   cameras: Array<{ device: string; path: string; kernels: string; symlink: string; model: string }>;
   arms: Array<{ device: string; path: string; symlink?: string | null }>;
@@ -55,7 +50,8 @@ const LOADING_STEPS = [
 export function Teleop() {
   const config = useLeStudioStore((s) => s.config);
   const [mode, setMode] = useState("Single Arm");
-  const [phase, setPhase] = useState<TeleopPhase>("idle");
+  const teleopRunningOnBackend = useLeStudioStore((s) => !!s.procStatus.teleop);
+  const [phase, setPhase] = useState<TeleopPhase>(() => teleopRunningOnBackend ? "running" : "idle");
   const [loadingStep, setLoadingStep] = useState(0);
   const [loadingWaitingInput, setLoadingWaitingInput] = useState(false);
   const [pausedFeeds, setPausedFeeds] = useState<Record<string, boolean>>({});
@@ -67,7 +63,6 @@ export function Teleop() {
   const [flowError, setFlowError] = useState<string | null>(null);
   const lastErrorAtRef = useRef(0);
   const prevRunningRef = useRef(false);
-  const [cameraStats, setCameraStats] = useState<Record<string, { fps: number; mbps: number }>>({});
   const [camerasMapped, setCamerasMapped] = useState<{ role: string; path: string }[]>([]);
   const [armPortOptions, setArmPortOptions] = useState<PortOption[]>([]);
   const [followerIdOptions, setFollowerIdOptions] = useState<string[]>([]);
@@ -155,6 +150,22 @@ export function Teleop() {
     setStartAccepted(false);
     setActionPending(false);
   };
+
+  // Sync phase with backend process status
+  // — restores "running" when navigating back to page while process is active
+  // — resets to "idle" when backend process ends (e.g. crashed while on another page)
+  useEffect(() => {
+    if (phase === "idle" && teleopRunningOnBackend) {
+      // Skip past existing logs so old end-markers don't trigger idle
+      const logs = getLeStudioState().logLines["teleop"] ?? [];
+      loadingStartIdxRef.current = logs.length;
+      setPhase("running");
+    } else if (phase !== "idle" && !teleopRunningOnBackend) {
+      setPhase("idle");
+      setStartAccepted(false);
+      setActionPending(false);
+    }
+  }, [teleopRunningOnBackend]);
 
   // Real log-based loading sequence
   const teleopLogs = useLeStudioStore((s) => s.logLines["teleop"]);
@@ -274,25 +285,6 @@ export function Teleop() {
     }
     prevRunningRef.current = running;
   }, [running]);
-
-  useEffect(() => {
-    if (phase !== "running") return;
-
-    const poll = async () => {
-      const result = await apiGet<CameraStatsResponse>("/api/camera/stats");
-      setCameraStats(result.cameras ?? {});
-    };
-
-    void poll();
-    const timer = setInterval(() => {
-      void poll();
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [phase]);
-
-  const activeFpsValues = camerasMapped.map((cam) => cameraStats[cam.role]?.fps).filter((v): v is number => typeof v === "number");
-  const avgFps = activeFpsValues.length > 0 ? activeFpsValues.reduce((sum, cur) => sum + cur, 0) / activeFpsValues.length : 30;
-  const loopMs = Math.max(1, Math.round(1000 / avgFps));
 
   return (
     <div className="flex flex-col h-full">
@@ -581,9 +573,8 @@ export function Teleop() {
                         )}
 
                         {/* Overlays */}
-                        <div className="absolute top-2 left-2 flex items-center gap-1.5">
+                        <div className="absolute top-2 left-2">
                           <span className="px-1.5 py-0.5 rounded bg-red-500/80 text-white text-sm font-mono">LIVE</span>
-                          <span className="px-1.5 py-0.5 rounded bg-black/60 text-white text-sm font-mono">{Math.round(cameraStats[cam.role]?.fps ?? 30)} fps</span>
                         </div>
                         <button
                           onClick={() => toggleFeed(cam.role)}
@@ -603,14 +594,9 @@ export function Teleop() {
                 })}
               </div>
 
-              {/* Loop stats */}
+              {/* Session info */}
               <div className="flex items-center gap-2 px-3 py-2 rounded border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/50">
-                <span className="text-sm text-zinc-400 font-mono">Loop:</span>
-                <span className="text-sm font-mono text-emerald-600 dark:text-emerald-400">{loopMs}ms ({Math.round(avgFps)}Hz)</span>
-                <div className="ml-2 w-16 h-1 rounded-full bg-emerald-500/30">
-                  <div className="h-full w-3/4 rounded-full bg-emerald-400" />
-                </div>
-                <span className="ml-auto text-sm text-zinc-500">{mode} · {speed} · {camerasMapped.length} cams</span>
+                <span className="text-sm text-zinc-500">{mode} · {speed} · {camerasMapped.length} cams</span>
               </div>
             </div>
           )}
@@ -628,7 +614,7 @@ export function Teleop() {
             />
             <span className="text-sm text-zinc-400">
               {running
-                ? `${mode} · Loop ${loopMs}ms`
+                ? `${mode} · ${speed}`
                 : phase === "loading"
                   ? "Starting teleop…"
                   : "Teleop ready"}

@@ -32,6 +32,62 @@ from lestudio.routes._state import AppState
 
 logger = logging.getLogger(__name__)
 
+
+def _resolve_video_name(video_name: str) -> str:
+    """Resolve a symlink-based camera name to its real /dev/videoN name.
+
+    The camera patch writes SHM files using the real device name (e.g. video0),
+    but the frontend may request using the symlink name (e.g. camera_top).
+    This resolves /dev/camera_top → /dev/video0 → "video0".
+    """
+    dev_path = Path(f"/dev/{video_name}")
+    try:
+        if dev_path.is_symlink():
+            return dev_path.resolve().name
+    except OSError:
+        pass
+    return video_name
+
+
+def _find_shm_frame(video_name: str) -> bytes | None:
+    """Try to read a camera frame from shared memory.
+
+    camera_patch writes SHM files using the name from index_or_path
+    (e.g. /dev/top_cam_1 → "top_cam_1").  The frontend requests using
+    the symlink name which is the same.  We try the original name first,
+    then the resolved real device name as fallback.
+    Returns raw JPEG bytes or None.
+    """
+    # 1) Direct match with the requested name (most common case: symlink name)
+    shm_path = f"/dev/shm/lerobot_cam_{video_name}.jpg"
+    frame = _read_shm(shm_path)
+    if frame:
+        return frame
+
+    # 2) Fallback: try the resolved real device name (e.g. video0)
+    real_name = _resolve_video_name(video_name)
+    if real_name != video_name:
+        shm_path2 = f"/dev/shm/lerobot_cam_{real_name}.jpg"
+        frame = _read_shm(shm_path2)
+        if frame:
+            return frame
+
+    return None
+
+
+def _read_shm(path: str) -> bytes | None:
+    """Read a shared memory JPEG file if it exists."""
+    try:
+        if os.path.exists(path):
+            with open(path, "rb") as f:
+                data = f.read()
+            if data:
+                return data
+    except OSError:
+        pass
+    return None
+
+
 # 모듈 레벨 캐시 변수
 _lerobot_cache_size: float | None = None
 _lerobot_cache_ts: float = 0.0
@@ -43,21 +99,16 @@ def create_router(state: AppState) -> APIRouter:
     # ─── MJPEG Streaming ───────────────────────────────────────────────────────
     async def mjpeg_gen(video_path: str, request: Request, preview: bool = False):
         cam_name = Path(video_path).name
-        shm_path = f"/dev/shm/lerobot_cam_{cam_name}.jpg"
         use_process_frames = state.proc_mgr.is_running("record") or state.proc_mgr.is_running("teleop")
-        if use_process_frames and os.path.exists(shm_path):
+        if use_process_frames:
             while True:
                 if await request.is_disconnected():
                     break
                 if not (state.proc_mgr.is_running("record") or state.proc_mgr.is_running("teleop")):
                     break
-                try:
-                    with open(shm_path, "rb") as f:
-                        frame = f.read()
-                    if frame:
-                        yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + frame + b"\r\n"
-                except OSError:
-                    pass
+                frame = _find_shm_frame(cam_name)
+                if frame:
+                    yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + frame + b"\r\n"
                 await asyncio.sleep(1 / 30)
 
         if _str._cameras_locked and not (state.proc_mgr.is_running("record") or state.proc_mgr.is_running("teleop")):
@@ -105,20 +156,29 @@ def create_router(state: AppState) -> APIRouter:
     @router.get("/api/camera/snapshot/{video_name}")
     async def snapshot_camera(video_name: str):
 
+        process_running = state.proc_mgr.is_running("record") or state.proc_mgr.is_running("teleop")
+
         # During teleop/record: read from shared memory (fastest path)
-        shm_path = f"/dev/shm/lerobot_cam_{video_name}.jpg"
-        use_shm = state.proc_mgr.is_running("record") or state.proc_mgr.is_running("teleop")
-        if use_shm and os.path.exists(shm_path):
-            try:
-                with open(shm_path, "rb") as f:
-                    frame = f.read()
+        if process_running:
+            frame = _find_shm_frame(video_name)
+            if frame:
+                return Response(content=frame, media_type="image/jpeg",
+                                headers={"Cache-Control": "no-store"})
+
+            # SHM not yet available — wait up to 3s for camera_patch to write
+            for _ in range(30):
+                await asyncio.sleep(0.1)
+                frame = _find_shm_frame(video_name)
                 if frame:
                     return Response(content=frame, media_type="image/jpeg",
                                     headers={"Cache-Control": "no-store"})
-            except OSError:
-                pass
 
-        # Normal path: use streamer pool
+            return Response(
+                status_code=503,
+                headers={"Cache-Control": "no-store", "Retry-After": "1"},
+            )
+
+        # Normal path (idle): use streamer pool
         frame = snapshot_get_frame(f"/dev/{video_name}", state.config_path)
         if frame:
             return Response(content=frame, media_type="image/jpeg",
@@ -142,7 +202,26 @@ def create_router(state: AppState) -> APIRouter:
     # ─── Camera Stats ──────────────────────────────────────────────────────────
     @router.get("/api/camera/stats")
     def api_camera_stats():
-        cameras: dict = {}
+        import json as _json
+
+        process_running = state.proc_mgr.is_running("record") or state.proc_mgr.is_running("teleop")
+
+        # During teleop/record: read FPS from camera_patch stats file
+        if process_running:
+            cam_fps: dict[str, float] = {}
+            stats_path = Path("/dev/shm/lerobot_cam_stats.json")
+            try:
+                if stats_path.exists():
+                    cam_fps = _json.loads(stats_path.read_text(encoding="utf-8"))
+            except (OSError, _json.JSONDecodeError):
+                pass
+            cameras: dict = {}
+            for name, fps in cam_fps.items():
+                cameras[name] = {"fps": fps, "mbps": 0}
+            return {"cameras": cameras, "buses": {}}
+
+        # Normal path: use streamer pool stats
+        cameras = {}
         bus_data: dict = {}
         with _streamers_lock:
             for real_path, streamer in _streamers.items():

@@ -15,7 +15,7 @@ import {
   type TrainOutputEvent,
   type TrainStatusEvent,
 } from "../../services/apiClient";
-import { useLeStudioStore } from "../../store";
+import { useLeStudioStore, getLeStudioState } from "../../store";
 import {
   normalizeCheckpointStep,
   normalizeDeviceKey,
@@ -82,7 +82,8 @@ export function Training() {
   const [hfDatasetRepoId, setHfDatasetRepoId] = useState("");
 
   // Status
-  const [trainStatus, setTrainStatus] = useState<TrainStatus>("idle");
+  const trainRunningOnBackend = useLeStudioStore((s) => !!s.procStatus.train);
+  const [trainStatus, setTrainStatus] = useState<TrainStatus>(() => trainRunningOnBackend ? "running" : "idle");
   const [cudaState, setCudaState] = useState<CudaState>("ok");
   const [cudaFixRunning, setCudaFixRunning] = useState(false);
   const [preflightReason, setPreflightReason] = useState<string>("");
@@ -483,6 +484,15 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
 
     return () => clearInterval(timer);
   }, [trainStatus]);
+
+  // Sync trainStatus with backend process status
+  useEffect(() => {
+    if (trainStatus === "idle" && trainRunningOnBackend) {
+      setTrainStatus("running");
+    } else if (trainStatus !== "idle" && !trainRunningOnBackend) {
+      setTrainStatus("idle");
+    }
+  }, [trainRunningOnBackend]);
 
   useEffect(() => {
     const unsubscribeStatus = subscribeTrainChannel("status", (event: TrainStatusEvent) => {
