@@ -380,11 +380,26 @@ export function RuntimeConsoleDrawer() {
     setStdinValue("");
   }, [activeProcess, addToast, appendLog, running, stdinValue]);
 
+  const sendInterrupt = useCallback(async () => {
+    if (!running) return;
+    const response = await apiPost<{ ok: boolean; error?: string }>(`/api/process/${activeProcess}/stop`);
+    if (!response.ok) {
+      addToast(response.error ?? `Failed to interrupt ${activeProcess}`, "error");
+      return;
+    }
+    appendLog(activeProcess, "^C (interrupt sent)", "info");
+  }, [activeProcess, addToast, appendLog, running]);
+
   const onInputKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "c" && (e.ctrlKey || e.metaKey) && running) {
+      e.preventDefault();
+      void sendInterrupt();
+      return;
+    }
     if (e.key !== "Enter") return;
     e.preventDefault();
     void sendStdin();
-  }, [sendStdin]);
+  }, [running, sendInterrupt, sendStdin]);
 
   return (
     <div
@@ -469,7 +484,7 @@ export function RuntimeConsoleDrawer() {
             onChange={(e) => setStdinValue(e.target.value)}
             onKeyDown={onInputKeyDown}
             placeholder={running
-              ? "stdin — press Enter to send (empty = newline)"
+              ? "stdin — press Enter to send (empty = newline), Ctrl+C to stop"
               : "Enter command and press Enter to run"
             }
             className="flex-1 bg-transparent text-sm font-mono text-zinc-700 dark:text-zinc-300 placeholder:text-zinc-500 outline-none"
