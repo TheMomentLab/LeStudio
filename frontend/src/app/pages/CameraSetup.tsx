@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router";
-import { Camera, Eye, EyeOff, X, AlertCircle } from "lucide-react";
+import { Camera, Eye, EyeOff, X, AlertCircle, Save } from "lucide-react";
 import { apiGet, apiPost } from "../services/apiClient";
 import {
-  PageHeader, WireBox, WireSelect, EmptyState, RefreshButton,
+  PageHeader, WireSelect, EmptyState, RefreshButton,
 } from "../components/wireframe";
 import { toVideoName, useCameraFeeds } from "../hooks/useCameraFeeds";
 
@@ -22,6 +21,15 @@ type DeviceResponse = {
 type ApplyRulesResponse = {
   ok?: boolean;
   error?: string;
+};
+
+type RuleItem = {
+  serial?: string;
+  symlink?: string | null;
+};
+
+type RulesCurrentResponse = {
+  arm_rules?: RuleItem[];
 };
 
 const CAMERA_ROLES = ["(none)", "top_cam_1", "top_cam_2", "top_cam_3", "wrist_cam_1", "wrist_cam_2"];
@@ -67,6 +75,7 @@ export function CameraSetup() {
   const [error, setError] = useState<string | null>(null);
   const [activePreviews, setActivePreviews] = useState<Record<string, boolean>>({});
   const [cameras, setCameras] = useState<CameraDevice[]>([]);
+  const [persistedAssignments, setPersistedAssignments] = useState<Record<string, string>>({});
   const [cameraAssignments, setCameraAssignments] = useState<Record<string, string>>({});
 
   const togglePreview = (id: string) =>
@@ -84,6 +93,7 @@ export function CameraSetup() {
       for (const cam of nextCameras) {
         nextAssignments[cam.device] = normalizeRole(cam.symlink);
       }
+      setPersistedAssignments(nextAssignments);
       setCameraAssignments(nextAssignments);
     } catch (refreshError) {
       const message = refreshError instanceof Error ? refreshError.message : "failed to load camera data";
@@ -108,9 +118,20 @@ export function CameraSetup() {
         assignments[cam.kernels] = role;
       }
 
+      const currentRules = await apiGet<RulesCurrentResponse>("/api/udev/rules")
+        .catch(() => apiGet<RulesCurrentResponse>("/api/rules/current"));
+      const armAssignments: Record<string, string> = {};
+      for (const rule of Array.isArray(currentRules.arm_rules) ? currentRules.arm_rules : []) {
+        const serial = String(rule.serial ?? "").trim();
+        const role = String(rule.symlink ?? "").trim();
+        if (serial && role && role !== "(none)") {
+          armAssignments[serial] = role;
+        }
+      }
+
       const result = await apiPost<ApplyRulesResponse>("/api/rules/apply", {
         assignments,
-        arm_assignments: {},
+        arm_assignments: armAssignments,
       });
 
       if (!result.ok) {
@@ -133,6 +154,10 @@ export function CameraSetup() {
     [cameras, activePreviews],
   );
   const previewFrames = useCameraFeeds(previewTargets, previewTargets.length > 0, 10);
+  const hasPendingMappingChanges = useMemo(
+    () => cameras.some((cam) => (cameraAssignments[cam.device] ?? "(none)") !== (persistedAssignments[cam.device] ?? "(none)")),
+    [cameraAssignments, cameras, persistedAssignments],
+  );
 
   return (
     <div className="flex flex-col h-full">
@@ -141,7 +166,7 @@ export function CameraSetup() {
           <PageHeader
             title="Camera Setup"
             subtitle="Camera mapping and role assignment"
-            action={<RefreshButton onClick={() => { void refresh(); }} />}
+            action={<div className="flex items-center gap-2"><button onClick={() => { void applyMapping(cameraAssignments); }} disabled={saving || !hasPendingMappingChanges} className={`flex items-center gap-1.5 px-3 py-1 rounded border text-sm transition-colors ${saving || !hasPendingMappingChanges ? "border-zinc-600 text-zinc-500 cursor-not-allowed" : "border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 cursor-pointer"}`}><Save size={12} />{saving ? "Applying..." : "Apply Mapping"}</button><RefreshButton onClick={() => { void refresh(); }} /></div>}
           />
 
           {error && (
@@ -186,7 +211,6 @@ export function CameraSetup() {
                               const nextRole = Object.entries(ROLE_LABELS).find(([, label]) => label === nextLabel)?.[0] ?? "(none)";
                               const next = { ...cameraAssignments, [cam.device]: nextRole };
                               setCameraAssignments(next);
-                              void applyMapping(next);
                             }}
                           />
                         </div>

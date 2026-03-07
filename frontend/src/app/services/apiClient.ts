@@ -194,12 +194,14 @@ function handleGlobalWsEvents(data: unknown): void {
         if (NON_TRAIN_PROCESS_NAMES.has(processName as NonTrainProcessName)) {
           const nonTrainProcess = processName as NonTrainProcessName;
           const listeners = wsNonTrainListeners[nonTrainProcess];
+          const replace = typeof obj.replace === "string" ? obj.replace : undefined;
           const event: NonTrainOutputEvent = {
             channel: "output",
             payload: {
               process: nonTrainProcess,
               level,
               line,
+              ...(replace ? { replace } : {}),
             },
             ...nextWsMeta(),
           };

@@ -24,6 +24,7 @@ export type LogLine = {
   text: string;
   kind: LogKind;
   ts: number;
+  replace?: string;
 };
 
 export type SidebarSignals = {
@@ -114,7 +115,7 @@ export type LeStudioStoreActions = {
   setWsReady: (ready: boolean) => void;
   setApiHealth: (key: string, value: boolean) => void;
   setApiSupport: (key: string, value: boolean) => void;
-  appendLog: (processName: string, text: string, kind: LogKind) => void;
+  appendLog: (processName: string, text: string, kind: LogKind, replace?: string) => void;
   clearLog: (processName: string) => void;
   addToast: (message: string, kind: ToastLevel) => void;
   removeToast: (id: string) => void;

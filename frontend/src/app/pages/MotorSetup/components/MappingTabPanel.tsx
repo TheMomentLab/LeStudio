@@ -7,12 +7,16 @@ interface MappingTabPanelProps {
   arms: ArmDevice[];
   armRoleMap: Record<string, string>;
   onSetArmRoleMap: Dispatch<SetStateAction<Record<string, string>>>;
-  onApplyMapping: (nextMap: Record<string, string>) => void;
   // Identify
   identifyStep: "idle" | "waiting" | "found" | "conflict";
   identifyRole: string;
+  identifySerial: string;
+  identifyMissingSerial: string;
   armRoles: string[];
-  onSetIdentifyStep: (step: "idle" | "waiting" | "found" | "conflict") => void;
+  onStartIdentify: () => void;
+  onCancelIdentify: () => void;
+  onAssignIdentify: () => void;
+  onSimulateIdentify: () => void;
   onSetIdentifyRole: (role: string) => void;
 }
 
@@ -20,11 +24,15 @@ export function MappingTabPanel({
   arms,
   armRoleMap,
   onSetArmRoleMap,
-  onApplyMapping,
   identifyStep,
   identifyRole,
+  identifySerial,
+  identifyMissingSerial,
   armRoles,
-  onSetIdentifyStep,
+  onStartIdentify,
+  onCancelIdentify,
+  onAssignIdentify,
+  onSimulateIdentify,
   onSetIdentifyRole,
 }: MappingTabPanelProps) {
   return (
@@ -62,7 +70,6 @@ export function MappingTabPanel({
                       onChange={(v) => {
                         const next = { ...armRoleMap, [arm.device]: v };
                         onSetArmRoleMap(next);
-                        onApplyMapping(next);
                       }}
                     />
                   </div>
@@ -77,7 +84,7 @@ export function MappingTabPanel({
       {identifyStep === "idle" && arms.length > 0 && (
         <div className="flex justify-end">
           <button
-            onClick={() => onSetIdentifyStep("waiting")}
+            onClick={onStartIdentify}
             className="px-4 py-1 rounded border border-zinc-200 dark:border-zinc-700 text-sm text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 cursor-pointer whitespace-nowrap"
           >
             <Zap size={12} className="inline mr-1.5" />
@@ -89,15 +96,19 @@ export function MappingTabPanel({
       {/* Identify flow states */}
       {identifyStep === "waiting" && (
         <div className="flex flex-col gap-3">
-          <div className="flex items-center gap-2 px-3 py-2 rounded border border-amber-500/30 bg-amber-500/5">
-            <span className="size-2 rounded-full bg-amber-400 animate-pulse" />
-            <span className="text-sm text-amber-400">Disconnect one arm, then reconnect it to identify. Detecting changes...</span>
+          <div className={`flex items-center gap-2 px-3 py-2 rounded border ${identifyMissingSerial ? "border-emerald-500/30 bg-emerald-500/5" : "border-amber-500/30 bg-amber-500/5"}`}>
+            <span className={`size-2 rounded-full animate-pulse ${identifyMissingSerial ? "bg-emerald-400" : "bg-amber-400"}`} />
+            <span className={`text-sm ${identifyMissingSerial ? "text-emerald-400" : "text-amber-400"}`}>
+              {identifyMissingSerial
+                ? `Disconnected arm serial ${identifyMissingSerial} detected. Reconnect this arm now.`
+                : "Disconnect one arm, then reconnect it to identify. Detecting changes..."}
+            </span>
           </div>
           <div className="flex items-center gap-3">
-            {import.meta.env.DEV && <button onClick={() => onSetIdentifyStep("found")} className="text-sm text-zinc-400 hover:text-zinc-600 cursor-pointer underline w-fit">
+            {import.meta.env.DEV && <button onClick={onSimulateIdentify} className="text-sm text-zinc-400 hover:text-zinc-600 cursor-pointer underline w-fit">
               (Demo: detected)
             </button>}
-            <button onClick={() => onSetIdentifyStep("idle")} className="text-sm text-red-400 hover:text-red-500 cursor-pointer w-fit">
+            <button onClick={onCancelIdentify} className="text-sm text-red-400 hover:text-red-500 cursor-pointer w-fit">
               Cancel
             </button>
           </div>
@@ -108,15 +119,33 @@ export function MappingTabPanel({
         <div className="flex flex-col gap-3">
           <div className="px-3 py-2.5 rounded border border-emerald-500/30 bg-emerald-500/5">
             <p className="text-sm text-emerald-400 mb-1.5">Arm detected. Assign a role below.</p>
+            {identifySerial && <p className="text-xs text-emerald-300/80 font-mono">Detected serial: {identifySerial}</p>}
           </div>
           <div className="flex items-center gap-2">
             <WireSelect value={identifyRole} options={armRoles} onChange={onSetIdentifyRole} />
             <button
-              onClick={() => { onSetIdentifyStep("idle"); onSetIdentifyRole("(none)"); }}
+              onClick={onAssignIdentify}
               disabled={identifyRole === "(none)"}
               className="px-4 py-2 rounded-lg border border-emerald-500/50 bg-emerald-500/10 text-emerald-400 text-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Assign
+            </button>
+          </div>
+        </div>
+      )}
+
+      {identifyStep === "conflict" && (
+        <div className="flex flex-col gap-3">
+          <div className="px-3 py-2.5 rounded border border-red-500/30 bg-red-500/5">
+            <p className="text-sm text-red-400 mb-1.5">Multiple arm changes were detected.</p>
+            <p className="text-xs text-red-300/80">Reconnect all arms, then retry with only one arm disconnected.</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <button onClick={onStartIdentify} className="text-sm text-zinc-400 hover:text-zinc-200 cursor-pointer w-fit">
+              Retry
+            </button>
+            <button onClick={onCancelIdentify} className="text-sm text-red-400 hover:text-red-500 cursor-pointer w-fit">
+              Cancel
             </button>
           </div>
         </div>

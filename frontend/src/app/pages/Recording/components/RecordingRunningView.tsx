@@ -11,11 +11,7 @@ type RecordingRunningViewProps = {
   currentEp: number;
   totalEps: number;
   progress: number;
-  lastEvent: string | null;
-  cameraStatsRows: Array<{ role: string; fps: number }>;
   onToggleFeed: (role: string) => void;
-  onSave: () => void;
-  onDiscard: () => void;
 };
 
 export function RecordingRunningView({
@@ -26,14 +22,11 @@ export function RecordingRunningView({
   currentEp,
   totalEps,
   progress,
-  lastEvent,
-  cameraStatsRows,
   onToggleFeed,
-  onSave: _onSave,
-  onDiscard: _onDiscard,
 }: RecordingRunningViewProps) {
   return (
     <div className="flex flex-col gap-4">
+      {/* Episode progress */}
       <div className="flex items-center gap-3 px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-800">
         <span className="text-sm text-zinc-400 flex-none">Episode</span>
         <span className="text-sm font-mono text-zinc-800 dark:text-zinc-200">{currentEp} / {totalEps}</span>
@@ -44,22 +37,19 @@ export function RecordingRunningView({
           />
         </div>
         <span className="text-sm text-zinc-500 flex-none">{progress}%</span>
-        {lastEvent && (
-          <span className="text-sm text-zinc-500 flex-none ml-2 truncate max-w-48">
-            Last: {lastEvent}
-          </span>
-        )}
       </div>
 
-      <div className="flex flex-wrap gap-2 text-sm text-zinc-400">
-        {cameraStatsRows.map((row) => (
-          <span key={row.role} className={row.fps < 25 ? "text-amber-600 dark:text-amber-400" : ""}>
-            {row.role}: {row.fps.toFixed(1)} fps
-          </span>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      {/* Camera feeds */}
+      <div className={[
+        "grid gap-3",
+        camerasMapped.length === 1
+          ? "grid-cols-1"
+          : camerasMapped.length === 2
+            ? "grid-cols-2"
+            : camerasMapped.length === 3
+              ? "grid-cols-3"
+              : "grid-cols-4",
+      ].join(" ")}>
         {camerasMapped.map((cam) => {
           const frameSrc = cameraFrames[cam.role];
           return (
@@ -80,6 +70,7 @@ export function RecordingRunningView({
                   </div>
                 )}
 
+                {/* Overlays */}
                 <div className="absolute top-2 left-2 flex items-center gap-1.5">
                   <span className="px-1.5 py-0.5 rounded bg-red-500/80 text-white text-sm font-mono">REC</span>
                   <span className="px-1.5 py-0.5 rounded bg-black/60 text-white text-sm font-mono">{Math.round(cameraStats[cam.role]?.fps ?? 30)} fps</span>
@@ -100,21 +91,6 @@ export function RecordingRunningView({
             </div>
           );
         })}
-      </div>
-
-      <div className="flex flex-wrap gap-2 text-sm text-zinc-400">
-        {[
-          { key: "→", desc: "Save Episode" },
-          { key: "←", desc: "Discard" },
-          { key: "Esc", desc: "End Recording" },
-        ].map((s) => (
-          <div key={s.key} className="flex items-center gap-1.5">
-            <kbd className="px-1.5 py-0.5 rounded border border-zinc-200 dark:border-zinc-700 font-mono text-zinc-500 bg-zinc-50 dark:bg-zinc-900">
-              {s.key}
-            </kbd>
-            <span>{s.desc}</span>
-          </div>
-        ))}
       </div>
     </div>
   );

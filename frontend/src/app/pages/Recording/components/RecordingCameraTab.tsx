@@ -73,10 +73,10 @@ export function RecordingCameraTab({
         camerasMapped.length === 1
           ? "grid-cols-1"
           : camerasMapped.length === 2
-            ? "grid-cols-1 sm:grid-cols-2"
+            ? "grid-cols-2"
             : camerasMapped.length === 3
-              ? "grid-cols-1 sm:grid-cols-2 xl:grid-cols-3"
-              : "grid-cols-2 sm:grid-cols-4",
+              ? "grid-cols-3"
+              : "grid-cols-4",
       )}>
         {camerasMapped.map((cam) => {
           const frameSrc = cameraFrames[cam.role];

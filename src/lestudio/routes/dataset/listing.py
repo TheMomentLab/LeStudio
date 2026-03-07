@@ -41,23 +41,13 @@ def register_routes(router: APIRouter, state: AppState):
                             info = json.loads(info_path.read_text())
                             mtime = info_path.stat().st_mtime
                             mdate = datetime.datetime.fromtimestamp(mtime).strftime('%Y-%m-%d %H:%M:%S')
-                            data_size_raw = info.get("data_files_size_in_mb", 0)
-                            video_size_raw = info.get("video_files_size_in_mb", 0)
+                            # Always compute real size on disk — info.json size
+                            # fields are unreliable placeholders in lerobot v3.
                             try:
-                                info_size = float(data_size_raw or 0) + float(video_size_raw or 0)
+                                total_bytes = sum(f.stat().st_size for f in ds_dir.rglob('*') if f.is_file())
+                                size_mb = round(total_bytes / (1024 * 1024), 1)
                             except Exception:
-                                info_size = 0.0
-
-                            # info.json에 사이즈 정보가 있으면 rglob 스킵
-                            # (rglob은 수백 개 파일 stat() 호출 → 데이터셋이 클수록 매우 느렸)
-                            if info_size > 0:
-                                size_mb = round(info_size, 1)
-                            else:
-                                try:
-                                    total_bytes = sum(f.stat().st_size for f in ds_dir.rglob('*') if f.is_file())
-                                    size_mb = round(total_bytes / (1024 * 1024), 1)
-                                except Exception:
-                                    size_mb = 0.0
+                                size_mb = 0.0
                             datasets.append({
                                 "id": f"{user_dir.name}/{ds_dir.name}",
                                 "total_episodes": info.get("total_episodes", 0),

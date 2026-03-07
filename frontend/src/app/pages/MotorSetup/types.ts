@@ -33,13 +33,16 @@ export type DeviceResponse = {
 };
 
 export type RuleItem = {
+  subsystem?: string;
   kernel?: string;
+  serial?: string;
   symlink?: string;
   mode?: string;
   exists?: boolean;
 };
 
 export type RulesResponse = {
+  camera_rules?: RuleItem[];
   arm_rules?: RuleItem[];
 };
 

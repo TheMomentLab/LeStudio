@@ -46,10 +46,9 @@ type DevicesResponse = {
 type CalibFile = { id: string; guessed_type: string };
 
 const LOADING_STEPS = [
-  "Connecting arm...",
-  "Opening camera...",
-  "Initializing stream...",
-  "Ready",
+  { label: "Opening camera...", pattern: /OpenCVCamera.*connected\./i },
+  { label: "Connecting arm...", pattern: /(?:SO\w*(?:Leader|Follower)|(?:Leader|Follower))\s+connected\./i },
+  { label: "Starting teleop loop...", pattern: /Teleop loop time:/i },
 ];
 
 export function Teleop() {
@@ -96,6 +95,8 @@ export function Teleop() {
     setStartAccepted(false);
     setPhase("loading");
     setLoadingStep(0);
+    loadingStepRef.current = 0;
+    loadingStartIdxRef.current = (teleopLogs ?? []).length;
     try {
       const payload = toBackendTeleopPayload({
         modeLabel: mode,
@@ -153,23 +154,68 @@ export function Teleop() {
     setActionPending(false);
   };
 
-  // Simulated loading sequence
+  // Real log-based loading sequence
+  const teleopLogs = useLeStudioStore((s) => s.logLines["teleop"]);
+  const loadingStartIdxRef = useRef(0);
+  const loadingStepRef = useRef(0);
+
   useEffect(() => {
     if (phase !== "loading" || !startAccepted) return;
-    if (loadingStep >= LOADING_STEPS.length) {
-      setPhase("running");
-      return;
+
+    const logs = teleopLogs ?? [];
+    const logsToScan = logs.slice(loadingStartIdxRef.current);
+    let step = loadingStepRef.current;
+    for (const line of logsToScan) {
+      if (step >= LOADING_STEPS.length) break;
+      // Check current step and all later steps — skip ahead if a later one matches first
+      for (let s = step; s < LOADING_STEPS.length; s++) {
+        if (LOADING_STEPS[s].pattern.test(line.text)) {
+          step = s + 1;
+          break;
+        }
+      }
     }
-    const timer = setTimeout(() => setLoadingStep((s) => s + 1), 800);
+
+    if (step !== loadingStepRef.current) {
+      loadingStepRef.current = step;
+      setLoadingStep(step);
+      if (step >= LOADING_STEPS.length) {
+        setPhase("running");
+      }
+    }
+  }, [phase, startAccepted, teleopLogs]);
+
+  // Timeout fallback: if stuck on loading for 20s total, force running
+  useEffect(() => {
+    if (phase !== "loading" || !startAccepted) return;
+    const timer = setTimeout(() => {
+      loadingStepRef.current = LOADING_STEPS.length;
+      setLoadingStep(LOADING_STEPS.length);
+      setPhase("running");
+    }, 20_000);
     return () => clearTimeout(timer);
-  }, [phase, loadingStep, startAccepted]);
+  }, [phase, startAccepted]);
+
+  // Watch for process end — detect "[teleop process ended]" in logs
+  useEffect(() => {
+    if (phase === "idle") return;
+    const logs = teleopLogs ?? [];
+    const endMarker = logs.find(
+      (l, i) => i >= loadingStartIdxRef.current && /\[teleop process ended\]/i.test(l.text),
+    );
+    if (endMarker) {
+      setPhase("idle");
+      setStartAccepted(false);
+      setActionPending(false);
+    }
+  }, [phase, teleopLogs]);
 
   useEffect(() => {
     const run = async () => {
       const devResult = await apiGet<DevicesResponse>("/api/devices");
       const mapped = (devResult.cameras ?? [])
         .filter((cam) => cam.symlink)
-        .map((cam) => ({ role: cam.symlink, path: `/dev/lerobot/${cam.symlink}` }));
+        .map((cam) => ({ role: cam.symlink, path: `/dev/${cam.symlink}` }));
       setCamerasMapped(mapped);
 
       const rawPorts = Array.from(
@@ -181,8 +227,10 @@ export function Teleop() {
       );
       const portOpts = buildPortOptionsFromPaths(rawPorts);
       setArmPortOptions(portOpts);
-      setSelectedFollowerPort((prev) => (prev && rawPorts.includes(prev) ? prev : rawPorts[0] ?? ""));
-      setSelectedLeaderPort((prev) => (prev && rawPorts.includes(prev) ? prev : rawPorts[0] ?? ""));
+      const defaultFollower = rawPorts.find((p) => /follower/i.test(p)) ?? rawPorts[0] ?? "";
+      const defaultLeader = rawPorts.find((p) => /leader/i.test(p)) ?? rawPorts[1] ?? rawPorts[0] ?? "";
+      setSelectedFollowerPort((prev) => (prev && rawPorts.includes(prev) ? prev : defaultFollower));
+      setSelectedLeaderPort((prev) => (prev && rawPorts.includes(prev) ? prev : defaultLeader));
 
       const calibResult = await apiGet<{ files?: CalibFile[] }>("/api/calibrate/list");
       const files = calibResult.files ?? [];
@@ -422,10 +470,10 @@ export function Teleop() {
                     camerasMapped.length === 1
                       ? "grid-cols-1"
                       : camerasMapped.length === 2
-                        ? "grid-cols-1 sm:grid-cols-2"
+                        ? "grid-cols-2"
                         : camerasMapped.length === 3
-                          ? "grid-cols-1 sm:grid-cols-2 xl:grid-cols-3"
-                          : "grid-cols-2 sm:grid-cols-4",
+                          ? "grid-cols-3"
+                          : "grid-cols-4",
                   )}>
                     {camerasMapped.map((cam) => {
                       const frameSrc = cameraFrames[cam.role];
@@ -458,7 +506,7 @@ export function Teleop() {
               <Loader2 size={32} className="text-zinc-400 animate-spin" />
               <div className="flex flex-col gap-2">
                 {LOADING_STEPS.map((step, i) => (
-                  <div key={step} className="flex items-center gap-2.5">
+                  <div key={step.label} className="flex items-center gap-2.5">
                     {i < loadingStep ? (
                       <CheckCircle2 size={14} className="text-emerald-600 dark:text-emerald-400 flex-none" />
                     ) : i === loadingStep ? (
@@ -470,7 +518,7 @@ export function Teleop() {
                       i < loadingStep ? "text-zinc-400" :
                       i === loadingStep ? "text-zinc-800 dark:text-zinc-200" : "text-zinc-600"
                     )}>
-                      {step}
+                      {step.label}
                     </span>
                   </div>
                 ))}
@@ -481,24 +529,17 @@ export function Teleop() {
           {/* ─── RUNNING: Camera feed focus ─── */}
           {phase === "running" && (
             <div className="flex flex-col gap-4">
-              {/* Runtime Status — inline */}
-              <div className="flex flex-wrap items-center gap-3 px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-800">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-zinc-400">Arm:</span>
-                  <StatusBadge status="running" label="active" />
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-zinc-400">Camera:</span>
-                  <StatusBadge status="running" label={`${camerasMapped.length}/${camerasMapped.length}`} />
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-zinc-400">Conflict:</span>
-                  <StatusBadge status="idle" label="None" />
-                </div>
-              </div>
-
               {/* Camera feeds — full width */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className={[
+                "grid gap-3",
+                camerasMapped.length === 1
+                  ? "grid-cols-1"
+                  : camerasMapped.length === 2
+                    ? "grid-cols-2"
+                    : camerasMapped.length === 3
+                      ? "grid-cols-3"
+                      : "grid-cols-4",
+              ].join(" ")}>
                 {camerasMapped.map((cam) => {
                   const frameSrc = cameraFrames[cam.role];
                   return (

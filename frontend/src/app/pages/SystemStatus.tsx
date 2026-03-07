@@ -29,7 +29,10 @@ type RulesStatusResponse = {
   manual_commands?: string[];
 };
 type RuleItem = { kernel?: string; symlink?: string; mode?: string; exists?: boolean; };
-type RulesCurrentResponse = { camera_rules?: RuleItem[]; };
+type RulesCurrentResponse = {
+  camera_rules?: RuleItem[];
+  arm_rules?: RuleItem[];
+};
 
 export function SystemStatus() {
   const [cameras, setCameras] = useState<CameraDevice[]>([]);
@@ -74,7 +77,11 @@ export function SystemStatus() {
     // udev rules
     apiGet<RulesCurrentResponse>("/api/udev/rules")
       .catch(() => apiGet<RulesCurrentResponse>("/api/rules/current"))
-      .then((res) => setUdevRules(Array.isArray(res.camera_rules) ? res.camera_rules : []))
+      .then((res) => {
+        const cameraRules = Array.isArray(res.camera_rules) ? res.camera_rules : [];
+        const armRules = Array.isArray(res.arm_rules) ? res.arm_rules : [];
+        setUdevRules([...cameraRules, ...armRules]);
+      })
       .catch(() => {});
     apiGet<RulesStatusResponse>("/api/rules/status").then(setUdevStatus).catch(() => {});
   };

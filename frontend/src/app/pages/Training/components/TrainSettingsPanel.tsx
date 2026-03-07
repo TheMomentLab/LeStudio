@@ -1,8 +1,8 @@
 import { ChevronDown, ChevronUp } from "lucide-react";
 
-import { FieldRow, ModeToggle, WireInput, WireSelect } from "../../../components/wireframe";
+import { FieldRow, ModeToggle, WireSelect } from "../../../components/wireframe";
 import { cn } from "../../../components/ui/utils";
-import { LOCAL_DATASETS, POLICY_TYPES, PRESETS, type PresetKey } from "../types";
+import { POLICY_TYPES, PRESETS, type PresetKey } from "../types";
 
 interface TrainSettingsPanelProps {
   policyType: string;
@@ -13,6 +13,7 @@ interface TrainSettingsPanelProps {
   selectedLocalDataset: string;
   setSelectedLocalDataset: (value: string) => void;
   availableDatasets: string[];
+  hfDatasets: string[];
   hfDatasetRepoId: string;
   setHfDatasetRepoId: (value: string) => void;
   device: string;
@@ -39,6 +40,7 @@ export function TrainSettingsPanel({
   selectedLocalDataset,
   setSelectedLocalDataset,
   availableDatasets,
+  hfDatasets,
   hfDatasetRepoId,
   setHfDatasetRepoId,
   device,
@@ -86,13 +88,33 @@ export function TrainSettingsPanel({
               />
               <div className="flex-1 min-w-0">
                 {datasetSource === "local" ? (
+                  availableDatasets.length > 0 ? (
+                    <WireSelect
+                      value={selectedLocalDataset}
+                      options={availableDatasets}
+                      onChange={setSelectedLocalDataset}
+                    />
+                  ) : (
+                    <input
+                      value={selectedLocalDataset}
+                      onChange={(e) => setSelectedLocalDataset(e.target.value)}
+                      placeholder="username/dataset-name"
+                      className="w-full h-9 px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-800 dark:text-zinc-200 text-sm outline-none hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all"
+                    />
+                  )
+                ) : hfDatasets.length > 0 ? (
                   <WireSelect
-                    value={selectedLocalDataset}
-                    options={availableDatasets.length > 0 ? availableDatasets : LOCAL_DATASETS}
-                    onChange={setSelectedLocalDataset}
+                    value={hfDatasetRepoId}
+                    options={hfDatasets}
+                    onChange={setHfDatasetRepoId}
                   />
                 ) : (
-                  <WireInput value={hfDatasetRepoId} onChange={setHfDatasetRepoId} placeholder="username/dataset-name" />
+                  <input
+                    value={hfDatasetRepoId}
+                    onChange={(e) => setHfDatasetRepoId(e.target.value)}
+                    placeholder="username/dataset-name"
+                    className="w-full h-9 px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-800 dark:text-zinc-200 text-sm outline-none hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all"
+                  />
                 )}
               </div>
             </div>

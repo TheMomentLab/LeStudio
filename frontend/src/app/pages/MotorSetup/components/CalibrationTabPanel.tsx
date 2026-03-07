@@ -15,15 +15,18 @@ interface CalibrationTabPanelProps {
   calibMode: string;
   calibTypeMismatch: boolean;
   calibArmType: string;
-  armTypes: string[];
+  singleArmTypes: string[];
   calibPortOptions: { value: string; label: string }[];
   calibPort: string;
-  calibArmIdOptions: string[];
   calibArmId: string;
+  calibArmIdAuto: boolean;
+  calibFileNameError: string;
   calibBiType: string;
+  biArmTypes: string[];
   calibBiLeftPort: string;
   calibBiRightPort: string;
   calibBiId: string;
+  calibBiIdAuto: boolean;
   calibFiles: CalibrationFileItem[];
   onSetCalibMode: (value: string) => void;
   onSetCalibArmType: (value: string) => void;
@@ -44,15 +47,18 @@ export function CalibrationTabPanel({
   calibMode,
   calibTypeMismatch,
   calibArmType,
-  armTypes,
+  singleArmTypes,
   calibPortOptions,
   calibPort,
-  calibArmIdOptions,
   calibArmId,
+  calibArmIdAuto,
+  calibFileNameError,
   calibBiType,
+  biArmTypes,
   calibBiLeftPort,
   calibBiRightPort,
   calibBiId,
+  calibBiIdAuto,
   calibFiles,
   onSetCalibMode,
   onSetCalibArmType,
@@ -79,7 +85,7 @@ export function CalibrationTabPanel({
         <ModeToggle options={["Single Arm", "Bi-Arm"]} value={calibMode} onChange={onSetCalibMode} />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] gap-6">
         <Card title="Existing Calibration Files" className="min-h-[300px]">
           {calibFiles.length === 0 ? (
             <div className="flex min-h-[220px] items-center justify-center">
@@ -118,7 +124,7 @@ export function CalibrationTabPanel({
                   </div>
                 )}
                 <FieldRow label="Arm Role Type">
-                  <WireSelect value={calibArmType} options={armTypes} onChange={onSetCalibArmType} disabled={arms.length === 0} />
+                  <WireSelect value={calibArmType} options={singleArmTypes} onChange={onSetCalibArmType} disabled={arms.length === 0} />
                 </FieldRow>
                 <FieldRow label="Arm Port">
                   <WireSelect
@@ -129,20 +135,25 @@ export function CalibrationTabPanel({
                     disabled={arms.length === 0}
                   />
                 </FieldRow>
-                <FieldRow label="Arm ID">
-                  <WireSelect
-                    placeholder={calibArmIdOptions.length === 0 ? "No calibration files" : undefined}
-                    value={calibArmId}
-                    options={calibArmIdOptions}
-                    onChange={onSetCalibArmId}
-                    disabled={arms.length === 0}
-                  />
+                <div className="pt-1 border-t border-zinc-200 dark:border-zinc-700/60" />
+                <FieldRow label="Calibration File Name" align="start">
+                  <div className="flex flex-col gap-1">
+                    <WireInput
+                      value={calibArmId}
+                      onChange={calibArmIdAuto ? undefined : onSetCalibArmId}
+                      disabled={arms.length === 0}
+                      placeholder="e.g. follower_arm_1"
+                    />
+                    {calibFileNameError
+                      ? <p className="text-xs text-red-400">{calibFileNameError}</p>
+                      : <p className="text-xs text-zinc-400">Auto-generated from selected arm. Re-running updates the same file.</p>}
+                  </div>
                 </FieldRow>
               </>
             ) : (
               <>
                 <FieldRow label="Arm Role Type">
-                  <WireSelect value={calibBiType} options={["bi_so_follower", "bi_so_leader"]} onChange={onSetCalibBiType} disabled={arms.length === 0} />
+                  <WireSelect value={calibBiType} options={biArmTypes} onChange={onSetCalibBiType} disabled={arms.length === 0} />
                 </FieldRow>
                 <FieldRow label="Left Arm Port">
                   <WireSelect
@@ -162,8 +173,12 @@ export function CalibrationTabPanel({
                     disabled={arms.length === 0}
                   />
                 </FieldRow>
-                <FieldRow label="Arm ID">
-                  <WireInput value={calibBiId} onChange={onSetCalibBiId} disabled={arms.length === 0} />
+                <div className="pt-1 border-t border-zinc-200 dark:border-zinc-700/60" />
+                <FieldRow label="Calibration File Name" align="start">
+                  <div className="flex flex-col gap-1">
+                    <WireInput value={calibBiId} onChange={calibBiIdAuto ? undefined : onSetCalibBiId} disabled={arms.length === 0} />
+                    <p className="text-xs text-zinc-400">Auto-generated from selected left/right arms. Re-running updates the same file.</p>
+                  </div>
                 </FieldRow>
               </>
             )}
@@ -176,8 +191,8 @@ export function CalibrationTabPanel({
           <button
             type="button"
             onClick={onHandleCalibrationStart}
-            disabled={calibTypeMismatch || arms.length === 0}
-            className={`px-4 py-1 rounded border text-sm cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${calibTypeMismatch || arms.length === 0 ? "border-zinc-600 text-zinc-500 cursor-not-allowed" : "border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800"}`}
+            disabled={calibTypeMismatch || arms.length === 0 || (calibMode === "Single Arm" && Boolean(calibFileNameError))}
+            className={`px-4 py-1 rounded border text-sm cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${calibTypeMismatch || arms.length === 0 || (calibMode === "Single Arm" && Boolean(calibFileNameError)) ? "border-zinc-600 text-zinc-500 cursor-not-allowed" : "border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800"}`}
           >
             <Play size={13} className="fill-current" /> Start Calibration
           </button>

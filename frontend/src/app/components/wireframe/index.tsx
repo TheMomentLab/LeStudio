@@ -23,7 +23,7 @@ export function StatusBadge({
     blocked: "text-amber-500",
   };
   const iconMap: Record<StatusType, React.ReactNode> = {
-    running: <Loader2 size={14} className={cn(pulse && "animate-spin")} />,
+    running: <Loader2 size={14} className="animate-spin" />,
     ready: <CheckCircle size={14} />,
     warning: <AlertTriangle size={14} />,
     error: <AlertCircle size={14} />,
@@ -288,14 +288,16 @@ export function ProcessButtons({
 // ─── Field Row ────────────────────────────────────────────────────────────────
 export function FieldRow({
   label,
+  align = "center",
   children,
 }: {
   label: string;
+  align?: "center" | "start";
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center gap-3 min-h-9">
-      <span className="text-sm font-medium text-zinc-600 dark:text-zinc-300 whitespace-nowrap flex-none w-[130px]">{label}</span>
+    <div className={cn("flex gap-3 min-h-9", align === "start" ? "items-start" : "items-center")}>
+      <span className={cn("text-sm font-medium text-zinc-600 dark:text-zinc-300 whitespace-nowrap flex-none w-[160px]", align === "start" && "pt-2")}>{label}</span>
       <div className="flex-1">{children}</div>
     </div>
   );
@@ -323,16 +325,17 @@ export function WireSelect({ placeholder, value, options, onChange, disabled, cl
 
 // ─── WireInput ────────────────────────────────────────────────────────────────
 export function WireInput({ placeholder, value, onChange, disabled }: { placeholder?: string; value?: string; onChange?: (v: string) => void; disabled?: boolean }) {
+  const readOnly = !onChange;
   return (
     <input
       type="text"
       aria-label={placeholder ?? "Input value"}
       value={value ?? ""}
-      readOnly={!onChange}
+      readOnly={readOnly}
       onChange={onChange ? (e) => onChange(e.target.value) : undefined}
       placeholder={placeholder}
       disabled={disabled}
-      className={cn("w-full h-9 px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-800 dark:text-zinc-200 text-sm outline-none placeholder:text-zinc-400 hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all", disabled && "opacity-50 cursor-not-allowed")}
+      className={cn("w-full h-9 px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-800 dark:text-zinc-200 text-sm outline-none placeholder:text-zinc-400 hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all", disabled && "opacity-50 cursor-not-allowed", readOnly && !disabled && "bg-zinc-100 dark:bg-zinc-800/80 text-zinc-500 dark:text-zinc-400 cursor-default border-transparent dark:border-transparent")}
     />
   );
 }

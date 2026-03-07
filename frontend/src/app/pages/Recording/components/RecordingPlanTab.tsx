@@ -1,4 +1,5 @@
 import { WireInput, WireToggle } from "../../../components/wireframe";
+import { useLeStudioStore } from "../../../store";
 
 type RecordingPlanTabProps = {
   totalEps: number;
@@ -29,6 +30,28 @@ export function RecordingPlanTab({
   setResumeEnabled,
   setPushToHub,
 }: RecordingPlanTabProps) {
+  const hfUsername = useLeStudioStore((s) => s.hfUsername);
+  const prefix = hfUsername ? `${hfUsername}/` : "";
+
+  // Strip prefix for display; keep full repo id in state
+  const datasetName = prefix && recordRepoId.startsWith(prefix)
+    ? recordRepoId.slice(prefix.length)
+    : recordRepoId;
+
+  const handleNameChange = (val: string) => {
+    // If user types a full "user/name" keep it as-is; otherwise prepend prefix
+    if (val.includes("/")) {
+      setRecordRepoId(val);
+    } else {
+      setRecordRepoId(prefix + val);
+    }
+  };
+
+  // Suggestion list: show only dataset-name part (strip matching prefix)
+  const suggestions = availableDatasets.map((id) =>
+    prefix && id.startsWith(prefix) ? id.slice(prefix.length) : id,
+  );
+
   return (
     <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden">
       <div className="flex items-center justify-between px-4 py-3 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800">
@@ -47,19 +70,25 @@ export function RecordingPlanTab({
           </div>
           <div>
             <div className="text-sm text-zinc-500 mb-1.5">Dataset Repo ID</div>
-            {availableDatasets.length > 0 ? (
-              <select
-                value={recordRepoId}
-                onChange={(e) => setRecordRepoId(e.target.value)}
-                className="w-full h-9 px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-800 dark:text-zinc-200 text-sm outline-none cursor-pointer hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all"
-              >
-                {availableDatasets.map((id) => (
-                  <option key={id} value={id}>{id}</option>
+            <div className="flex items-stretch">
+              {prefix && (
+                <span className="inline-flex items-center px-3 rounded-l-lg border border-r-0 border-zinc-200 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 text-sm select-none whitespace-nowrap">
+                  {prefix}
+                </span>
+              )}
+              <input
+                list="dataset-repo-options"
+                value={datasetName}
+                onChange={(e) => handleNameChange(e.target.value)}
+                placeholder="my-dataset"
+                className={`flex-1 min-w-0 h-9 px-3 py-2 border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-800 dark:text-zinc-200 text-sm outline-none hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all ${prefix ? "rounded-r-lg" : "rounded-lg"}`}
+              />
+              <datalist id="dataset-repo-options">
+                {suggestions.map((name) => (
+                  <option key={name} value={name} />
                 ))}
-              </select>
-            ) : (
-              <WireInput value={recordRepoId} onChange={setRecordRepoId} placeholder="username/dataset-name" />
-            )}
+              </datalist>
+            </div>
           </div>
         </div>
         <div>

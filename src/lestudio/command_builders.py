@@ -64,10 +64,10 @@ def build_teleop_args(python_exe: str, cfg: dict) -> list[str]:
         "lestudio.teleop_bridge",
         "--robot.type=so101_follower",
         f'--robot.port={cfg["follower_port"]}',
-        f'--robot.id={cfg.get("robot_id", "my_so101_follower_1")}',
+        f'--robot.id={cfg.get("robot_id", "follower_arm_1")}',
         "--teleop.type=so101_leader",
         f'--teleop.port={cfg["leader_port"]}',
-        f'--teleop.id={cfg.get("teleop_id", "my_so101_leader_1")}',
+        f'--teleop.id={cfg.get("teleop_id", "leader_arm_1")}',
         "--display_data=false",
     ]
     if max_rel is not None:
@@ -126,10 +126,10 @@ def build_record_args(python_exe: str, cfg: dict, resume_enabled: bool) -> list[
         "lestudio.record_bridge",
         "--robot.type=so101_follower",
         f'--robot.port={cfg["follower_port"]}',
-        f'--robot.id={cfg.get("robot_id", "my_so101_follower_1")}',
+        f'--robot.id={cfg.get("robot_id", "follower_arm_1")}',
         "--teleop.type=so101_leader",
         f'--teleop.port={cfg["leader_port"]}',
-        f'--teleop.id={cfg.get("teleop_id", "my_so101_leader_1")}',
+        f'--teleop.id={cfg.get("teleop_id", "leader_arm_1")}',
     ] + base
 
 
@@ -162,7 +162,7 @@ def build_calibrate_args(python_exe: str, data: dict) -> list[str]:
         ]
 
     robot_type = data.get("robot_type", "so101_follower")
-    robot_id = data.get("robot_id", "my_so101_follower_1")
+    robot_id = data.get("robot_id", "follower_arm_1")
     port = data.get("port", "/dev/follower_arm_1")
     if "leader" in robot_type:
         return [
@@ -321,8 +321,8 @@ def build_eval_args(python_exe: str, cfg: dict) -> list[str]:
             teleop_type = str(cfg.get("eval_teleop_type", "so101_leader")).strip() or "so101_leader"
             follower_port = str(cfg.get("follower_port", "/dev/follower_arm_1")).strip()
             leader_port = str(cfg.get("leader_port", "/dev/leader_arm_1")).strip()
-            robot_id = str(cfg.get("robot_id", "my_so101_follower_1")).strip()
-            teleop_id = str(cfg.get("teleop_id", "my_so101_leader_1")).strip()
+            robot_id = str(cfg.get("robot_id", "follower_arm_1")).strip()
+            teleop_id = str(cfg.get("teleop_id", "leader_arm_1")).strip()
             args += [
                 f"--env.robot.type={robot_type}",
                 f"--env.robot.port={follower_port}",

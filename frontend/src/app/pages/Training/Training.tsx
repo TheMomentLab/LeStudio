@@ -41,6 +41,7 @@ import {
   type GpuStatusResponse,
   type ColabConfigResponse,
   type ColabLinkResponse,
+  DEFAULT_COLAB_NOTEBOOK_URL,
   PRESETS,
   LOCAL_DATASETS,
   CHECKPOINTS_MOCK,
@@ -101,6 +102,7 @@ export function Training() {
   const lastErrorAtRef = useRef(0);
   const prevRunningRef = useRef(false);
   const [availableDatasets, setAvailableDatasets] = useState<string[]>(LOCAL_DATASETS);
+  const [hfDatasets, setHfDatasets] = useState<string[]>([]);
 
   const totalSteps = customSteps;
   const running = trainStatus === "running";
@@ -117,9 +119,24 @@ export function Training() {
   const [colabStarting, setColabStarting] = useState(false);
   const [colabRepoId, setColabRepoId] = useState("");
   const [colabConfigPath, setColabConfigPath] = useState("lestudio_train_config.json");
-  const [colabLaunchUrl, setColabLaunchUrl] = useState("https://colab.research.google.com");
+  const [colabLaunchUrl, setColabLaunchUrl] = useState(DEFAULT_COLAB_NOTEBOOK_URL);
   const [pushState, setPushState] = useState<"idle" | "pushing" | "done">("idle");
   const selectedRepoId = datasetSource === "hf" ? hfDatasetRepoId.trim() : selectedLocalDataset.trim();
+
+  const resolveColabLaunchUrl = useCallback(async (repoId: string, configPath: string, fallbackUrl = DEFAULT_COLAB_NOTEBOOK_URL) => {
+    const nextRepoId = repoId.trim();
+    const nextConfigPath = configPath.trim() || "lestudio_train_config.json";
+    if (!nextRepoId || !nextRepoId.includes("/")) {
+      return fallbackUrl;
+    }
+
+    const query = new URLSearchParams({
+      repo_id: nextRepoId,
+      config_path: nextConfigPath,
+    });
+    const linkResponse = await apiGet<ColabLinkResponse>(`/api/train/colab/link?${query.toString()}`);
+    return linkResponse.ok && linkResponse.url ? linkResponse.url.trim() || fallbackUrl : fallbackUrl;
+  }, []);
 
   const handlePushToHub = useCallback(async () => {
     if (pushState !== "idle") return;
@@ -151,22 +168,12 @@ export function Training() {
 
       const nextRepoId = (uploaded.repo_id ?? selectedRepoId).trim();
       const nextConfigPath = (uploaded.config_path ?? "lestudio_train_config.json").trim() || "lestudio_train_config.json";
-      let nextLaunchUrl = (uploaded.colab_link ?? "").trim();
-
-      if (!nextLaunchUrl) {
-        const query = new URLSearchParams({
-          repo_id: nextRepoId,
-          config_path: nextConfigPath,
-        });
-        const linkResponse = await apiGet<ColabLinkResponse>(`/api/train/colab/link?${query.toString()}`);
-        if (linkResponse.ok && linkResponse.url) {
-          nextLaunchUrl = linkResponse.url.trim();
-        }
-      }
+      const nextLaunchUrl = (uploaded.colab_link ?? "").trim()
+        || await resolveColabLaunchUrl(nextRepoId, nextConfigPath);
 
       setColabRepoId(nextRepoId);
       setColabConfigPath(nextConfigPath);
-      setColabLaunchUrl(nextLaunchUrl || "https://colab.research.google.com");
+      setColabLaunchUrl(nextLaunchUrl || DEFAULT_COLAB_NOTEBOOK_URL);
       setPushState("done");
       setTimeout(() => setPushState("idle"), 3000);
     } catch (error) {
@@ -175,7 +182,7 @@ export function Training() {
       setFlowError(reason);
       notifyError(reason);
     }
-  }, [customSteps, datasetSource, device, lrValue, modelOutputRepo, policyType, pushState, selectedRepoId]);
+  }, [customSteps, datasetSource, device, lrValue, modelOutputRepo, policyType, pushState, resolveColabLaunchUrl, selectedRepoId]);
 
   const colabSnippet = `repo_id = "${colabRepoId || selectedRepoId || "lerobot-user/pick_cube"}"  #@param {type:"string"}
 config_path = "${colabConfigPath}"  #@param {type:"string"}
@@ -197,14 +204,23 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
 
   const handleOpenColab = useCallback(async () => {
     if (hfAuth !== "ready") return;
-    const openUrl = colabLaunchUrl || "https://colab.research.google.com";
     setColabStarting(true);
     try {
+      const nextRepoId = (colabRepoId || selectedRepoId).trim();
+      const nextConfigPath = colabConfigPath.trim() || "lestudio_train_config.json";
+      const openUrl = await resolveColabLaunchUrl(nextRepoId, nextConfigPath, colabLaunchUrl || DEFAULT_COLAB_NOTEBOOK_URL);
+      setColabRepoId(nextRepoId);
+      setColabConfigPath(nextConfigPath);
+      setColabLaunchUrl(openUrl);
       window.open(openUrl, "_blank", "noopener,noreferrer");
+    } catch (error) {
+      const reason = parseBackendError(error, "Error preparing Colab link");
+      setFlowError(reason);
+      notifyError(reason);
     } finally {
       setColabStarting(false);
     }
-  }, [colabLaunchUrl, hfAuth]);
+  }, [colabConfigPath, colabLaunchUrl, colabRepoId, hfAuth, resolveColabLaunchUrl, selectedRepoId]);
 
   const handleCopySnippet = useCallback(async () => {
     try {
@@ -375,6 +391,30 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
     return () => clearInterval(timer);
   }, []);
 
+  // Fetch user's HF Hub datasets when authenticated
+  useEffect(() => {
+    if (hfAuth !== "ready") {
+      setHfDatasets([]);
+      return;
+    }
+    let cancelled = false;
+    void apiGet<{ ok?: boolean; datasets?: Array<{ id: string }> }>("/api/hf/my-datasets?limit=50")
+      .then((res) => {
+        if (cancelled) return;
+        if (res.ok && Array.isArray(res.datasets)) {
+          const ids = res.datasets.map((d) => d.id).filter(Boolean);
+          setHfDatasets(ids);
+          if (ids.length > 0 && !hfDatasetRepoId) {
+            setHfDatasetRepoId(ids[0]);
+          }
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setHfDatasets([]);
+      });
+    return () => { cancelled = true; };
+  }, [hfAuth]);
+
   // Preflight check on mount and device change
   useEffect(() => {
     let cancelled = false;
@@ -528,6 +568,7 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
                 selectedLocalDataset={selectedLocalDataset}
                 setSelectedLocalDataset={setSelectedLocalDataset}
                 availableDatasets={availableDatasets}
+                hfDatasets={hfDatasets}
                 hfDatasetRepoId={hfDatasetRepoId}
                 setHfDatasetRepoId={setHfDatasetRepoId}
                 device={device}

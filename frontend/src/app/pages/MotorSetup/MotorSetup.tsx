@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { Save } from "lucide-react";
 import {
   PageHeader,
   RefreshButton,
@@ -23,12 +24,16 @@ import type {
   MotorConnectResponse,
   MotorData,
   MotorPositionsResponse,
+  RulesResponse,
 } from "./types";
+
+const ARM_ROLE_OPTIONS = ["Follower Arm 1", "Follower Arm 2", "Leader Arm 1", "Leader Arm 2"];
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export function MotorSetup() {
   const procStatus = useLeStudioStore((s) => s.procStatus);
+  const setProcStatus = useLeStudioStore((s) => s.setProcStatus);
   const appendLog = useLeStudioStore((s) => s.appendLog);
   const clearLog = useLeStudioStore((s) => s.clearLog);
   const addToast = useLeStudioStore((s) => s.addToast);
@@ -52,6 +57,9 @@ export function MotorSetup() {
   const [freewheel, setFreewheel] = useState(false);
   const [monError, setMonError] = useState("");
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const identifyPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const identifyBaselineSerialsRef = useRef<string[]>([]);
+  const identifyMissingSerialRef = useRef("");
 
   // ── Calibration (mock UI only — real API in Calibration page) ────────────
   const [calibMode, setCalibMode] = useState("Single Arm");
@@ -77,11 +85,15 @@ export function MotorSetup() {
 
   // ── Mapping tab ───────────────────────────────────────────────────────────
   const [armRoleMap, setArmRoleMap] = useState<Record<string, string>>({});
+  const [persistedArmRoleMap, setPersistedArmRoleMap] = useState<Record<string, string>>({});
+  const [mappingSaving, setMappingSaving] = useState(false);
 
   // ── UI state ──────────────────────────────────────────────────────────────
   const [motorTab, setMotorTab] = useState("mapping");
   const [identifyStep, setIdentifyStep] = useState<"idle" | "waiting" | "found" | "conflict">("idle");
   const [identifyRole, setIdentifyRole] = useState("(none)");
+  const [identifySerial, setIdentifySerial] = useState("");
+  const [identifyMissingSerial, setIdentifyMissingSerial] = useState("");
   const [_conflictTarget] = useState("");
   const [noPort, setNoPort] = useState(false);
   const [hasConflict, setHasConflict] = useState(false);
@@ -108,32 +120,120 @@ export function MotorSetup() {
       }
 
       // Pre-populate armRoleMap from existing symlinks
-      const ARM_ROLE_OPTIONS = ["Follower Arm 1", "Follower Arm 2", "Leader Arm 1", "Leader Arm 2"];
       const symToLabel = Object.fromEntries(
         ARM_ROLE_OPTIONS.map((label) => [label.toLowerCase().replace(/ /g, "_"), label]),
       );
       const initialMap: Record<string, string> = {};
       for (const arm of nextArms) {
-        if (arm.symlink && symToLabel[arm.symlink]) {
-          initialMap[arm.device] = symToLabel[arm.symlink];
-        }
+        initialMap[arm.device] = arm.symlink && symToLabel[arm.symlink] ? symToLabel[arm.symlink] : "(none)";
       }
-      if (Object.keys(initialMap).length > 0) {
-        setArmRoleMap((prev) => {
-          const hasExisting = Object.values(prev).some((v) => v && v !== "(none)");
-          return hasExisting ? prev : { ...prev, ...initialMap };
-        });
-      }
+      setPersistedArmRoleMap(initialMap);
+      setArmRoleMap((prev) => ({ ...prev, ...initialMap }));
     } catch {
       // ignore
     }
   }, []);
 
+  const resetIdentifyState = useCallback(() => {
+    if (identifyPollRef.current) {
+      clearInterval(identifyPollRef.current);
+      identifyPollRef.current = null;
+    }
+    identifyBaselineSerialsRef.current = [];
+    identifyMissingSerialRef.current = "";
+    setIdentifyStep("idle");
+    setIdentifyRole("(none)");
+    setIdentifySerial("");
+    setIdentifyMissingSerial("");
+  }, []);
+
+  const handleStartIdentify = useCallback(() => {
+    const baselineSerials = arms
+      .map((arm) => arm.serial?.trim() ?? "")
+      .filter(Boolean);
+
+    if (baselineSerials.length === 0) {
+      addToast("No arm serial numbers detected. Refresh devices and try again.", "error");
+      return;
+    }
+
+    identifyBaselineSerialsRef.current = baselineSerials;
+    identifyMissingSerialRef.current = "";
+    setIdentifyRole("(none)");
+    setIdentifySerial("");
+    setIdentifyMissingSerial("");
+    setIdentifyStep("waiting");
+  }, [addToast, arms]);
+
+  const handleAssignIdentifiedArm = useCallback(async () => {
+    if (!identifySerial) {
+      addToast("No identified arm serial is available yet.", "error");
+      return;
+    }
+
+    const symlink = toArmSymlink(identifyRole);
+    if (symlink === "(none)") {
+      addToast("Choose a role before assigning the identified arm.", "error");
+      return;
+    }
+
+    const currentRules = await apiGet<RulesResponse>("/api/udev/rules")
+      .catch(() => apiGet<RulesResponse>("/api/rules/current"));
+    const cameraAssignments: Record<string, string> = {};
+    for (const rule of Array.isArray(currentRules.camera_rules) ? currentRules.camera_rules : []) {
+      const kernels = (rule.kernel ?? "").trim();
+      const role = (rule.symlink ?? "").trim();
+      if (kernels && role && role !== "(none)") {
+        cameraAssignments[kernels] = role;
+      }
+    }
+
+    const result = await apiPost<ActionResponse>("/api/rules/apply", {
+      assignments: cameraAssignments,
+      arm_assignments: {
+        [identifySerial]: symlink,
+      },
+    });
+
+    if (!result.ok) {
+      addToast(result.error ?? "Failed to apply identified arm mapping.", "error");
+      return;
+    }
+
+    setArmRoleMap((prev) => {
+      const next = { ...prev };
+      for (const arm of arms) {
+        if (arm.serial === identifySerial) {
+          next[arm.device] = identifyRole;
+        }
+      }
+      return next;
+    });
+
+    addToast(`Mapped identified arm (${identifySerial}) to ${identifyRole}.`, "success");
+    resetIdentifyState();
+    await loadDevices();
+  }, [addToast, arms, identifyRole, identifySerial, loadDevices, resetIdentifyState]);
+
+  const handleSimulateIdentify = useCallback(() => {
+    const simulatedSerial = arms.find((arm) => arm.serial?.trim())?.serial?.trim() ?? "";
+    if (!simulatedSerial) {
+      addToast("No arm serial is available to simulate identification.", "error");
+      return;
+    }
+    setIdentifySerial(simulatedSerial);
+    setIdentifyStep("found");
+  }, [addToast, arms]);
+
   const loadArmTypes = useCallback(async () => {
     try {
       const res = await apiGet<{ types?: string[] }>("/api/robots");
       if (Array.isArray(res.types) && res.types.length > 0) {
-        setArmTypes(res.types);
+        const dynamicTypes = res.types
+          .filter((type): type is string => typeof type === "string")
+          .filter((type) => type.includes("_leader") || type.includes("_follower"));
+        const merged = Array.from(new Set([...ARM_TYPES, ...dynamicTypes]));
+        setArmTypes(merged);
       }
     } catch {
       // keep defaults
@@ -144,6 +244,65 @@ export function MotorSetup() {
     void loadDevices();
     void loadArmTypes();
   }, [loadDevices, loadArmTypes]);
+
+  useEffect(() => {
+    if (identifyStep !== "waiting") {
+      if (identifyPollRef.current) {
+        clearInterval(identifyPollRef.current);
+        identifyPollRef.current = null;
+      }
+      return;
+    }
+
+    const pollIdentifyDevices = async () => {
+      try {
+        const res = await apiGet<DeviceResponse>("/api/devices");
+        const nextArms = Array.isArray(res.arms) ? res.arms : [];
+        setArms(nextArms);
+
+        const baselineSerials = identifyBaselineSerialsRef.current;
+        const missingSerial = identifyMissingSerialRef.current;
+        const currentSerials = nextArms
+          .map((arm) => arm.serial?.trim() ?? "")
+          .filter(Boolean);
+        const currentSerialSet = new Set(currentSerials);
+        const removedSerials = baselineSerials.filter((serial) => !currentSerialSet.has(serial));
+        const addedSerials = currentSerials.filter((serial) => !baselineSerials.includes(serial));
+
+        if (!missingSerial && removedSerials.length === 1 && addedSerials.length === 0) {
+          identifyMissingSerialRef.current = removedSerials[0];
+          setIdentifyMissingSerial(removedSerials[0]);
+          return;
+        }
+
+        if (missingSerial && currentSerialSet.has(missingSerial)) {
+          setIdentifySerial(missingSerial);
+          setIdentifyMissingSerial("");
+          setIdentifyStep("found");
+          return;
+        }
+
+        if (removedSerials.length > 1 || addedSerials.length > 1 || (removedSerials.length > 0 && addedSerials.length > 0)) {
+          setIdentifyStep("conflict");
+          identifyMissingSerialRef.current = "";
+          setIdentifyMissingSerial("");
+        }
+      } catch {
+      }
+    };
+
+    void pollIdentifyDevices();
+    identifyPollRef.current = setInterval(() => {
+      void pollIdentifyDevices();
+    }, 1500);
+
+    return () => {
+      if (identifyPollRef.current) {
+        clearInterval(identifyPollRef.current);
+        identifyPollRef.current = null;
+      }
+    };
+  }, [addToast, identifyStep]);
 
   // Auto-select port matching arm type keyword (follower/leader)
   const findPortByKeyword = useCallback(
@@ -336,8 +495,22 @@ export function MotorSetup() {
     void refreshCalibrationList();
   }, [refreshCalibrationList]);
 
+  // Auto-refresh calibration file list when calibrate process finishes
+  const prevCalibrateRunning = useRef(false);
+  useEffect(() => {
+    if (prevCalibrateRunning.current && !calibrateRunning) {
+      void refreshCalibrationList();
+      void refreshCalibrationFileStatus();
+    }
+    prevCalibrateRunning.current = calibrateRunning;
+  }, [calibrateRunning, refreshCalibrationList, refreshCalibrationFileStatus]);
 
   const handleCalibrationStart = async () => {
+    if (calibMode === "Single Arm" && calibFileNameError) {
+      addToast(calibFileNameError, "error");
+      return;
+    }
+
     const payload = calibMode === "Bi-Arm"
       ? {
           robot_mode: "bi",
@@ -349,7 +522,7 @@ export function MotorSetup() {
       : {
           robot_mode: "single",
           robot_type: calibArmType,
-          robot_id: calibArmId,
+          robot_id: calibArmId.trim(),
           port: calibPort,
         };
 
@@ -370,7 +543,8 @@ export function MotorSetup() {
       addToast(res.error ?? "Calibration stop failed", "error");
       return;
     }
-    addToast("Calibration stop requested", "info");
+    setProcStatus({ ...procStatus, calibrate: false });
+    addToast("Calibration stopped", "success");
     await refreshCalibrationList();
     await refreshCalibrationFileStatus();
   };
@@ -391,6 +565,7 @@ export function MotorSetup() {
   };
 
   const applyArmMapping = async (roleMap: Record<string, string>) => {
+    setMappingSaving(true);
     const armAssignments: Record<string, string> = {};
     for (const arm of arms) {
       if (!arm.serial) continue;
@@ -398,20 +573,35 @@ export function MotorSetup() {
       armAssignments[arm.serial] = toArmSymlink(roleLabel);
     }
 
-    const result = await apiPost<ActionResponse>("/api/rules/apply", {
-      assignments: {},
-      arm_assignments: armAssignments,
-    });
-
-    if (!result.ok) {
-      addToast(result.error ?? "Failed to apply arm mapping.", "error");
-      return;
+    const currentRules = await apiGet<RulesResponse>("/api/udev/rules")
+      .catch(() => apiGet<RulesResponse>("/api/rules/current"));
+    const cameraAssignments: Record<string, string> = {};
+    for (const rule of Array.isArray(currentRules.camera_rules) ? currentRules.camera_rules : []) {
+      const kernels = (rule.kernel ?? "").trim();
+      const role = (rule.symlink ?? "").trim();
+      if (kernels && role && role !== "(none)") {
+        cameraAssignments[kernels] = role;
+      }
     }
 
-    addToast("Arm mapping rules applied.", "success");
+    try {
+      const result = await apiPost<ActionResponse>("/api/rules/apply", {
+        assignments: cameraAssignments,
+        arm_assignments: armAssignments,
+      });
 
-    // Refresh devices so other tabs pick up new symlinks and auto-select ports
-    await loadDevices();
+      if (!result.ok) {
+        addToast(result.error ?? "Failed to apply arm mapping.", "error");
+        return;
+      }
+
+      addToast("Arm mapping rules applied.", "success");
+
+      // Refresh devices so other tabs pick up new symlinks and auto-select ports
+      await loadDevices();
+    } finally {
+      setMappingSaving(false);
+    }
   };
 
   // ─── Setup Wizard helpers ──────────────────────────────────────────────────
@@ -488,7 +678,7 @@ export function MotorSetup() {
 
   const wizardAllDone = wizardMotorState.every((s) => s === "done");
 
-  const ARM_ROLES = ["(none)", ...arms.map((a) => a.symlink ?? a.device ?? a.path)];
+  const ARM_ROLES = ["(none)", ...ARM_ROLE_OPTIONS];
 
   const monPortArm = arms.find((a) => a.path === monPort);
   const monPortLabel = monPortArm?.symlink ? symToDisplayLabel(monPortArm.symlink) : monPort;
@@ -498,28 +688,86 @@ export function MotorSetup() {
     ((calibArmType.includes("follower") && calibPort.includes("leader")) ||
       (calibArmType.includes("leader") && calibPort.includes("follower")));
 
-  const calibArmIdOptions = useMemo(() => {
-    const role = calibArmType.includes("leader") ? "leader" : calibArmType.includes("follower") ? "follower" : "";
-    const roleMatched = role
-      ? calibFiles.filter((f) => (f.guessed_type ?? "").toLowerCase().includes(role))
-      : calibFiles;
-    return Array.from(new Set(roleMatched.map((f) => f.id).filter(Boolean)));
-  }, [calibArmType, calibFiles]);
-
   /** Port options with symlink labels for all port dropdowns */
   const portOptions = useMemo(() => buildPortOptions(arms), [arms]);
+  const hasPendingArmMappingChanges = useMemo(
+    () => arms.some((arm) => (armRoleMap[arm.device] ?? "(none)") !== (persistedArmRoleMap[arm.device] ?? "(none)")),
+    [armRoleMap, arms, persistedArmRoleMap],
+  );
 
   const calibPortOptions = portOptions;
+  const autoSingleCalibId = useMemo(() => {
+    const selectedArm = arms.find((arm) => arm.path === calibPort) ?? arms[0];
+    const raw = selectedArm?.symlink?.trim()
+      || selectedArm?.serial?.trim().toLowerCase()
+      || `${calibArmType}_arm`;
+    return raw
+      .replace(/[^A-Za-z0-9._-]+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .slice(0, 64);
+  }, [arms, calibArmType, calibPort]);
+  const autoBiCalibId = useMemo(() => {
+    const leftArm = arms.find((arm) => arm.path === calibBiLeftPort);
+    const rightArm = arms.find((arm) => arm.path === calibBiRightPort);
+    const leftRaw = leftArm?.symlink?.trim()
+      || leftArm?.serial?.trim().toLowerCase()
+      || "left";
+    const rightRaw = rightArm?.symlink?.trim()
+      || rightArm?.serial?.trim().toLowerCase()
+      || "right";
+    const raw = `${leftRaw}_${rightRaw}`;
+    return raw
+      .replace(/[^A-Za-z0-9._-]+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .slice(0, 64);
+  }, [arms, calibBiLeftPort, calibBiRightPort, calibBiType]);
+  const calibArmIdTrimmed = calibArmId.trim();
+  const calibFileNameError = useMemo(() => {
+    if (!calibArmIdTrimmed) return "Enter Calibration File Name.";
+    if (calibArmIdTrimmed.length > 64) return "Calibration file name must be 1-64 characters.";
+    if (calibArmIdTrimmed === "." || calibArmIdTrimmed === "..") return "Calibration file name is invalid.";
+    if (!/^[A-Za-z0-9._-]+$/.test(calibArmIdTrimmed)) {
+      return "Use only letters, numbers, dot (.), underscore (_), or hyphen (-).";
+    }
+    return "";
+  }, [calibArmIdTrimmed]);
+  const singleArmCalibTypes = useMemo(() => {
+    const filtered = armTypes.filter((type) => !type.startsWith("bi_") && (type.includes("_leader") || type.includes("_follower")));
+    return filtered.length > 0 ? filtered : ARM_TYPES;
+  }, [armTypes]);
+  const biArmCalibTypes = useMemo(() => {
+    const defaults = ["bi_so_follower", "bi_so_leader"];
+    const dynamic = armTypes.filter((type) => type.startsWith("bi_"));
+    return Array.from(new Set([...defaults, ...dynamic]));
+  }, [armTypes]);
 
   useEffect(() => {
-    if (calibArmIdOptions.length === 0) {
-      if (calibArmId !== "") setCalibArmId("");
-      return;
+    if (calibMode !== "Single Arm") return;
+    if (!autoSingleCalibId) return;
+    if (calibArmId !== autoSingleCalibId) {
+      setCalibArmId(autoSingleCalibId);
     }
-    if (!calibArmIdOptions.includes(calibArmId)) {
-      setCalibArmId(calibArmIdOptions[0]);
+  }, [autoSingleCalibId, calibArmId, calibMode]);
+
+  useEffect(() => {
+    if (calibMode !== "Bi-Arm") return;
+    if (!autoBiCalibId) return;
+    if (calibBiId !== autoBiCalibId) {
+      setCalibBiId(autoBiCalibId);
     }
-  }, [calibArmId, calibArmIdOptions]);
+  }, [autoBiCalibId, calibBiId, calibMode]);
+
+  useEffect(() => {
+    if (!singleArmCalibTypes.includes(calibArmType)) {
+      setCalibArmType(singleArmCalibTypes[0] ?? "so101_follower");
+    }
+  }, [calibArmType, singleArmCalibTypes]);
+
+  useEffect(() => {
+    if (!biArmCalibTypes.includes(calibBiType)) {
+      setCalibBiType(biArmCalibTypes[0] ?? "bi_so_follower");
+    }
+  }, [biArmCalibTypes, calibBiType]);
 
   return (
     <div className="flex flex-col h-full">
@@ -530,6 +778,7 @@ export function MotorSetup() {
             subtitle="Arm mapping, motor ID setup and verification"
             action={
               <div className="flex items-center gap-2">
+                {motorTab === "mapping" && arms.length > 0 && <button onClick={() => { void applyArmMapping(armRoleMap); }} disabled={mappingSaving || !hasPendingArmMappingChanges} className={`flex items-center gap-1.5 px-3 py-1 rounded border text-sm transition-colors ${mappingSaving || !hasPendingArmMappingChanges ? "border-zinc-600 text-zinc-500 cursor-not-allowed" : "border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 cursor-pointer"}`}><Save size={12} />{mappingSaving ? "Applying..." : "Apply Mapping"}</button>}
                 {import.meta.env.DEV && <div className="flex items-center gap-2 text-sm text-zinc-400">
                   <span className="hidden sm:inline">Demo:</span>
                   <button onClick={() => setNoPort((v) => !v)} className={`px-2 py-0.5 rounded border cursor-pointer text-sm ${noPort ? "border-amber-500/50 text-amber-400 bg-amber-500/10" : "border-zinc-200 dark:border-zinc-700 text-zinc-500"}`}>
@@ -562,11 +811,15 @@ export function MotorSetup() {
                 arms={arms}
                 armRoleMap={armRoleMap}
                 onSetArmRoleMap={setArmRoleMap}
-                onApplyMapping={(nextMap) => { void applyArmMapping(nextMap); }}
                 identifyStep={identifyStep}
                 identifyRole={identifyRole}
+                identifySerial={identifySerial}
+                identifyMissingSerial={identifyMissingSerial}
                 armRoles={ARM_ROLES}
-                onSetIdentifyStep={setIdentifyStep}
+                onStartIdentify={handleStartIdentify}
+                onCancelIdentify={resetIdentifyState}
+                onAssignIdentify={() => { void handleAssignIdentifiedArm(); }}
+                onSimulateIdentify={handleSimulateIdentify}
                 onSetIdentifyRole={setIdentifyRole}
               />
             )}
@@ -634,15 +887,18 @@ export function MotorSetup() {
                 calibMode={calibMode}
                 calibTypeMismatch={calibTypeMismatch}
                 calibArmType={calibArmType}
-                armTypes={armTypes}
+                singleArmTypes={singleArmCalibTypes}
                 calibPortOptions={calibPortOptions}
                 calibPort={calibPort}
-                calibArmIdOptions={calibArmIdOptions}
                 calibArmId={calibArmId}
+                calibArmIdAuto={calibMode === "Single Arm"}
+                calibFileNameError={calibFileNameError}
                 calibBiType={calibBiType}
+                biArmTypes={biArmCalibTypes}
                 calibBiLeftPort={calibBiLeftPort}
                 calibBiRightPort={calibBiRightPort}
                 calibBiId={calibBiId}
+                calibBiIdAuto={calibMode === "Bi-Arm"}
                 calibFiles={calibFiles}
                 onSetCalibMode={setCalibMode}
                 onSetCalibArmType={setCalibArmType}

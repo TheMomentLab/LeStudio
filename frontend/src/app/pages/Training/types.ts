@@ -56,6 +56,8 @@ export type HfGateBannerProps = {
   level: "hf_read" | "hf_write";
 };
 
+export const DEFAULT_COLAB_NOTEBOOK_URL = "https://colab.research.google.com/github/TheMomentLab/lerobot-studio/blob/dev/notebooks/lerobot_train.ipynb";
+
 export const PRESETS: Record<PresetKey, { label: string; steps: number; tag: string }> = {
   quick: { label: "Quick", steps: 1000, tag: "1K" },
   standard: { label: "Standard", steps: 50000, tag: "50K" },

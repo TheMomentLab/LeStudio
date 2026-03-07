@@ -118,7 +118,10 @@ def create_router(state: AppState) -> APIRouter:
                 add("error", label, "Missing path")
                 return
             if not os.path.exists(path):
-                add("error", label, f"{path} does not exist")
+                if "/lerobot/" in path:
+                    add("error", label, f"{path} does not exist — apply udev rules in Status page and re-plug the device")
+                else:
+                    add("error", label, f"{path} does not exist")
                 return
             if not os.access(path, os.R_OK | os.W_OK):
                 add("error", label, f"Permission denied for {path}")
@@ -143,7 +146,10 @@ def create_router(state: AppState) -> APIRouter:
             if not path:
                 return
             if not os.path.exists(path):
-                add("error", label, f"{path} does not exist")
+                if "/lerobot/" in path:
+                    add("error", label, f"{path} does not exist — apply udev rules in Status page and re-plug the camera")
+                else:
+                    add("error", label, f"{path} does not exist")
                 return
             if not os.access(path, os.R_OK | os.W_OK):
                 add("error", label, f"Permission denied for {path}")

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { Link } from "react-router";
-import { Play, Check } from "lucide-react";
+import { Play } from "lucide-react";
 import { apiGet, apiPost } from "../../services/apiClient";
 import { useLeStudioStore } from "../../store";
 import {
@@ -19,7 +19,6 @@ import { buildPortOptionsFromPaths, type PortOption } from "../../services/portL
 import { useHfAuth } from "../../hf-auth-context";
 import {
   notifyError,
-  notifySuccess,
   notifyProcessStarted,
   notifyProcessStopRequested,
   notifyProcessCompleted,
@@ -55,10 +54,9 @@ type DevicesResponse = {
 type CalibFile = { id: string; guessed_type: string };
 
 const LOADING_STEPS = [
-  "Connecting arm...",
-  "Opening cameras...",
-  "Preparing dataset...",
-  "Recording ready",
+  { label: "Opening cameras...", pattern: /OpenCVCamera.*connected\./i },
+  { label: "Connecting arm...", pattern: /(?:SO\w*(?:Leader|Follower)|(?:Leader|Follower))\s+connected\./i },
+  { label: "Starting recording...", pattern: /Recording episode/i },
 ];
 
 export function Recording() {
@@ -68,7 +66,6 @@ export function Recording() {
   const [loadingStep, setLoadingStep] = useState(0);
   const [currentEp, setCurrentEp] = useState(0);
   const [totalEps, setTotalEps] = useState(50);
-  const [lastEvent, setLastEvent] = useState<string | null>(null);
   const [pausedFeeds, setPausedFeeds] = useState<Record<string, boolean>>({});
   const [advStreamOpen, setAdvStreamOpen] = useState(false);
   const [recTab, setRecTab] = useState("plan");
@@ -79,7 +76,10 @@ export function Recording() {
   const prevRunningRef = useRef(false);
   const [cameraStats, setCameraStats] = useState<Record<string, { fps: number; mbps: number }>>({});
   const { hfAuth } = useHfAuth();
-  const [recordRepoId, setRecordRepoId] = useState(() => getConfigString(config, "record_repo_id", "lerobot-user/pick_cube_dataset"));
+  const hfUsername = useLeStudioStore((s) => s.hfUsername);
+  const [recordRepoId, setRecordRepoId] = useState(() =>
+    getConfigString(config, "record_repo_id", ""),
+  );
   const [recordTask, setRecordTask] = useState(() => getConfigString(config, "record_task", ""));
   const [availableDatasets, setAvailableDatasets] = useState<string[]>([]);
 
@@ -118,6 +118,8 @@ export function Recording() {
     setStartAccepted(false);
     setPhase("loading");
     setLoadingStep(0);
+    loadingStepRef.current = 0;
+    loadingStartIdxRef.current = (recordLogs ?? []).length;
     try {
       const payload = toBackendRecordPayload({
         modeLabel: mode,
@@ -176,7 +178,6 @@ export function Recording() {
     }
     setPhase("idle");
     setLoadingStep(0);
-    setLastEvent(stopped.event ?? "recording ended");
     setStartAccepted(false);
     setActionPending(false);
   }, [actionPending]);
@@ -188,14 +189,10 @@ export function Recording() {
       const reason = result.error ?? "save failed";
       setFlowError(reason);
       notifyError(reason);
-      setActionPending(false);
-      return;
     }
-    setCurrentEp(result.currentEp ?? currentEp + 1);
-    setLastEvent(result.event ?? `saved episode ${currentEp + 1}`);
-    notifySuccess("Episode saved");
+    // Episode counter is updated by log-based tracking (Recording episode N)
     setActionPending(false);
-  }, [actionPending, currentEp]);
+  }, [actionPending]);
   const handleDiscard = useCallback(async () => {
     if (actionPending) return;
     setActionPending(true);
@@ -204,27 +201,81 @@ export function Recording() {
       const reason = result.error ?? "discard failed";
       setFlowError(reason);
       notifyError(reason);
-      setActionPending(false);
-      return;
     }
-    setLastEvent(result.event ?? `discarded episode ${currentEp}`);
-    notifyError("Episode discarded");
+    // Episode counter is updated by log-based tracking (Recording episode N)
     setActionPending(false);
-  }, [actionPending, currentEp]);
+  }, [actionPending]);
 
   const toggleFeed = (role: string) =>
     setPausedFeeds((prev) => ({ ...prev, [role]: !prev[role] }));
 
-  // Simulated loading sequence
+  // Real log-based loading sequence
+  const recordLogs = useLeStudioStore((s) => s.logLines["record"]);
+  const loadingStartIdxRef = useRef(0);
+  const loadingStepRef = useRef(0);
+
   useEffect(() => {
     if (phase !== "loading" || !startAccepted) return;
-    if (loadingStep >= LOADING_STEPS.length) {
-      setPhase("running");
-      return;
+
+    const logs = recordLogs ?? [];
+    const logsToScan = logs.slice(loadingStartIdxRef.current);
+    let step = loadingStepRef.current;
+    for (const line of logsToScan) {
+      if (step >= LOADING_STEPS.length) break;
+      // Check current step and all later steps — skip ahead if a later one matches first
+      for (let s = step; s < LOADING_STEPS.length; s++) {
+        if (LOADING_STEPS[s].pattern.test(line.text)) {
+          step = s + 1;
+          break;
+        }
+      }
     }
-    const timer = setTimeout(() => setLoadingStep((s) => s + 1), 800);
+
+    if (step !== loadingStepRef.current) {
+      loadingStepRef.current = step;
+      setLoadingStep(step);
+      if (step >= LOADING_STEPS.length) {
+        setPhase("running");
+      }
+    }
+  }, [phase, startAccepted, recordLogs]);
+
+  // Timeout fallback: if stuck on loading for 20s total, force running
+  useEffect(() => {
+    if (phase !== "loading" || !startAccepted) return;
+    const timer = setTimeout(() => {
+      loadingStepRef.current = LOADING_STEPS.length;
+      setLoadingStep(LOADING_STEPS.length);
+      setPhase("running");
+    }, 20_000);
     return () => clearTimeout(timer);
-  }, [phase, loadingStep, startAccepted]);
+  }, [phase, startAccepted]);
+
+  // Track episode number from logs — "Recording episode N"
+  useEffect(() => {
+    if (phase !== "running") return;
+    const logs = recordLogs ?? [];
+    let latestEp = -1;
+    for (let i = loadingStartIdxRef.current; i < logs.length; i++) {
+      const m = /Recording episode (\d+)/i.exec(logs[i].text);
+      if (m) latestEp = Number(m[1]);
+    }
+    if (latestEp >= 0) setCurrentEp(latestEp);
+  }, [phase, recordLogs]);
+
+  // Watch for process end — detect "[record process ended]" in logs
+  useEffect(() => {
+    if (phase === "idle") return;
+    const logs = recordLogs ?? [];
+    const endMarker = logs.find(
+      (l, i) => i >= loadingStartIdxRef.current && /\[record process ended\]/i.test(l.text),
+    );
+    if (endMarker) {
+      setPhase("idle");
+      setStartAccepted(false);
+      setActionPending(false);
+    }
+  }, [phase, recordLogs]);
 
   useEffect(() => {
     if (!flowError) return;
@@ -238,7 +289,7 @@ export function Recording() {
     const result = await apiGet<DevicesResponse>("/api/devices");
     const mapped = (result.cameras ?? [])
       .filter((cam) => cam.symlink)
-      .map((cam) => ({ role: cam.symlink, path: `/dev/lerobot/${cam.symlink}` }));
+      .map((cam) => ({ role: cam.symlink, path: `/dev/${cam.symlink}` }));
     setCamerasMapped(mapped);
 
     const rawPorts = Array.from(
@@ -250,8 +301,10 @@ export function Recording() {
     );
     const portOpts = buildPortOptionsFromPaths(rawPorts);
     setArmPortOptions(portOpts);
-    setSelectedFollowerPort((prev) => (prev && rawPorts.includes(prev) ? prev : rawPorts[0] ?? ""));
-    setSelectedLeaderPort((prev) => (prev && rawPorts.includes(prev) ? prev : rawPorts[0] ?? ""));
+    const defaultFollower = rawPorts.find((p) => /follower/i.test(p)) ?? rawPorts[0] ?? "";
+    const defaultLeader = rawPorts.find((p) => /leader/i.test(p)) ?? rawPorts[1] ?? rawPorts[0] ?? "";
+    setSelectedFollowerPort((prev) => (prev && rawPorts.includes(prev) ? prev : defaultFollower));
+    setSelectedLeaderPort((prev) => (prev && rawPorts.includes(prev) ? prev : defaultLeader));
 
     const calibResult = await apiGet<{ files?: CalibFile[] }>("/api/calibrate/list");
     const files = calibResult.files ?? [];
@@ -400,7 +453,7 @@ export function Recording() {
             </div>
           )}
 
-          {phase === "loading" && <RecordingLoadingView loadingStep={loadingStep} />}
+          {phase === "loading" && <RecordingLoadingView loadingStep={loadingStep} steps={LOADING_STEPS} />}
 
           {phase === "running" && (
             <RecordingRunningView
@@ -411,11 +464,7 @@ export function Recording() {
               currentEp={currentEp}
               totalEps={totalEps}
               progress={progress}
-              lastEvent={lastEvent}
-              cameraStatsRows={cameraStatsRows}
               onToggleFeed={toggleFeed}
-              onSave={handleSave}
-              onDiscard={handleDiscard}
             />
           )}
         </div>
@@ -430,7 +479,11 @@ export function Recording() {
             pulse={running}
           />
           <span className="text-sm text-zinc-400 truncate">
-            {running ? `Episode ${currentEp} / ${totalEps}` : "Recording ready"}
+            {running
+              ? `Episode ${currentEp} / ${totalEps}`
+              : phase === "loading"
+                ? "Starting recording…"
+                : "Recording ready"}
           </span>
         </div>
 
@@ -439,15 +492,17 @@ export function Recording() {
             <>
               <button
                 onClick={handleSave}
-                className="flex items-center gap-1 px-4 py-2 rounded border border-emerald-500/50 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-sm cursor-pointer"
+                title="Save episode (→)"
+                className="px-4 py-1 rounded border text-sm font-medium transition-all border-emerald-500/50 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 cursor-pointer"
               >
-                <Check size={12} /> Save →
+                Save
               </button>
               <button
                 onClick={handleDiscard}
-                className="flex items-center gap-1 px-4 py-2 rounded border border-amber-500/50 bg-amber-500/10 text-amber-600 dark:text-amber-400 text-sm cursor-pointer"
+                title="Discard episode (←)"
+                className="px-4 py-1 rounded border text-sm font-medium transition-all border-amber-500/50 bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20 cursor-pointer"
               >
-                ← Discard
+                Discard
               </button>
             </>
           )}

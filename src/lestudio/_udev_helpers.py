@@ -117,19 +117,21 @@ def _manual_udev_install_commands(source_rules: Path, target_rules: Path) -> lis
 
 
 def _run_privileged_udev_apply(command_prefix: list[str], source_rules: Path, target_rules: Path) -> tuple[bool, str]:
-    steps = [
-        [*command_prefix, "cp", str(source_rules), str(target_rules)],
-        [*command_prefix, "udevadm", "control", "--reload-rules"],
-        [*command_prefix, "udevadm", "trigger", "--subsystem-match=video4linux"],
-        [*command_prefix, "udevadm", "trigger", "--subsystem-match=tty"],
-    ]
-    for step in steps:
-        result = subprocess.run(step, capture_output=True, text=True)
-        if result.returncode != 0:
-            stderr = (result.stderr or "").strip()
-            stdout = (result.stdout or "").strip()
-            err = stderr or stdout or f"{' '.join(step)} failed"
-            return False, err
+    source_q = shlex.quote(str(source_rules))
+    target_q = shlex.quote(str(target_rules))
+    chained = (
+        f"cp {source_q} {target_q} && "
+        "udevadm control --reload-rules && "
+        "udevadm trigger --subsystem-match=video4linux && "
+        "udevadm trigger --subsystem-match=tty"
+    )
+    command = [*command_prefix, "sh", "-c", chained]
+    result = subprocess.run(command, capture_output=True, text=True)
+    if result.returncode != 0:
+        stderr = (result.stderr or "").strip()
+        stdout = (result.stdout or "").strip()
+        err = stderr or stdout or f"{' '.join(command_prefix)} privileged udev apply failed"
+        return False, err
     return True, ""
 
 

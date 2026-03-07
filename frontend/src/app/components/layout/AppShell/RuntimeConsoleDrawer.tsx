@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
-import { ChevronUp, ChevronDown, Copy, Eraser, Square, Terminal } from "lucide-react";
+import { ChevronUp, ChevronDown, Copy, Eraser, Terminal } from "lucide-react";
 import {
   apiPost,
   subscribeNonTrainChannel,
@@ -272,19 +272,19 @@ export function RuntimeConsoleDrawer() {
   useEffect(() => {
     const unsubscribers = [
       subscribeNonTrainChannel("teleop", (event) => {
-        appendLog("teleop", event.payload.line, mapOutputLevelToKind(event.payload.level));
+        appendLog("teleop", event.payload.line, mapOutputLevelToKind(event.payload.level), event.payload.replace);
       }),
       subscribeNonTrainChannel("record", (event) => {
-        appendLog("record", event.payload.line, mapOutputLevelToKind(event.payload.level));
+        appendLog("record", event.payload.line, mapOutputLevelToKind(event.payload.level), event.payload.replace);
       }),
       subscribeNonTrainChannel("calibrate", (event) => {
-        appendLog("calibrate", event.payload.line, mapOutputLevelToKind(event.payload.level));
+        appendLog("calibrate", event.payload.line, mapOutputLevelToKind(event.payload.level), event.payload.replace);
       }),
       subscribeNonTrainChannel("motor_setup", (event) => {
-        appendLog("motor_setup", event.payload.line, mapOutputLevelToKind(event.payload.level));
+        appendLog("motor_setup", event.payload.line, mapOutputLevelToKind(event.payload.level), event.payload.replace);
       }),
       subscribeNonTrainChannel("eval", (event) => {
-        appendLog("eval", event.payload.line, mapOutputLevelToKind(event.payload.level));
+        appendLog("eval", event.payload.line, mapOutputLevelToKind(event.payload.level), event.payload.replace);
       }),
     ];
 
@@ -333,31 +333,6 @@ export function RuntimeConsoleDrawer() {
       unsubscribeOutput();
     };
   }, [appendLog, setProcStatus]);
-
-  const handleStop = useCallback(async (processName: RuntimeProcessName) => {
-    const result = await apiPost<{ ok: boolean; error?: string }>(`/api/process/${processName}/stop`);
-    if (!result.ok) {
-      addToast(result.error ?? `Failed to stop ${processName}`, "error");
-      return;
-    }
-
-    const next = {
-      ...getLeStudioState().procStatus,
-      [processName]: false,
-      ...(processName === "train" ? { train_install: false } : {}),
-    };
-    setProcStatus(next);
-    if (processName === "train") {
-      trainProgressRef.current = {
-        firstTs: null,
-        firstStep: null,
-        lastTs: null,
-        lastStep: null,
-      };
-    }
-    appendLog(processName, "[info] stop requested", "info");
-    addToast(`Stopped ${processName}`, "success");
-  }, [addToast, appendLog, setProcStatus]);
 
   const handleCopy = useCallback(async (count?: number) => {
     const target = typeof count === "number" ? lines.slice(Math.max(0, lines.length - count)) : lines;
@@ -464,18 +439,6 @@ export function RuntimeConsoleDrawer() {
             <Eraser size={12} />
           </button>
           <button
-            className={cn(
-              "p-1 cursor-pointer",
-              running
-                ? "text-red-600 dark:text-red-400 hover:text-red-500"
-                : "text-zinc-400 opacity-50 cursor-not-allowed",
-            )}
-            onClick={() => { if (running) void handleStop(activeProcess); }}
-            title="Stop process"
-          >
-            <Square size={11} className="fill-current" />
-          </button>
-          <button
             onClick={() => setCollapsed(!collapsed)}
             className="p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 cursor-pointer"
           >
@@ -487,7 +450,7 @@ export function RuntimeConsoleDrawer() {
       {!collapsed && (
         <div ref={logRef} className="flex-1 overflow-y-auto p-2 font-mono" style={{ fontSize: "11px" }}>
           {lines.map((line) => (
-            <div key={line.id} className={logLineClass(line.kind)}>
+            <div key={line.id} className={`${logLineClass(line.kind)}${line.replace ? " whitespace-pre-wrap" : ""}`}>
               {line.text}
             </div>
           ))}

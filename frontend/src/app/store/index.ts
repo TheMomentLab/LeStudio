@@ -102,10 +102,22 @@ const actions: LeStudioStoreActions = {
   setApiSupport: (key, value) => {
     setState((prev) => ({ apiSupport: { ...prev.apiSupport, [key]: value } }));
   },
-  appendLog: (processName, text, kind) => {
+  appendLog: (processName, text, kind, replace) => {
     setState((prev) => {
       const existing = prev.logLines[processName] ?? [];
-      const next = [...existing, { id: uid(), text, kind, ts: Date.now() }];
+      let next: typeof existing;
+      if (replace) {
+        // Replace the last entry with the same replace tag instead of appending
+        const idx = existing.findLastIndex((l) => l.replace === replace);
+        if (idx >= 0) {
+          next = [...existing];
+          next[idx] = { id: next[idx].id, text, kind, ts: Date.now(), replace };
+        } else {
+          next = [...existing, { id: uid(), text, kind, ts: Date.now(), replace }];
+        }
+      } else {
+        next = [...existing, { id: uid(), text, kind, ts: Date.now() }];
+      }
       return {
         logLines: {
           ...prev.logLines,

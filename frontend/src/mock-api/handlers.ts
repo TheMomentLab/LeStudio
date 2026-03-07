@@ -59,6 +59,7 @@ type NonTrainOutputFrame = {
   process: NonTrainProcessName;
   level: "info" | "warn" | "error";
   line: string;
+  replace?: string;
 };
 
 export type TrainStatusEvent = {

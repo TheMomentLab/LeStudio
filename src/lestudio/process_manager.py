@@ -125,6 +125,10 @@ class ProcessManager:
         self.on_process_exit = on_process_exit
         self.last_translation: dict[str, str] = {}
         self.seen_translations: dict[str, set[str]] = {}
+        # Live-table dedup: buffer lines between "---" separators and
+        # emit only the latest complete table block.
+        self._table_buf: dict[str, list[str]] = {}
+        self._table_tag: dict[str, str] = {}  # tag to identify replace events
 
     def flush_queue(self, name: str):
         items = []
@@ -173,52 +177,66 @@ class ProcessManager:
             return False
 
     def stop(self, name: str):
-        proc = self.procs.pop(name, None)
-        if proc and proc.poll() is None:
-            if sys.platform == 'win32':
-                # Windows: no process groups via os.killpg; terminate tree
-                try:
-                    proc.send_signal(signal.CTRL_BREAK_EVENT)
-                    proc.wait(timeout=5)
-                    return
-                except (subprocess.TimeoutExpired, OSError):
-                    pass
-                proc.kill()
+        proc = self.procs.get(name)
+        if not proc or proc.poll() is not None:
+            self.procs.pop(name, None)
+            return
+
+        def _kill():
+            try:
+                self._kill_proc(proc)
+            finally:
+                self.procs.pop(name, None)
+
+        threading.Thread(target=_kill, daemon=True).start()
+
+    @staticmethod
+    def _kill_proc(proc: subprocess.Popen):
+        """Escalate signals: SIGINT → SIGTERM → SIGKILL."""
+        if sys.platform == 'win32':
+            try:
+                proc.send_signal(signal.CTRL_BREAK_EVENT)
+                proc.wait(timeout=5)
+                return
+            except (subprocess.TimeoutExpired, OSError):
+                pass
+            proc.kill()
+            return
+
+        # Unix: use process group for clean shutdown
+        try:
+            pgid = os.getpgid(proc.pid)
+        except (ProcessLookupError, OSError):
+            pgid = None
+
+        try:
+            if pgid is not None:
+                os.killpg(pgid, signal.SIGINT)
             else:
-                # Unix: use process group for clean shutdown
-                try:
-                    pgid = os.getpgid(proc.pid)
-                except (ProcessLookupError, OSError):
-                    pgid = None
+                proc.send_signal(signal.SIGINT)
+            proc.wait(timeout=5)
+            return
+        except subprocess.TimeoutExpired:
+            pass
 
+        if pgid is not None:
+            try:
+                os.killpg(pgid, signal.SIGTERM)
+            except ProcessLookupError:
+                return
+        else:
+            proc.terminate()
+
+        try:
+            proc.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            if pgid is not None:
                 try:
-                    if pgid is not None:
-                        os.killpg(pgid, signal.SIGINT)
-                    else:
-                        proc.send_signal(signal.SIGINT)
-                    proc.wait(timeout=5)
+                    os.killpg(pgid, signal.SIGKILL)
+                except ProcessLookupError:
                     return
-                except subprocess.TimeoutExpired:
-                    pass
-
-                if pgid is not None:
-                    try:
-                        os.killpg(pgid, signal.SIGTERM)
-                    except ProcessLookupError:
-                        return
-                else:
-                    proc.terminate()
-
-                try:
-                    proc.wait(timeout=3)
-                except subprocess.TimeoutExpired:
-                    if pgid is not None:
-                        try:
-                            os.killpg(pgid, signal.SIGKILL)
-                        except ProcessLookupError:
-                            return
-                    else:
-                        proc.kill()
+            else:
+                proc.kill()
 
     def send_input(self, name: str, text: str) -> bool:
         proc = self.procs.get(name)
@@ -247,10 +265,45 @@ class ProcessManager:
                     n for n in group if n != name and self.is_running(n)
                 )
         return list(dict.fromkeys(conflicts))  # dedupe, preserve order
+    _TABLE_SEP_RE = re.compile(r"^-{5,}$")
+
+    def _flush_table(self, name: str):
+        """Emit the buffered table block as a single 'replace_table' message."""
+        buf = self._table_buf.pop(name, None)
+        tag = self._table_tag.get(name, "table")
+        if buf:
+            combined = "\n".join(buf)
+            try:
+                self.out_q.put_nowait({
+                    "process": name,
+                    "line": combined,
+                    "kind": "stdout",
+                    "replace": tag,
+                })
+            except queue.Full:
+                pass
+
     def _process_line(self, name: str, text: str):
         """Process a single decoded line: push to queue, translate errors, extract train metrics."""
         if not text:
             return
+
+        # Live-table dedup: detect "---" separator lines and buffer the table block.
+        if self._TABLE_SEP_RE.match(text):
+            # New separator = start of a new table redraw → flush previous and start fresh
+            self._flush_table(name)
+            self._table_buf[name] = [text]
+            return
+
+        if name in self._table_buf:
+            # Inside a table block: accumulate lines containing "|"
+            if "|" in text:
+                self._table_buf[name].append(text)
+                return
+            else:
+                # Non-table line → flush the table and process this line normally
+                self._flush_table(name)
+
         self._push(name, text, "stdout")
         translated = _translate_error_line(text)
         if translated is not None:
@@ -259,6 +312,20 @@ class ProcessManager:
             metric = _extract_train_metric(text)
             if metric is not None:
                 self._push_metric(name, metric)
+
+    @staticmethod
+    def _decode_line(raw: bytes) -> str:
+        """Decode a raw line, handling \\r (carriage-return) overwrites.
+
+        Programs like lerobot calibrate use \\r to redraw a table in-place.
+        We keep only the last \\r segment so the console shows the final
+        state instead of accumulating every intermediate redraw.
+        """
+        decoded = raw.decode("utf-8", errors="replace")
+        # Take only text after the last \r (carriage-return overwrite)
+        if "\r" in decoded:
+            decoded = decoded.rsplit("\r", 1)[-1]
+        return _ANSI_RE.sub("", decoded.strip())
 
     def _reader(self, name: str, proc: subprocess.Popen):
         import select as sel
@@ -272,27 +339,42 @@ class ProcessManager:
             except (OSError, ValueError):
                 break
             if r:
-                chunk = proc.stdout.read(256)
+                chunk = proc.stdout.read(4096)
                 if not chunk:
                     break
                 buf += chunk
                 while b"\n" in buf:
                     line, buf = buf.split(b"\n", 1)
-                    text = _ANSI_RE.sub("", line.decode("utf-8", errors="replace").rstrip("\r"))
+                    text = self._decode_line(line)
                     if text:
                         self._process_line(name, text)
             else:
+                # Flush buffered data line-by-line even on timeout
                 if buf:
-                    text = _ANSI_RE.sub("", buf.decode("utf-8", errors="replace").rstrip("\r"))
-                    self._process_line(name, text)
-                    buf = b""
-                if proc.poll() is not None:
-                    break
+                    while b"\n" in buf:
+                        line, buf = buf.split(b"\n", 1)
+                        text = self._decode_line(line)
+                        if text:
+                            self._process_line(name, text)
+                    if buf:
+                        text = self._decode_line(buf)
+                        if text:
+                            self._process_line(name, text)
+                        buf = b""
                 if proc.poll() is not None:
                     break
         if buf:
-            text = _ANSI_RE.sub("", buf.decode("utf-8", errors="replace").rstrip("\r"))
-            self._process_line(name, text)
+            while b"\n" in buf:
+                line_bytes, buf = buf.split(b"\n", 1)
+                text = self._decode_line(line_bytes)
+                if text:
+                    self._process_line(name, text)
+            if buf:
+                text = self._decode_line(buf)
+                if text:
+                    self._process_line(name, text)
+        # Flush any remaining table buffer
+        self._flush_table(name)
         self._push(name, f"[{name} process ended]", "info")
         if self.on_process_exit is not None:
             try:
