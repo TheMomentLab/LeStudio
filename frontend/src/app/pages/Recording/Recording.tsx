@@ -15,6 +15,7 @@ import {
   PageHeader, StatusBadge, ModeToggle, StickyControlBar, ProcessButtons, SubTabs,
   BlockerCard, RefreshButton,
 } from "../../components/wireframe";
+import { buildPortOptionsFromPaths, type PortOption } from "../../services/portLabels";
 import { useHfAuth } from "../../hf-auth-context";
 import {
   notifyError,
@@ -91,7 +92,7 @@ export function Recording() {
   const [resumeEnabled, setResumeEnabled] = useState(() => getConfigBool(config, "record_resume", false));
   const [pushToHub, setPushToHub] = useState(() => hfAuth === "ready" && getConfigBool(config, "record_push_to_hub", true));
   const [camerasMapped, setCamerasMapped] = useState<{ role: string; path: string }[]>([]);
-  const [armPortOptions, setArmPortOptions] = useState<string[]>([]);
+  const [armPortOptions, setArmPortOptions] = useState<PortOption[]>([]);
   const [followerIdOptions, setFollowerIdOptions] = useState<string[]>([]);
   const [leaderIdOptions, setLeaderIdOptions] = useState<string[]>([]);
   const [bimanualIdOptions, setBimanualIdOptions] = useState<string[]>([]);
@@ -240,16 +241,17 @@ export function Recording() {
       .map((cam) => ({ role: cam.symlink, path: `/dev/lerobot/${cam.symlink}` }));
     setCamerasMapped(mapped);
 
-    const ports = Array.from(
+    const rawPorts = Array.from(
       new Set(
         (result.arms ?? [])
           .map((arm) => (arm.symlink ? `/dev/${arm.symlink}` : arm.path))
           .filter((value): value is string => Boolean(value))
       )
     );
-    setArmPortOptions(ports);
-    setSelectedFollowerPort((prev) => (prev && ports.includes(prev) ? prev : ports[0] ?? ""));
-    setSelectedLeaderPort((prev) => (prev && ports.includes(prev) ? prev : ports[0] ?? ""));
+    const portOpts = buildPortOptionsFromPaths(rawPorts);
+    setArmPortOptions(portOpts);
+    setSelectedFollowerPort((prev) => (prev && rawPorts.includes(prev) ? prev : rawPorts[0] ?? ""));
+    setSelectedLeaderPort((prev) => (prev && rawPorts.includes(prev) ? prev : rawPorts[0] ?? ""));
 
     const calibResult = await apiGet<{ files?: CalibFile[] }>("/api/calibrate/list");
     const files = calibResult.files ?? [];

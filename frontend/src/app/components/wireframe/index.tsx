@@ -302,7 +302,7 @@ export function FieldRow({
 }
 
 // ─── WireSelect ───────────────────────────────────────────────────────────────
-export function WireSelect({ placeholder, value, options, onChange, disabled, className }: { placeholder?: string; value?: string; options?: string[]; onChange?: (v: string) => void; disabled?: boolean; className?: string }) {
+export function WireSelect({ placeholder, value, options, onChange, disabled, className }: { placeholder?: string; value?: string; options?: (string | { value: string; label: string })[]; onChange?: (v: string) => void; disabled?: boolean; className?: string }) {
   return (
     <select
       aria-label={placeholder ?? "Select option"}
@@ -312,9 +312,11 @@ export function WireSelect({ placeholder, value, options, onChange, disabled, cl
       className={cn("w-full h-9 px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-800 dark:text-zinc-200 text-sm outline-none cursor-pointer hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all", disabled && "opacity-50 cursor-not-allowed", className)}
     >
       {placeholder && <option value="" disabled>{placeholder}</option>}
-      {options?.map((o) => (
-        <option key={o} value={o}>{o}</option>
-      ))}
+      {options?.map((o) => {
+        const val = typeof o === "string" ? o : o.value;
+        const label = typeof o === "string" ? o : o.label;
+        return <option key={val} value={val}>{label}</option>;
+      })}
     </select>
   );
 }

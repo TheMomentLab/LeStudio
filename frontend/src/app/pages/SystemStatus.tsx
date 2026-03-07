@@ -3,6 +3,7 @@ import { Camera, Bot, Cpu, Download, Eraser, AlertCircle, AlertTriangle, CheckCi
 import {
   PageHeader, ResourceBar, EmptyState, RefreshButton,
 } from "../components/wireframe";
+import { symToDisplayLabel } from "../services/portLabels";
 import { apiGet, apiPost } from "../services/apiClient";
 import {
   fromBackendHistory,
@@ -208,7 +209,7 @@ export function SystemStatus() {
                   {[...arms].sort((a, b) => (b.symlink ? 1 : 0) - (a.symlink ? 1 : 0)).map((arm) => (
                     <div key={arm.device} className="flex items-center gap-2 sm:gap-3 px-3 py-1.5 sm:py-2">
                       <div className="flex-1 min-w-0">
-                        <div className="text-sm text-zinc-700 dark:text-zinc-300 truncate">{arm.symlink ?? arm.device}</div>
+                        <div className="text-sm text-zinc-700 dark:text-zinc-300 truncate">{arm.symlink ? symToDisplayLabel(arm.symlink) : arm.device}</div>
                         <div className="text-sm text-zinc-400 truncate">{arm.path}{arm.serial ? ` · S/N: ${arm.serial}` : ""}</div>
                       </div>
                       {arm.symlink && <LinkIcon size={16} className="text-zinc-400 flex-none" />}

@@ -21,6 +21,7 @@ interface SetupTabPanelProps {
   setupArmType: string;
   armTypes: string[];
   setupPort: string;
+  portOptions: { value: string; label: string }[];
   wizardStep: number;
   wizardMotorState: WizardMotorState[];
   wizardError: string | null;
@@ -50,6 +51,7 @@ export function SetupTabPanel({
   setupArmType,
   armTypes,
   setupPort,
+  portOptions,
   wizardStep,
   wizardMotorState,
   wizardError,
@@ -96,7 +98,7 @@ export function SetupTabPanel({
               <WireSelect
                 placeholder={noPort || arms.length === 0 ? "No port detected" : undefined}
                 value={noPort || arms.length === 0 ? "" : setupPort}
-                options={noPort || arms.length === 0 ? [] : arms.map((a) => a.path ?? `/dev/${a.device}`)}
+                options={noPort || arms.length === 0 ? [] : portOptions}
                 onChange={onSetSetupPort}
               />
             </FieldRow>

@@ -1,8 +1,9 @@
 import { FieldRow, WireSelect } from "../../../components/wireframe";
+import type { PortOption } from "../../../services/portLabels";
 
 type RecordingDeviceTabProps = {
   mode: string;
-  armPortOptions: string[];
+  armPortOptions: PortOption[];
   followerIdOptions: string[];
   leaderIdOptions: string[];
   bimanualIdOptions: string[];

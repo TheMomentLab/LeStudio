@@ -5,6 +5,7 @@ import {
   SubTabs,
 } from "../../components/wireframe";
 import { apiDelete, apiGet, apiPost } from "../../services/apiClient";
+import { symToDisplayLabel, buildPortOptions } from "../../services/portLabels";
 import { useLeStudioStore } from "../../store";
 import { SETUP_MOTORS, ARM_TYPES, toArmSymlink } from "./constants";
 import { MotorCard } from "./components/MotorCard";
@@ -145,17 +146,31 @@ export function MotorSetup() {
   }, [loadDevices, loadArmTypes]);
 
   // Auto-select port matching arm type keyword (follower/leader)
+  const findPortByKeyword = useCallback(
+    (keyword: string) => {
+      const match = keyword
+        ? arms.find((a) => (a.symlink ?? a.device ?? "").toLowerCase().includes(keyword))
+        : undefined;
+      const best = match ?? arms[0];
+      return best ? (best.path ?? `/dev/${best.device ?? "ttyUSB0"}`) : "";
+    },
+    [arms],
+  );
+
   useEffect(() => {
     if (arms.length === 0) return;
     const keyword = setupArmType.includes("follower") ? "follower" : setupArmType.includes("leader") ? "leader" : "";
-    const match = keyword
-      ? arms.find((a) => (a.symlink ?? a.device ?? "").toLowerCase().includes(keyword))
-      : undefined;
-    const best = match ?? arms[0];
-    const p = best.path ?? `/dev/${best.device ?? "ttyUSB0"}`;
+    const p = findPortByKeyword(keyword);
     setSetupPort(p);
     if (!monConnected) setMonPort(p);
-  }, [arms, setupArmType, monConnected]);
+  }, [arms, setupArmType, monConnected, findPortByKeyword]);
+
+  // Auto-select calibration port matching arm type keyword
+  useEffect(() => {
+    if (arms.length === 0) return;
+    const keyword = calibArmType.includes("follower") ? "follower" : calibArmType.includes("leader") ? "leader" : "";
+    setCalibPort(findPortByKeyword(keyword));
+  }, [arms, calibArmType, findPortByKeyword]);
 
   // ─── Motor Monitor polling ──────────────────────────────────────────────────
 
@@ -394,6 +409,9 @@ export function MotorSetup() {
     }
 
     addToast("Arm mapping rules applied.", "success");
+
+    // Refresh devices so other tabs pick up new symlinks and auto-select ports
+    await loadDevices();
   };
 
   // ─── Setup Wizard helpers ──────────────────────────────────────────────────
@@ -472,7 +490,8 @@ export function MotorSetup() {
 
   const ARM_ROLES = ["(none)", ...arms.map((a) => a.symlink ?? a.device ?? a.path)];
 
-  const monPortLabel = arms.find((a) => a.path === monPort)?.symlink ?? monPort;
+  const monPortArm = arms.find((a) => a.path === monPort);
+  const monPortLabel = monPortArm?.symlink ? symToDisplayLabel(monPortArm.symlink) : monPort;
 
   const calibTypeMismatch =
     calibMode === "Single Arm" &&
@@ -487,10 +506,10 @@ export function MotorSetup() {
     return Array.from(new Set(roleMatched.map((f) => f.id).filter(Boolean)));
   }, [calibArmType, calibFiles]);
 
-  const calibPortOptions = useMemo(
-    () => arms.map((a) => a.path ?? `/dev/${a.device}`),
-    [arms]
-  );
+  /** Port options with symlink labels for all port dropdowns */
+  const portOptions = useMemo(() => buildPortOptions(arms), [arms]);
+
+  const calibPortOptions = portOptions;
 
   useEffect(() => {
     if (calibArmIdOptions.length === 0) {
@@ -562,6 +581,7 @@ export function MotorSetup() {
                 setupArmType={setupArmType}
                 armTypes={armTypes}
                 setupPort={setupPort}
+                portOptions={portOptions}
                 wizardStep={wizardStep}
                 wizardMotorState={wizardMotorState}
                 wizardError={wizardError}
@@ -590,6 +610,7 @@ export function MotorSetup() {
                 monConnecting={monConnecting}
                 monPort={monPort}
                 arms={arms}
+                portOptions={portOptions}
                 setupRunning={setupRunning}
                 monPortLabel={monPortLabel}
                 monMotors={monMotors}

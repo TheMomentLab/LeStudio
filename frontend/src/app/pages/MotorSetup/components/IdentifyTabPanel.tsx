@@ -1,5 +1,6 @@
 import { Bot, Zap } from "lucide-react";
 import { Card, EmptyState, StatusBadge, WireSelect } from "../../../components/wireframe";
+import { symToDisplayLabel } from "../../../services/portLabels";
 import type { ArmDevice } from "../types";
 
 interface IdentifyTabPanelProps {
@@ -45,7 +46,7 @@ export function IdentifyTabPanel({
                     <div className="text-sm text-zinc-700 dark:text-zinc-300 font-mono truncate">{arm.path}</div>
                     {arm.serial && <div className="text-sm text-zinc-400">S/N: {arm.serial}</div>}
                   </div>
-                  <StatusBadge status={arm.symlink ? "ready" : "warning"} label={arm.symlink ?? "no symlink"} />
+                  <StatusBadge status={arm.symlink ? "ready" : "warning"} label={arm.symlink ? symToDisplayLabel(arm.symlink) : "no symlink"} />
                 </div>
               ))}
             </div>

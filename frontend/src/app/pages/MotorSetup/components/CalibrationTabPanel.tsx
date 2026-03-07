@@ -16,7 +16,7 @@ interface CalibrationTabPanelProps {
   calibTypeMismatch: boolean;
   calibArmType: string;
   armTypes: string[];
-  calibPortOptions: string[];
+  calibPortOptions: { value: string; label: string }[];
   calibPort: string;
   calibArmIdOptions: string[];
   calibArmId: string;

@@ -17,6 +17,7 @@ interface MonitorTabPanelProps {
   monConnecting: boolean;
   monPort: string;
   arms: ArmDevice[];
+  portOptions: { value: string; label: string }[];
   setupRunning: boolean;
   monPortLabel: string;
   monMotors: MotorData[];
@@ -38,6 +39,7 @@ export function MonitorTabPanel({
   monConnecting,
   monPort,
   arms,
+  portOptions,
   setupRunning,
   monPortLabel,
   monMotors,
@@ -62,7 +64,7 @@ export function MonitorTabPanel({
           <div className="flex-1 min-w-0">
             <WireSelect
               value={monPort}
-              options={arms.length > 0 ? arms.map((a) => a.path ?? `/dev/${a.device}`) : [monPort]}
+              options={arms.length > 0 ? portOptions : [monPort]}
               onChange={(v) => { if (!monConnected) onSetMonPort(v); }}
             />
           </div>

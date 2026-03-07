@@ -21,6 +21,7 @@ import {
   FieldRow, ProcessButtons, ModeToggle, StickyControlBar, SubTabs,
   WireBox, BlockerCard, RefreshButton, EmptyState,
 } from "../components/wireframe";
+import { buildPortOptionsFromPaths, type PortOption } from "../services/portLabels";
 import { toVideoName, useCameraFeeds } from "../hooks/useCameraFeeds";
 
 
@@ -67,7 +68,7 @@ export function Teleop() {
   const prevRunningRef = useRef(false);
   const [cameraStats, setCameraStats] = useState<Record<string, { fps: number; mbps: number }>>({});
   const [camerasMapped, setCamerasMapped] = useState<{ role: string; path: string }[]>([]);
-  const [armPortOptions, setArmPortOptions] = useState<string[]>([]);
+  const [armPortOptions, setArmPortOptions] = useState<PortOption[]>([]);
   const [followerIdOptions, setFollowerIdOptions] = useState<string[]>([]);
   const [leaderIdOptions, setLeaderIdOptions] = useState<string[]>([]);
   const [bimanualIdOptions, setBimanualIdOptions] = useState<string[]>([]);
@@ -171,16 +172,17 @@ export function Teleop() {
         .map((cam) => ({ role: cam.symlink, path: `/dev/lerobot/${cam.symlink}` }));
       setCamerasMapped(mapped);
 
-      const ports = Array.from(
+      const rawPorts = Array.from(
         new Set(
           (devResult.arms ?? [])
             .map((arm) => (arm.symlink ? `/dev/${arm.symlink}` : arm.path))
             .filter((value): value is string => Boolean(value))
         )
       );
-      setArmPortOptions(ports);
-      setSelectedFollowerPort((prev) => (prev && ports.includes(prev) ? prev : ports[0] ?? ""));
-      setSelectedLeaderPort((prev) => (prev && ports.includes(prev) ? prev : ports[0] ?? ""));
+      const portOpts = buildPortOptionsFromPaths(rawPorts);
+      setArmPortOptions(portOpts);
+      setSelectedFollowerPort((prev) => (prev && rawPorts.includes(prev) ? prev : rawPorts[0] ?? ""));
+      setSelectedLeaderPort((prev) => (prev && rawPorts.includes(prev) ? prev : rawPorts[0] ?? ""));
 
       const calibResult = await apiGet<{ files?: CalibFile[] }>("/api/calibrate/list");
       const files = calibResult.files ?? [];
