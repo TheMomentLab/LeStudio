@@ -1,10 +1,26 @@
+# pyright: reportMissingTypeArgument=false
+
 import json
 import logging
 import shutil
 from json import JSONDecodeError
 from pathlib import Path
 
+from ._device_helpers import get_calibration_dir
+
 logger = logging.getLogger(__name__)
+
+MOTOR_SETUP_COMPATIBLE_TYPES = {
+    "koch_follower",
+    "koch_leader",
+    "omx_follower",
+    "omx_leader",
+    "so100_follower",
+    "so100_leader",
+    "so101_follower",
+    "so101_leader",
+    "lekiwi",
+}
 
 def dataset_cache_path(repo_id: str, root: str | None = None) -> Path:
     """Return the local path where a dataset is stored.
@@ -51,6 +67,13 @@ def build_teleop_args(python_exe: str, cfg: dict) -> list[str]:
     }
     speed_key = str(cfg.get("teleop_speed", "0.5"))
     max_rel = _SPEED_TO_MAX_REL.get(speed_key, 15.0)
+    anti_jitter_enabled = bool(cfg.get("teleop_antijitter_enabled", False))
+    anti_jitter_alpha = cfg.get("teleop_antijitter_alpha", 0.35)
+    anti_jitter_deadband = cfg.get("teleop_antijitter_deadband", 0.75)
+    anti_jitter_max_step = cfg.get("teleop_antijitter_max_step")
+    teleop_debug_enabled = bool(cfg.get("teleop_debug_enabled", False))
+    invert_shoulder_lift = bool(cfg.get("teleop_invert_shoulder_lift", False))
+    invert_wrist_roll = bool(cfg.get("teleop_invert_wrist_roll", False))
 
     # Build camera config dict so the robot reads camera frames
     # (needed by camera_patch to write SHM files for live preview)
@@ -83,6 +106,17 @@ def build_teleop_args(python_exe: str, cfg: dict) -> list[str]:
         if max_rel is not None:
             args.append(f"--robot.left_arm_config.max_relative_target={max_rel}")
             args.append(f"--robot.right_arm_config.max_relative_target={max_rel}")
+        args.extend(_build_antijitter_bridge_args(
+            enabled=anti_jitter_enabled,
+            alpha=anti_jitter_alpha,
+            deadband=anti_jitter_deadband,
+            max_step=anti_jitter_max_step,
+        ))
+        args.extend(_build_joint_invert_bridge_args(
+            shoulder_lift=invert_shoulder_lift,
+            wrist_roll=invert_wrist_roll,
+        ))
+        args.extend(_build_debug_bridge_args(enabled=teleop_debug_enabled))
         return args
     args = [
         python_exe,
@@ -101,7 +135,44 @@ def build_teleop_args(python_exe: str, cfg: dict) -> list[str]:
         args.append(f"--robot.cameras={cam_str}")
     if max_rel is not None:
         args.append(f"--robot.max_relative_target={max_rel}")
+    args.extend(_build_antijitter_bridge_args(
+        enabled=anti_jitter_enabled,
+        alpha=anti_jitter_alpha,
+        deadband=anti_jitter_deadband,
+        max_step=anti_jitter_max_step,
+    ))
+    args.extend(_build_joint_invert_bridge_args(
+        shoulder_lift=invert_shoulder_lift,
+        wrist_roll=invert_wrist_roll,
+    ))
+    args.extend(_build_debug_bridge_args(enabled=teleop_debug_enabled))
     return args
+
+
+def _build_antijitter_bridge_args(
+    *,
+    enabled: bool,
+    alpha: object,
+    deadband: object,
+    max_step: object,
+) -> list[str]:
+    args = [f"--lestudio.antijitter.enabled={'true' if enabled else 'false'}"]
+    args.append(f"--lestudio.antijitter.alpha={alpha}")
+    args.append(f"--lestudio.antijitter.deadband={deadband}")
+    if max_step not in (None, ""):
+        args.append(f"--lestudio.antijitter.max_step={max_step}")
+    return args
+
+
+def _build_joint_invert_bridge_args(*, shoulder_lift: bool, wrist_roll: bool) -> list[str]:
+    return [
+        f"--lestudio.invert.shoulder_lift={'true' if shoulder_lift else 'false'}",
+        f"--lestudio.invert.wrist_roll={'true' if wrist_roll else 'false'}",
+    ]
+
+
+def _build_debug_bridge_args(*, enabled: bool) -> list[str]:
+    return [f"--lestudio.debug.enabled={'true' if enabled else 'false'}"]
 
 
 def build_record_args(python_exe: str, cfg: dict, resume_enabled: bool) -> list[str]:
@@ -187,7 +258,7 @@ def build_calibrate_args(python_exe: str, data: dict) -> list[str]:
             return [
                 python_exe,
                 "-m",
-                "lerobot.scripts.lerobot_calibrate",
+                "lestudio.calibrate_bridge",
                 f"--teleop.type={bi_type}",
                 f"--teleop.left_arm_config.port={left_port}",
                 f"--teleop.right_arm_config.port={right_port}",
@@ -196,7 +267,7 @@ def build_calibrate_args(python_exe: str, data: dict) -> list[str]:
         return [
             python_exe,
             "-m",
-            "lerobot.scripts.lerobot_calibrate",
+            "lestudio.calibrate_bridge",
             f"--robot.type={bi_type}",
             f"--robot.left_arm_config.port={left_port}",
             f"--robot.right_arm_config.port={right_port}",
@@ -210,7 +281,7 @@ def build_calibrate_args(python_exe: str, data: dict) -> list[str]:
         return [
             python_exe,
             "-m",
-            "lerobot.scripts.lerobot_calibrate",
+            "lestudio.calibrate_bridge",
             f"--teleop.type={robot_type}",
             f"--teleop.port={port}",
             f"--teleop.id={robot_id}",
@@ -218,7 +289,7 @@ def build_calibrate_args(python_exe: str, data: dict) -> list[str]:
     return [
         python_exe,
         "-m",
-        "lerobot.scripts.lerobot_calibrate",
+        "lestudio.calibrate_bridge",
         f"--robot.type={robot_type}",
         f"--robot.port={port}",
         f"--robot.id={robot_id}",
@@ -228,20 +299,15 @@ def build_calibrate_args(python_exe: str, data: dict) -> list[str]:
 def build_motor_setup_args(python_exe: str, data: dict) -> list[str]:
     robot_type = data.get("robot_type", "so101_follower")
     port = data.get("port", "/dev/follower_arm_1")
-    if "leader" in robot_type:
-        return [
-            python_exe,
-            "-m",
-            "lerobot.scripts.lerobot_setup_motors",
-            f"--teleop.type={robot_type}",
-            f"--teleop.port={port}",
-        ]
+    if robot_type not in MOTOR_SETUP_COMPATIBLE_TYPES:
+        supported = ", ".join(sorted(MOTOR_SETUP_COMPATIBLE_TYPES))
+        raise ValueError(f"Motor Setup does not support '{robot_type}'. Supported types: {supported}")
     return [
         python_exe,
-        "-m",
-        "lerobot.scripts.lerobot_setup_motors",
-        f"--robot.type={robot_type}",
-        f"--robot.port={port}",
+        str(Path(__file__).with_name("motor_setup_bridge.py")),
+        f"--python-exe={python_exe}",
+        f"--robot-type={robot_type}",
+        f"--port={port}",
     ]
 
 
@@ -284,6 +350,10 @@ def _sanitize_env_value(raw: object) -> str:
     return value
 
 
+def _calibration_dir_arg(prefix: str, device_type: str) -> str:
+    return f"--{prefix}.calibration_dir={get_calibration_dir(device_type)}"
+
+
 def build_eval_args(python_exe: str, cfg: dict) -> list[str]:
     policy_path = str(cfg.get("eval_policy_path", "")).strip()
     if not policy_path:
@@ -292,7 +362,6 @@ def build_eval_args(python_exe: str, cfg: dict) -> list[str]:
         candidates = sorted(outputs_dir.glob("*/*/checkpoints/last/pretrained_model"), key=lambda p: p.stat().st_mtime, reverse=True) if outputs_dir.exists() else []
         policy_path = str(candidates[0]) if candidates else "outputs/train/checkpoints/last/pretrained_model"
 
-    repo_id = str(cfg.get("eval_repo_id", "")).strip()
     episodes = int(cfg.get("eval_episodes", 10) or 10)
     device = str(cfg.get("eval_device", cfg.get("train_device", "cuda"))).strip() or "cuda"
     env_type = _normalize_env_type(str(cfg.get("eval_env_type", "")))
@@ -343,8 +412,6 @@ def build_eval_args(python_exe: str, cfg: dict) -> list[str]:
         f"--policy.device={device}",
         f"--env.task={env_task}",
     ]
-
-
     # gym_manipulator (real robot) requires robot and teleop config
     if env_type == "gym_manipulator":
         is_bi = cfg.get("robot_mode") == "bi"
@@ -353,9 +420,11 @@ def build_eval_args(python_exe: str, cfg: dict) -> list[str]:
             teleop_type = str(cfg.get("eval_teleop_type", "bi_so_leader")).strip() or "bi_so_leader"
             args += [
                 f"--env.robot.type={robot_type}",
+                _calibration_dir_arg("env.robot", robot_type),
                 f'--env.robot.left_arm_config.port={cfg.get("left_follower_port", "/dev/follower_arm_1")}',
                 f'--env.robot.right_arm_config.port={cfg.get("right_follower_port", "/dev/follower_arm_2")}',
                 f"--env.teleop.type={teleop_type}",
+                _calibration_dir_arg("env.teleop", teleop_type),
                 f'--env.teleop.left_arm_config.port={cfg.get("left_leader_port", "/dev/leader_arm_1")}',
                 f'--env.teleop.right_arm_config.port={cfg.get("right_leader_port", "/dev/leader_arm_2")}',
             ]
@@ -368,9 +437,11 @@ def build_eval_args(python_exe: str, cfg: dict) -> list[str]:
             teleop_id = str(cfg.get("teleop_id", "leader_arm_1")).strip()
             args += [
                 f"--env.robot.type={robot_type}",
+                _calibration_dir_arg("env.robot", robot_type),
                 f"--env.robot.port={follower_port}",
                 f"--env.robot.id={robot_id}",
                 f"--env.teleop.type={teleop_type}",
+                _calibration_dir_arg("env.teleop", teleop_type),
                 f"--env.teleop.port={leader_port}",
                 f"--env.teleop.id={teleop_id}",
             ]

@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
+from typing import cast
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +22,11 @@ DEFAULT_CONFIG = {
     "right_robot_id":      "follower_arm_2",
     "left_teleop_id":      "leader_arm_1",
     "right_teleop_id":     "leader_arm_2",
+    "teleop_antijitter_enabled": False,
+    "teleop_antijitter_alpha": 0.35,
+    "teleop_antijitter_deadband": 0.75,
+    "teleop_antijitter_max_step": "",
+    "teleop_debug_enabled": False,
     "cameras": {
         "wrist_1": "/dev/wrist_cam_1",
         "top_1":   "/dev/top_cam_1",
@@ -51,18 +57,17 @@ DEFAULT_CONFIG = {
 }
 
 
-def _load_config(config_path: Path) -> dict:
+def _load_config(config_path: Path) -> dict[str, object]:
     if config_path.exists():
         try:
             content = config_path.read_text().strip()
             if content:
-                return {**DEFAULT_CONFIG, **json.loads(content)}
+                return cast(dict[str, object], {**DEFAULT_CONFIG, **json.loads(content)})
         except (OSError, json.JSONDecodeError, TypeError, ValueError):
             pass
-    return DEFAULT_CONFIG.copy()
+    return cast(dict[str, object], DEFAULT_CONFIG.copy())
 
 
-def _save_config(config_path: Path, cfg: dict):
+def _save_config(config_path: Path, cfg: dict[str, object]):
     config_path.parent.mkdir(parents=True, exist_ok=True)
     config_path.write_text(json.dumps(cfg, indent=2))
-

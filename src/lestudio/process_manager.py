@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import queue
@@ -7,8 +8,9 @@ import signal
 import subprocess
 import sys
 import threading
+import time
 from pathlib import Path
-from typing import Callable, TypedDict
+from typing import Any, Callable, TypedDict
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +22,20 @@ class TrainMetric(TypedDict, total=False):
     lr: float
 
 
+class OrphanInfo(TypedDict):
+    pid: int
+    pgid: int
+    cmdline_prefix: str
+
+
+class QueueItem(TypedDict, total=False):
+    process: str
+    line: str
+    kind: str
+    replace: str
+    metric: TrainMetric
+
+
 PROCESS_NAMES = ["teleop", "record", "calibrate", "motor_setup", "train", "train_install", "eval"]
 
 # Hardware conflict groups: processes sharing the same physical resource
@@ -28,7 +44,14 @@ HARDWARE_GROUPS: dict[str, list[str]] = {
     "arms": ["calibrate", "teleop", "record", "motor_setup"],
     "gpu": ["train", "eval"],
 }
-_ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+_ANSI_CSI_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
+_ANSI_OSC_RE = re.compile(r"\x1b\][^\x07]*(?:\x07|\x1b\\)")
+_ANSI_ESC_RE = re.compile(r"\x1b[@-_]")
+_CONTROL_CHAR_RE = re.compile(r"[\x00-\x08\x0b-\x1a\x1c-\x1f\x7f]")
+_LIVE_PROGRESS_RE = re.compile(r"\b\d{1,3}%\|.*\|\s*\d+/\d+")
+_TELEOP_LOOP_RE = re.compile(r"^Teleop loop time:")
+_TELEOP_DEBUG_RE = re.compile(r"^\[LESTUDIO_TELEOP_DEBUG\]\s+")
+_TELEOP_DEBUG_META_RE = re.compile(r"^\[LESTUDIO_TELEOP_DEBUG_META\]\s+")
 _TRAIN_TOTAL_RE = re.compile(r"cfg\.steps=([0-9_,]+)", re.IGNORECASE)
 _TRAIN_STEP_RE = re.compile(r"\bstep\s*[:=]\s*([0-9]+(?:\.[0-9]+)?[KMBTQ]?)", re.IGNORECASE)
 _TRAIN_LOSS_RE = re.compile(r"\bloss\s*[:=]\s*([+-]?[0-9]*\.?[0-9]+(?:e[+-]?[0-9]+)?)", re.IGNORECASE)
@@ -67,6 +90,13 @@ def _translate_error_line(line: str) -> str | None:
         return f"Missing Python package '{pkg}'. Install in the same environment: {python} -m pip install {pkg}"
 
     return None
+
+
+def _strip_terminal_artifacts(text: str) -> str:
+    cleaned = _ANSI_OSC_RE.sub("", text)
+    cleaned = _ANSI_CSI_RE.sub("", cleaned)
+    cleaned = _ANSI_ESC_RE.sub("", cleaned)
+    return _CONTROL_CHAR_RE.sub("", cleaned)
 
 
 def _parse_compact_int(token: str) -> int | None:
@@ -118,24 +148,272 @@ def _extract_train_metric(line: str) -> TrainMetric | None:
 
 
 class ProcessManager:
-    def __init__(self, lerobot_src: Path, on_process_exit: Callable[[str], None] | None = None):
-        self.lerobot_src = lerobot_src
-        self.procs: dict[str, subprocess.Popen] = {}
-        self.out_q: queue.Queue = queue.Queue(maxsize=1000)
-        self.on_process_exit = on_process_exit
+    def __init__(
+        self,
+        lerobot_src: Path,
+        on_process_exit: Callable[[str], None] | None = None,
+        state_dir: Path | None = None,
+    ):
+        self.lerobot_src: Path = lerobot_src
+        self.procs: dict[str, subprocess.Popen[Any]] = {}
+        self.out_q: queue.Queue[QueueItem] = queue.Queue(maxsize=1000)
+        self.on_process_exit: Callable[[str], None] | None = on_process_exit
         self.last_translation: dict[str, str] = {}
         self.seen_translations: dict[str, set[str]] = {}
         # Live-table dedup: buffer lines between "---" separators and
         # emit only the latest complete table block.
         self._table_buf: dict[str, list[str]] = {}
         self._table_tag: dict[str, str] = {}  # tag to identify replace events
+        # ── Orphan process recovery ──────────────────────────────────────────
+        self._state_dir: Path | None = state_dir
+        self._orphan_pids: dict[str, OrphanInfo] = {}
+        self._orphan_lock: threading.Lock = threading.Lock()
+        self._orphan_monitor_stop: threading.Event = threading.Event()
+        self._session_log_handles: dict[str, Any] = {}
+        self._session_log_paths: dict[str, Path] = {}
+
+    # ── PID persistence helpers ──────────────────────────────────────────────
+
+    @property
+    def _state_file(self) -> Path | None:
+        return self._state_dir / "running_processes.json" if self._state_dir else None
+
+    @property
+    def _logs_root(self) -> Path | None:
+        return self._state_dir / "logs" if self._state_dir else None
+
+    def _session_log_latest_path(self, name: str) -> Path | None:
+        root = self._logs_root
+        if root is None:
+            return None
+        return root / name / "latest.txt"
+
+    def _open_session_log(self, name: str) -> Path | None:
+        root = self._logs_root
+        if root is None:
+            return None
+        log_dir = root / name
+        timestamp = time.strftime("%Y%m%d-%H%M%S")
+        path = log_dir / f"{timestamp}.log"
+        try:
+            log_dir.mkdir(parents=True, exist_ok=True)
+            handle = path.open("w", encoding="utf-8", buffering=1)
+            self._session_log_handles[name] = handle
+            self._session_log_paths[name] = path
+            latest = self._session_log_latest_path(name)
+            if latest is not None:
+                latest.write_text(str(path) + "\n", encoding="utf-8")
+            return path
+        except OSError:
+            return None
+
+    def _write_session_log(self, name: str, text: str) -> None:
+        handle = self._session_log_handles.get(name)
+        if handle is None:
+            return
+        try:
+            handle.write(text + "\n")
+            handle.flush()
+        except OSError:
+            self._close_session_log(name)
+
+    def _close_session_log(self, name: str) -> None:
+        handle = self._session_log_handles.pop(name, None)
+        self._session_log_paths.pop(name, None)
+        if handle is None:
+            return
+        try:
+            handle.close()
+        except OSError:
+            pass
+
+    def _persist_state(self) -> None:
+        """Write all running process PIDs to disk so they survive server restart."""
+        sf = self._state_file
+        if sf is None:
+            return
+        state: dict[str, OrphanInfo] = {}
+        for name, proc in list(self.procs.items()):
+            if proc.poll() is None:
+                try:
+                    pgid = os.getpgid(proc.pid)
+                except (ProcessLookupError, OSError):
+                    pgid = proc.pid
+                state[name] = {
+                    "pid": proc.pid,
+                    "pgid": pgid,
+                    "cmdline_prefix": self._read_cmdline(proc.pid),
+                }
+        with self._orphan_lock:
+            for name, info in self._orphan_pids.items():
+                if name not in state and self._is_pid_alive(info["pid"]):
+                    state[name] = info
+        try:
+            sf.parent.mkdir(parents=True, exist_ok=True)
+            sf.write_text(json.dumps(state, indent=2))
+        except OSError:
+            pass
+
+    def _remove_from_state(self, name: str) -> None:
+        """Remove a single process entry from the persisted state file."""
+        sf = self._state_file
+        if sf is None:
+            return
+        try:
+            if sf.exists():
+                raw = json.loads(sf.read_text())
+                if isinstance(raw, dict) and name in raw:
+                    del raw[name]
+                    sf.write_text(json.dumps(raw, indent=2))
+        except (OSError, json.JSONDecodeError):
+            pass
+
+    # ── PID validation ───────────────────────────────────────────────────────
+
+    @staticmethod
+    def _is_pid_alive(pid: int) -> bool:
+        """Check whether *pid* is still running."""
+        try:
+            os.kill(pid, 0)
+            return True
+        except (ProcessLookupError, PermissionError, OSError):
+            return False
+
+    @staticmethod
+    def _read_cmdline(pid: int) -> str:
+        """Read ``/proc/{pid}/cmdline`` for PID-reuse validation."""
+        try:
+            data = Path(f"/proc/{pid}/cmdline").read_bytes()
+            return data.replace(b"\x00", b" ").decode("utf-8", errors="replace").strip()
+        except (OSError, PermissionError):
+            return ""
+
+    @classmethod
+    def _validate_orphan_pid(cls, pid: int, saved_cmdline: str) -> bool:
+        """Return True if *pid* is alive AND likely the same command (not PID reuse)."""
+        if not cls._is_pid_alive(pid):
+            return False
+        if not saved_cmdline:
+            return True
+        current_cmdline = cls._read_cmdline(pid)
+        if not current_cmdline:
+            return True  # cannot read — trust the PID
+        # Compare first few tokens to guard against PID recycling
+        saved_tokens = set(saved_cmdline.lower().split()[:6])
+        current_tokens = set(current_cmdline.lower().split()[:6])
+        return len(saved_tokens & current_tokens) >= 2
+
+    # ── Orphan recovery ──────────────────────────────────────────────────────
+
+    def recover_orphans(self) -> None:
+        """On startup, detect still-running processes from a previous server session."""
+        sf = self._state_file
+        if sf is None or not sf.exists():
+            return
+        try:
+            state = json.loads(sf.read_text())
+            if not isinstance(state, dict):
+                return
+        except (OSError, json.JSONDecodeError):
+            return
+
+        recovered: list[str] = []
+        with self._orphan_lock:
+            for name, info in state.items():
+                pid = info.get("pid")
+                if not pid or name in self.procs:
+                    continue
+                if self._validate_orphan_pid(pid, info.get("cmdline_prefix", "")):
+                    self._orphan_pids[name] = info
+                    recovered.append(name)
+                    self._push(
+                        name,
+                        f"[Reconnected to running process (PID {pid}) — live output unavailable]",
+                        "info",
+                    )
+                    logger.info("Recovered orphan process: %s (PID %d)", name, pid)
+
+        if recovered:
+            self._start_orphan_monitor()
+        # Rewrite state: dead entries removed, alive entries kept
+        self._persist_state()
+
+    def _start_orphan_monitor(self) -> None:
+        """Launch a daemon thread that polls orphan PIDs for liveness."""
+        self._orphan_monitor_stop.clear()
+        threading.Thread(target=self._orphan_monitor_loop, daemon=True).start()
+
+    def _orphan_monitor_loop(self) -> None:
+        while not self._orphan_monitor_stop.wait(2.0):
+            dead: list[str] = []
+            with self._orphan_lock:
+                for name, info in list(self._orphan_pids.items()):
+                    if not self._is_pid_alive(info["pid"]):
+                        dead.append(name)
+                for name in dead:
+                    del self._orphan_pids[name]
+
+            for name in dead:
+                self._push(name, f"[{name} process ended]", "info")
+                self._remove_from_state(name)
+                if self.on_process_exit is not None:
+                    try:
+                        self.on_process_exit(name)
+                    except Exception:  # broad-except: monitor must not crash
+                        pass
+                logger.info("Orphan process ended: %s", name)
+
+            with self._orphan_lock:
+                if not self._orphan_pids:
+                    break
+
+    def _kill_orphan_process(self, info: OrphanInfo) -> None:
+        """Send escalating signals to an orphan process (by PID/PGID)."""
+        pid = info["pid"]
+        pgid = info.get("pgid", pid)
+
+        if sys.platform == "win32":
+            try:
+                os.kill(pid, signal.SIGTERM)
+            except (ProcessLookupError, OSError):
+                pass
+            return
+
+        for sig, timeout in [
+            (signal.SIGINT, 5),
+            (signal.SIGTERM, 3),
+            (signal.SIGKILL, 1),
+        ]:
+            target_is_group = pgid and pgid != pid
+            try:
+                if target_is_group:
+                    os.killpg(pgid, sig)
+                else:
+                    os.kill(pid, sig)
+            except (ProcessLookupError, OSError):
+                return
+            deadline = time.monotonic() + timeout
+            while time.monotonic() < deadline:
+                if not self._is_pid_alive(pid):
+                    return
+                time.sleep(0.1)
+
+    # ── Public helpers ───────────────────────────────────────────────────────
+
+    def is_orphan(self, name: str) -> bool:
+        """Return True if *name* is tracked as a reconnected orphan (no live output)."""
+        with self._orphan_lock:
+            info = self._orphan_pids.get(name)
+            return info is not None and self._is_pid_alive(info["pid"])
+
+    # ── Core process lifecycle ───────────────────────────────────────────────
 
     def flush_queue(self, name: str):
-        items = []
+        items: list[QueueItem] = []
         while True:
             try:
                 item = self.out_q.get_nowait()
-                if item["process"] != name:
+                if item.get("process") != name:
                     items.append(item)
             except queue.Empty:
                 break
@@ -147,16 +425,22 @@ class ProcessManager:
 
     def start(self, name: str, args: list[str]) -> bool:
         self.stop(name)
+        self._close_session_log(name)
+        # Clear any leftover orphan entry for this name
+        with self._orphan_lock:
+            self._orphan_pids.pop(name, None)
         self.flush_queue(name)
         self.last_translation.pop(name, None)
         self.seen_translations.pop(name, None)
+        self._table_buf.pop(name, None)
+        self._table_tag.pop(name, None)
         env = {
             **os.environ,
             "PYTHONPATH": str(self.lerobot_src) + os.pathsep + os.environ.get("PYTHONPATH", ""),
             "PYTHONUNBUFFERED": "1",
         }
         try:
-            popen_kwargs: dict = dict(
+            popen_kwargs: dict[str, Any] = dict(
                 args=args,
                 env=env,
                 stdin=subprocess.PIPE,
@@ -170,28 +454,50 @@ class ProcessManager:
                 popen_kwargs['start_new_session'] = True
             proc = subprocess.Popen(**popen_kwargs)
             self.procs[name] = proc
+            session_log_path = self._open_session_log(name) if name == "teleop" else None
             threading.Thread(target=self._reader, args=(name, proc), daemon=True).start()
+            if session_log_path is not None:
+                self._push(name, f"[Saved live log to {session_log_path}]", "info")
+            self._persist_state()
             return True
         except Exception as e:  # broad-except: preserve process start failure handling for any launcher error
+            self._close_session_log(name)
             self._push(name, f"[ERROR] {e}", "error")
             return False
 
     def stop(self, name: str):
         proc = self.procs.get(name)
-        if not proc or proc.poll() is not None:
-            self.procs.pop(name, None)
+        if proc and proc.poll() is None:
+            def _kill():
+                try:
+                    self._kill_proc(proc)
+                finally:
+                    self.procs.pop(name, None)
+                    self._remove_from_state(name)
+
+            threading.Thread(target=_kill, daemon=True).start()
             return
 
-        def _kill():
-            try:
-                self._kill_proc(proc)
-            finally:
-                self.procs.pop(name, None)
+        self.procs.pop(name, None)
 
-        threading.Thread(target=_kill, daemon=True).start()
+        # Handle orphan processes
+        with self._orphan_lock:
+            info = self._orphan_pids.pop(name, None)
+        if info:
+            def _kill_orphan():
+                self._kill_orphan_process(info)
+                self._remove_from_state(name)
+                self._push(name, f"[{name} process stopped]", "info")
+                if self.on_process_exit is not None:
+                    try:
+                        self.on_process_exit(name)
+                    except Exception:  # broad-except: exit hook must not break stop path
+                        pass
+
+            threading.Thread(target=_kill_orphan, daemon=True).start()
 
     @staticmethod
-    def _kill_proc(proc: subprocess.Popen):
+    def _kill_proc(proc: subprocess.Popen[Any]):
         """Escalate signals: SIGINT → SIGTERM → SIGKILL."""
         if sys.platform == 'win32':
             try:
@@ -251,9 +557,16 @@ class ProcessManager:
 
     def is_running(self, name: str) -> bool:
         proc = self.procs.get(name)
-        return proc is not None and proc.poll() is None
+        if proc is not None and proc.poll() is None:
+            return True
+        # Also check orphan processes adopted from a previous server session
+        with self._orphan_lock:
+            info = self._orphan_pids.get(name)
+            if info and self._is_pid_alive(info["pid"]):
+                return True
+        return False
 
-    def status_all(self) -> dict:
+    def status_all(self) -> dict[str, bool]:
         return {n: self.is_running(n) for n in PROCESS_NAMES}
 
     def conflicting_processes(self, name: str) -> list[str]:
@@ -270,18 +583,19 @@ class ProcessManager:
     def _flush_table(self, name: str):
         """Emit the buffered table block as a single 'replace_table' message."""
         buf = self._table_buf.pop(name, None)
-        tag = self._table_tag.get(name, "table")
+        tag = self._table_tag.get(name, f"{name}:table")
         if buf:
             combined = "\n".join(buf)
-            try:
-                self.out_q.put_nowait({
-                    "process": name,
-                    "line": combined,
-                    "kind": "stdout",
-                    "replace": tag,
-                })
-            except queue.Full:
-                pass
+            self._write_session_log(name, combined)
+            self._push(name, combined, "stdout", replace=tag)
+
+    @staticmethod
+    def _replace_tag(name: str, suffix: str) -> str:
+        return f"{name}:{suffix}"
+
+    @staticmethod
+    def _looks_like_live_progress(text: str) -> bool:
+        return bool(_LIVE_PROGRESS_RE.search(text))
 
     def _process_line(self, name: str, text: str):
         """Process a single decoded line: push to queue, translate errors, extract train metrics."""
@@ -304,7 +618,18 @@ class ProcessManager:
                 # Non-table line → flush the table and process this line normally
                 self._flush_table(name)
 
-        self._push(name, text, "stdout")
+        if self._looks_like_live_progress(text):
+            replace = self._replace_tag(name, "progress")
+        elif _TELEOP_DEBUG_META_RE.match(text):
+            replace = self._replace_tag(name, "teleop_debug_meta")
+        elif _TELEOP_DEBUG_RE.match(text):
+            replace = self._replace_tag(name, "teleop_debug")
+        elif _TELEOP_LOOP_RE.match(text):
+            replace = self._replace_tag(name, "teleop_loop")
+        else:
+            replace = None
+        self._write_session_log(name, text)
+        self._push(name, text, "stdout", replace=replace)
         translated = _translate_error_line(text)
         if translated is not None:
             self._push_translation(name, translated)
@@ -324,10 +649,33 @@ class ProcessManager:
         decoded = raw.decode("utf-8", errors="replace")
         # Take only text after the last \r (carriage-return overwrite)
         if "\r" in decoded:
-            decoded = decoded.rsplit("\r", 1)[-1]
-        return _ANSI_RE.sub("", decoded.strip())
+            parts = decoded.split("\r")
+            decoded = next((part for part in reversed(parts) if part), "")
+        decoded = _strip_terminal_artifacts(decoded)
+        return decoded.strip("\r\n")
 
-    def _reader(self, name: str, proc: subprocess.Popen):
+    def _flush_partial_buffer(self, name: str, buf: bytes) -> bytes:
+        if not buf:
+            return buf
+
+        if b"\n" in buf:
+            while b"\n" in buf:
+                line, buf = buf.split(b"\n", 1)
+                text = self._decode_line(line)
+                if text:
+                    self._process_line(name, text)
+            return buf
+
+        if b"\r" not in buf:
+            return buf
+
+        text = self._decode_line(buf)
+        if text:
+            self._write_session_log(name, text)
+            self._push(name, text, "stdout", replace=self._replace_tag(name, "progress"))
+        return b""
+
+    def _reader(self, name: str, proc: subprocess.Popen[Any]):
         import select as sel
 
         if proc.stdout is None:
@@ -349,46 +697,38 @@ class ProcessManager:
                     if text:
                         self._process_line(name, text)
             else:
-                # Flush buffered data line-by-line even on timeout
                 if buf:
-                    while b"\n" in buf:
-                        line, buf = buf.split(b"\n", 1)
-                        text = self._decode_line(line)
-                        if text:
-                            self._process_line(name, text)
-                    if buf:
-                        text = self._decode_line(buf)
-                        if text:
-                            self._process_line(name, text)
-                        buf = b""
+                    buf = self._flush_partial_buffer(name, buf)
                 if proc.poll() is not None:
                     break
         if buf:
-            while b"\n" in buf:
-                line_bytes, buf = buf.split(b"\n", 1)
-                text = self._decode_line(line_bytes)
-                if text:
-                    self._process_line(name, text)
+            buf = self._flush_partial_buffer(name, buf)
             if buf:
                 text = self._decode_line(buf)
                 if text:
                     self._process_line(name, text)
         # Flush any remaining table buffer
         self._flush_table(name)
+        self._write_session_log(name, f"[{name} process ended]")
         self._push(name, f"[{name} process ended]", "info")
+        self._remove_from_state(name)
+        self._close_session_log(name)
         if self.on_process_exit is not None:
             try:
                 self.on_process_exit(name)
             except Exception:  # broad-except: process-exit hook should never break reader shutdown path
                 pass
 
-    def _push(self, name: str, line: str, kind: str):
+    def _push(self, name: str, line: str, kind: str, replace: str | None = None):
+        payload: QueueItem = {"process": name, "line": line, "kind": kind}
+        if replace:
+            payload["replace"] = replace
         try:
-            self.out_q.put_nowait({"process": name, "line": line, "kind": kind})
+            self.out_q.put_nowait(payload)
         except queue.Full:
             pass
 
-    def _push_metric(self, name: str, metric: dict):
+    def _push_metric(self, name: str, metric: TrainMetric):
         try:
             self.out_q.put_nowait({"process": name, "kind": "metric", "metric": metric})
         except queue.Full:

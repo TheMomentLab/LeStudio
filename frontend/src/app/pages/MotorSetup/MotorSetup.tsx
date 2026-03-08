@@ -8,7 +8,8 @@ import {
 import { apiDelete, apiGet, apiPost } from "../../services/apiClient";
 import { symToDisplayLabel, buildPortOptions } from "../../services/portLabels";
 import { useLeStudioStore } from "../../store";
-import { SETUP_MOTORS, ARM_TYPES, toArmSymlink } from "./constants";
+import type { LogLine } from "../../store/types";
+import { SETUP_MOTORS, ARM_TYPES, MOTOR_SETUP_TYPES, toArmSymlink } from "./constants";
 import { MotorCard } from "./components/MotorCard";
 import { MappingTabPanel } from "./components/MappingTabPanel";
 import { SetupTabPanel } from "./components/SetupTabPanel";
@@ -28,6 +29,145 @@ import type {
 } from "./types";
 
 const ARM_ROLE_OPTIONS = ["Follower Arm 1", "Follower Arm 2", "Leader Arm 1", "Leader Arm 2"];
+type WizardMotorState = "pending" | "waiting" | "writing" | "done" | "error";
+
+const MOTOR_PROMPT_RE = /Connect the controller board to the '([^']+)' motor only and press enter\./i;
+const MOTOR_DONE_RE = /'([^']+)' motor id set to (\d+)/i;
+const MOTOR_FOUND_RE = /Found one motor on baudrate=(\d+) with id_?=(\d+)/i;
+const MOTOR_BAUD_RE = /Setting bus baud rate to (\d+)/i;
+const MOTOR_ERROR_RE = /(Traceback|ConnectionError:|RuntimeError:|NotImplementedError|Failed to write|Error:)/i;
+const MOTOR_EVENT_PREFIX = "[MOTOR_SETUP_EVENT] ";
+
+type MotorSetupEvent = {
+  event: string;
+  motor?: string;
+  target_id?: number | string;
+  detected_id?: number | string;
+  baud_rate?: number | string;
+  message?: string;
+};
+
+function parseMotorSetupEvent(text: string): MotorSetupEvent | null {
+  if (!text.startsWith(MOTOR_EVENT_PREFIX)) return null;
+  try {
+    return JSON.parse(text.slice(MOTOR_EVENT_PREFIX.length)) as MotorSetupEvent;
+  } catch {
+    return null;
+  }
+}
+
+function parseMotorSetupLogs(lines: LogLine[]) {
+  const states: WizardMotorState[] = SETUP_MOTORS.map(() => "pending");
+  let currentStep = 0;
+  let detectedId = "";
+  let baudRate = "";
+  let promptText = "";
+  let error: string | null = null;
+
+  for (const line of lines) {
+    const text = line.text.trim();
+    const event = parseMotorSetupEvent(text);
+    if (event) {
+      if (event.event === "detected") {
+        if (event.baud_rate !== undefined) baudRate = String(event.baud_rate);
+        if (event.detected_id !== undefined) detectedId = String(event.detected_id);
+      }
+      if (event.event === "baud_rate" && event.baud_rate !== undefined) {
+        baudRate = String(event.baud_rate);
+      }
+      if (event.event === "prompt" && event.motor) {
+        const idx = SETUP_MOTORS.findIndex((motor) => motor.name === event.motor);
+        if (idx >= 0) {
+          currentStep = idx;
+          if (states[idx] !== "done") states[idx] = "waiting";
+          promptText = event.message ?? `Connect only '${event.motor}' and press ENTER.`;
+        }
+      }
+      if (event.event === "configured" && event.motor) {
+        const idx = SETUP_MOTORS.findIndex((motor) => motor.name === event.motor);
+        if (idx >= 0) {
+          states[idx] = "done";
+          const nextPending = states.findIndex((state) => state === "pending");
+          currentStep = nextPending >= 0 ? nextPending : idx;
+        }
+      }
+      if (event.event === "error" && event.message) {
+        error = event.message;
+      }
+      continue;
+    }
+
+    const foundMatch = text.match(MOTOR_FOUND_RE);
+    if (foundMatch) {
+      baudRate = foundMatch[1];
+      detectedId = foundMatch[2];
+    }
+
+    const baudMatch = text.match(MOTOR_BAUD_RE);
+    if (baudMatch) {
+      baudRate = baudMatch[1];
+    }
+
+    const promptMatch = text.match(MOTOR_PROMPT_RE);
+    if (promptMatch) {
+      const promptMotor = promptMatch[1];
+      const idx = SETUP_MOTORS.findIndex((motor) => motor.name === promptMotor);
+      if (idx >= 0) {
+        currentStep = idx;
+        if (states[idx] !== "done") states[idx] = "waiting";
+        promptText = text;
+      }
+    }
+
+    const doneMatch = text.match(MOTOR_DONE_RE);
+    if (doneMatch) {
+      const doneMotor = doneMatch[1];
+      const idx = SETUP_MOTORS.findIndex((motor) => motor.name === doneMotor);
+      if (idx >= 0) {
+        states[idx] = "done";
+        const nextPending = states.findIndex((state) => state === "pending");
+        currentStep = nextPending >= 0 ? nextPending : idx;
+      }
+    }
+
+    if ((line.kind === "error" || line.kind === "stderr") && MOTOR_ERROR_RE.test(text)) {
+      error = text;
+    }
+  }
+
+  if (!promptText) {
+    const waitingIdx = states.findIndex((state) => state === "waiting");
+    if (waitingIdx >= 0) {
+      promptText = `Connect only '${SETUP_MOTORS[waitingIdx].name}' and press ENTER.`;
+      currentStep = waitingIdx;
+    }
+  }
+
+  const allDone = states.every((state) => state === "done");
+  return { states, currentStep, detectedId, baudRate, promptText, error, allDone };
+}
+
+function alignArmTypeToRole(currentType: string, role: "leader" | "follower", availableTypes: string[]): string {
+  if (currentType.includes(role)) return currentType;
+
+  const swapped = currentType
+    .replace("_leader", `_${role}`)
+    .replace("_follower", `_${role}`);
+  if (availableTypes.includes(swapped)) return swapped;
+
+  const familyPrefix = currentType.split("_").slice(0, -1).join("_");
+  const familyMatch = availableTypes.find((type) => type.startsWith(`${familyPrefix}_`) && type.endsWith(`_${role}`));
+  if (familyMatch) return familyMatch;
+
+  const fallback = availableTypes.find((type) => type.endsWith(`_${role}`));
+  return fallback ?? currentType;
+}
+
+function detectArmRoleText(text: string): "leader" | "follower" | null {
+  if (text.includes("leader")) return "leader";
+  if (text.includes("follower")) return "follower";
+  return null;
+}
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
@@ -37,6 +177,7 @@ export function MotorSetup() {
   const appendLog = useLeStudioStore((s) => s.appendLog);
   const clearLog = useLeStudioStore((s) => s.clearLog);
   const addToast = useLeStudioStore((s) => s.addToast);
+  const motorSetupLogLines = useLeStudioStore((s) => s.logLines.motor_setup);
 
   // ── Device data ──────────────────────────────────────────────────────────
   const [arms, setArms] = useState<ArmDevice[]>([]);
@@ -44,6 +185,8 @@ export function MotorSetup() {
   // ── Motor Setup (CLI) ────────────────────────────────────────────────────
   const setupRunning = Boolean(procStatus.motor_setup);
   const calibrateRunning = Boolean(procStatus.calibrate);
+  const setupReconnected = useLeStudioStore((s) => !!s.procReconnected.motor_setup);
+  const calibrateReconnected = useLeStudioStore((s) => !!s.procReconnected.calibrate);
   const [setupArmType, setSetupArmType] = useState("so101_follower");
   const [setupPort, setSetupPort] = useState("");
   const [armTypes, setArmTypes] = useState<string[]>(ARM_TYPES);
@@ -71,17 +214,16 @@ export function MotorSetup() {
   const [calibBiLeftPort, setCalibBiLeftPort] = useState("");
   const [calibBiRightPort, setCalibBiRightPort] = useState("");
   const [calibFiles, setCalibFiles] = useState<CalibrationFileItem[]>([]);
+  const [calibSelectedFileStatus, setCalibSelectedFileStatus] = useState<CalibrationFileStatusResponse | null>(null);
+  const [calibrationAssistantStage, setCalibrationAssistantStage] = useState<"idle" | "choose_file" | "center_arm" | "record_range" | "finishing">("idle");
 
   // ── Setup Wizard ──────────────────────────────────────────────────────────
   const [wizardRunning, setWizardRunning] = useState(false);
   const [wizardStep, setWizardStep] = useState(0);
-  const [wizardMotorState, setWizardMotorState] = useState<("pending" | "waiting" | "writing" | "done" | "error")[]>(
+  const [wizardMotorState, setWizardMotorState] = useState<WizardMotorState[]>(
     SETUP_MOTORS.map(() => "pending")
   );
   const [wizardError, setWizardError] = useState<string | null>(null);
-  const [wizardDetectedId, setWizardDetectedId] = useState("");
-  const [wizardBaudRate, setWizardBaudRate] = useState("1000000");
-  const [wizardConnectionConfirmed, setWizardConnectionConfirmed] = useState(false);
 
   // ── Mapping tab ───────────────────────────────────────────────────────────
   const [armRoleMap, setArmRoleMap] = useState<Record<string, string>>({});
@@ -231,7 +373,7 @@ export function MotorSetup() {
       if (Array.isArray(res.types) && res.types.length > 0) {
         const dynamicTypes = res.types
           .filter((type): type is string => typeof type === "string")
-          .filter((type) => type.includes("_leader") || type.includes("_follower"));
+          .filter((type) => type.includes("_leader") || type.includes("_follower") || type === "lekiwi");
         const merged = Array.from(new Set([...ARM_TYPES, ...dynamicTypes]));
         setArmTypes(merged);
       }
@@ -323,13 +465,6 @@ export function MotorSetup() {
     setSetupPort(p);
     if (!monConnected) setMonPort(p);
   }, [arms, setupArmType, monConnected, findPortByKeyword]);
-
-  // Auto-select calibration port matching arm type keyword
-  useEffect(() => {
-    if (arms.length === 0) return;
-    const keyword = calibArmType.includes("follower") ? "follower" : calibArmType.includes("leader") ? "leader" : "";
-    setCalibPort(findPortByKeyword(keyword));
-  }, [arms, calibArmType, findPortByKeyword]);
 
   // ─── Motor Monitor polling ──────────────────────────────────────────────────
 
@@ -450,7 +585,7 @@ export function MotorSetup() {
 
   // ─── Motor Setup (CLI) handlers ────────────────────────────────────────────
 
-  const handleSetupStart = async () => {
+  const handleSetupStart = useCallback(async () => {
     if (!setupPort.startsWith("/dev/")) {
       addToast("Port must start with /dev/", "error");
       return;
@@ -464,11 +599,24 @@ export function MotorSetup() {
       appendLog("motor_setup", `[ERROR] ${res.error ?? "failed to start motor setup"}`, "error");
       addToast("Failed to start motor setup", "error");
     } else {
+      setProcStatus({ ...procStatus, motor_setup: true });
       addToast("Motor setup started", "success");
       setHasRun(true);
       startWizard();
     }
-  };
+  }, [addToast, appendLog, clearLog, procStatus, setProcStatus, setupArmType, setupPort]);
+
+  const handleSetupStop = useCallback(async () => {
+    const res = await apiPost<ActionResponse>("/api/process/motor_setup/stop", {});
+    if (!res.ok) {
+      addToast(res.error ?? "Motor setup stop failed", "error");
+      return;
+    }
+    setProcStatus({ ...procStatus, motor_setup: false });
+    setWizardRunning(false);
+    resetWizardState();
+    addToast("Motor setup stopped", "success");
+  }, [addToast, procStatus, setProcStatus]);
 
   const refreshCalibrationList = useCallback(async () => {
     try {
@@ -481,19 +629,29 @@ export function MotorSetup() {
   }, []);
 
   const refreshCalibrationFileStatus = useCallback(async () => {
-    if (!calibArmType || !calibArmId) return;
-    try {
-      await apiGet<CalibrationFileStatusResponse>(
-        `/api/calibrate/file/status?robot_type=${encodeURIComponent(calibArmType)}&robot_id=${encodeURIComponent(calibArmId)}`,
-      );
-    } catch {
-      // ignore
+    const selectedType = calibMode === "Bi-Arm" ? calibBiType : calibArmType;
+    const selectedId = (calibMode === "Bi-Arm" ? calibBiId : calibArmId).trim();
+    if (!selectedType || !selectedId) {
+      setCalibSelectedFileStatus(null);
+      return;
     }
-  }, [calibArmId, calibArmType]);
+    try {
+      const status = await apiGet<CalibrationFileStatusResponse>(
+        `/api/calibrate/file?robot_type=${encodeURIComponent(selectedType)}&robot_id=${encodeURIComponent(selectedId)}`,
+      );
+      setCalibSelectedFileStatus(status);
+    } catch {
+      setCalibSelectedFileStatus(null);
+    }
+  }, [calibArmId, calibArmType, calibBiId, calibBiType, calibMode]);
 
   useEffect(() => {
     void refreshCalibrationList();
   }, [refreshCalibrationList]);
+
+  useEffect(() => {
+    void refreshCalibrationFileStatus();
+  }, [refreshCalibrationFileStatus]);
 
   // Auto-refresh calibration file list when calibrate process finishes
   const prevCalibrateRunning = useRef(false);
@@ -501,13 +659,23 @@ export function MotorSetup() {
     if (prevCalibrateRunning.current && !calibrateRunning) {
       void refreshCalibrationList();
       void refreshCalibrationFileStatus();
+      setCalibrationAssistantStage("idle");
+    }
+    if (!prevCalibrateRunning.current && calibrateRunning && calibrationAssistantStage === "idle") {
+      const selectedExists = Boolean(calibSelectedFileStatus?.exists);
+      setCalibrationAssistantStage(selectedExists ? "choose_file" : "center_arm");
     }
     prevCalibrateRunning.current = calibrateRunning;
-  }, [calibrateRunning, refreshCalibrationList, refreshCalibrationFileStatus]);
+  }, [calibSelectedFileStatus?.exists, calibrateRunning, calibrationAssistantStage, refreshCalibrationList, refreshCalibrationFileStatus]);
 
   const handleCalibrationStart = async () => {
     if (calibMode === "Single Arm" && calibFileNameError) {
       addToast(calibFileNameError, "error");
+      return;
+    }
+
+    if (calibMode === "Single Arm" && calibTypeMismatch) {
+      addToast("Calibration type does not match the selected port. Choose a leader type for a leader arm, or a follower type for a follower arm.", "error");
       return;
     }
 
@@ -526,6 +694,7 @@ export function MotorSetup() {
           port: calibPort,
         };
 
+    clearLog("calibrate");
     const res = await apiPost<ActionResponse>("/api/calibrate/start", payload);
     if (!res.ok) {
       addToast(res.error ?? "Calibration start failed", "error");
@@ -535,6 +704,7 @@ export function MotorSetup() {
 
     addToast("Calibration started", "success");
     appendLog("calibrate", "[info] calibration started", "info");
+    setCalibrationAssistantStage(Boolean(calibSelectedFileStatus?.exists) ? "choose_file" : "center_arm");
   };
 
   const handleCalibrationStop = async () => {
@@ -544,6 +714,7 @@ export function MotorSetup() {
       return;
     }
     setProcStatus({ ...procStatus, calibrate: false });
+    setCalibrationAssistantStage("idle");
     addToast("Calibration stopped", "success");
     await refreshCalibrationList();
     await refreshCalibrationFileStatus();
@@ -563,6 +734,17 @@ export function MotorSetup() {
     await refreshCalibrationList();
     await refreshCalibrationFileStatus();
   };
+
+  const handleCalibrationInput = useCallback(async (text: string, nextStage?: "choose_file" | "center_arm" | "record_range" | "finishing") => {
+    const res = await apiPost<ActionResponse>("/api/process/calibrate/input", { text });
+    if (!res.ok) {
+      addToast(res.error ?? "Failed to send calibration input", "error");
+      return;
+    }
+    if (nextStage) {
+      setCalibrationAssistantStage(nextStage);
+    }
+  }, [addToast]);
 
   const applyArmMapping = async (roleMap: Record<string, string>) => {
     setMappingSaving(true);
@@ -609,43 +791,24 @@ export function MotorSetup() {
   const startWizard = () => {
     setWizardRunning(true);
     setWizardStep(0);
-    setWizardMotorState(SETUP_MOTORS.map((_, i) => i === 0 ? "waiting" : "pending"));
+    setWizardMotorState(SETUP_MOTORS.map(() => "pending"));
     setWizardError(null);
-    setWizardDetectedId("");
-    setWizardBaudRate("1000000");
-    setWizardConnectionConfirmed(false);
   };
 
-  const wizardPressEnter = () => {
+  const wizardPressEnter = async () => {
     if (!wizardRunning) return;
-    if (!wizardConnectionConfirmed) {
-      setWizardError("Confirm that only the current motor is connected.");
-      return;
-    }
-    if (!wizardDetectedId.trim()) {
-      setWizardError("Enter the detected motor ID.");
-      return;
-    }
 
-    const newState = [...wizardMotorState];
-    newState[wizardStep] = "writing";
-    setWizardMotorState(newState);
+    const stdinRes = await apiPost<ActionResponse>("/api/process/motor_setup/input", { text: "" });
+    if (!stdinRes.ok) {
+      const reason = stdinRes.error ?? "Failed to send ENTER to motor_setup process";
+      setWizardError(reason);
+      addToast(reason, "error");
+      return;
+    }
+    setWizardMotorState((prev) => prev.map((state, idx) => (
+      idx === wizardStep && state !== "done" ? "writing" : state
+    )));
     setWizardError(null);
-    setTimeout(() => {
-      const doneState = [...newState];
-      doneState[wizardStep] = "done";
-      const nextStep = wizardStep + 1;
-      if (nextStep < SETUP_MOTORS.length) {
-        doneState[nextStep] = "waiting";
-        setWizardStep(nextStep);
-        setWizardDetectedId("");
-        setWizardConnectionConfirmed(false);
-      }
-      setWizardMotorState(doneState);
-      if (nextStep >= SETUP_MOTORS.length) {
-        setTimeout(() => setWizardRunning(false), 500);
-      }
-    }, 1000);
   };
 
   const wizardSimulateError = () => {
@@ -666,27 +829,32 @@ export function MotorSetup() {
     setWizardMotorState(SETUP_MOTORS.map(() => "pending"));
     setWizardStep(0);
     setWizardError(null);
-    setWizardDetectedId("");
-    setWizardBaudRate("1000000");
-    setWizardConnectionConfirmed(false);
   };
 
-  const stopWizard = () => {
+  const exitWizard = useCallback(() => {
     setWizardRunning(false);
     resetWizardState();
-  };
+  }, []);
+
+  const restartWizard = useCallback(async () => {
+    exitWizard();
+    await handleSetupStart();
+  }, [exitWizard, handleSetupStart]);
 
   const wizardAllDone = wizardMotorState.every((s) => s === "done");
+  const setupProcessActive = setupRunning || setupReconnected;
 
   const ARM_ROLES = ["(none)", ...ARM_ROLE_OPTIONS];
 
   const monPortArm = arms.find((a) => a.path === monPort);
   const monPortLabel = monPortArm?.symlink ? symToDisplayLabel(monPortArm.symlink) : monPort;
+  const selectedCalibArm = arms.find((arm) => arm.path === calibPort);
+  const selectedCalibArmRole = detectArmRoleText(`${selectedCalibArm?.symlink ?? ""} ${selectedCalibArm?.device ?? ""}`.toLowerCase());
 
   const calibTypeMismatch =
     calibMode === "Single Arm" &&
-    ((calibArmType.includes("follower") && calibPort.includes("leader")) ||
-      (calibArmType.includes("leader") && calibPort.includes("follower")));
+    ((calibArmType.includes("follower") && selectedCalibArmRole === "leader") ||
+      (calibArmType.includes("leader") && selectedCalibArmRole === "follower"));
 
   /** Port options with symlink labels for all port dropdowns */
   const portOptions = useMemo(() => buildPortOptions(arms), [arms]);
@@ -735,11 +903,60 @@ export function MotorSetup() {
     const filtered = armTypes.filter((type) => !type.startsWith("bi_") && (type.includes("_leader") || type.includes("_follower")));
     return filtered.length > 0 ? filtered : ARM_TYPES;
   }, [armTypes]);
+  const setupArmTypes = useMemo(() => {
+    const filtered = armTypes.filter((type) => MOTOR_SETUP_TYPES.includes(type));
+    return filtered.length > 0 ? filtered : MOTOR_SETUP_TYPES;
+  }, [armTypes]);
+
+  useEffect(() => {
+    if (setupProcessActive && !wizardRunning) {
+      startWizard();
+    }
+  }, [setupProcessActive, wizardRunning]);
+
+  useEffect(() => {
+    if (!wizardRunning) return;
+    const parsed = parseMotorSetupLogs(motorSetupLogLines ?? []);
+    setWizardMotorState(parsed.states);
+    setWizardStep(parsed.currentStep);
+    if (parsed.error) {
+      setWizardError(parsed.error);
+    } else if (setupProcessActive) {
+      setWizardError(null);
+    }
+  }, [motorSetupLogLines, setupProcessActive, wizardRunning]);
+
+  useEffect(() => {
+    if (!wizardRunning || setupProcessActive) return;
+    if (wizardAllDone) {
+      setWizardRunning(false);
+      return;
+    }
+    if (!wizardError) {
+      setWizardError("Motor setup ended before all motors were configured. Check the console logs and retry.");
+    }
+  }, [setupProcessActive, wizardAllDone, wizardError, wizardRunning]);
+  useEffect(() => {
+    if (!setupArmTypes.includes(setupArmType)) {
+      setSetupArmType(setupArmTypes[0] ?? "so101_follower");
+    }
+  }, [setupArmType, setupArmTypes]);
   const biArmCalibTypes = useMemo(() => {
     const defaults = ["bi_so_follower", "bi_so_leader"];
     const dynamic = armTypes.filter((type) => type.startsWith("bi_"));
     return Array.from(new Set([...defaults, ...dynamic]));
   }, [armTypes]);
+
+  useEffect(() => {
+    if (calibMode !== "Single Arm") return;
+    const selectedArm = arms.find((arm) => arm.path === calibPort);
+    const detectedRole = detectArmRoleText(`${selectedArm?.symlink ?? ""} ${selectedArm?.device ?? ""}`.toLowerCase());
+    if (detectedRole === "leader" && calibArmType.includes("follower")) {
+      setCalibArmType((prev) => alignArmTypeToRole(prev, "leader", singleArmCalibTypes));
+    } else if (detectedRole === "follower" && calibArmType.includes("leader")) {
+      setCalibArmType((prev) => alignArmTypeToRole(prev, "follower", singleArmCalibTypes));
+    }
+  }, [arms, calibArmType, calibMode, calibPort, singleArmCalibTypes]);
 
   useEffect(() => {
     if (calibMode !== "Single Arm") return;
@@ -793,6 +1010,13 @@ export function MotorSetup() {
             }
           />
 
+          {((setupRunning && setupReconnected) || (calibrateRunning && calibrateReconnected)) && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-blue-500/30 bg-blue-500/5 text-sm text-blue-600 dark:text-blue-400">
+              <span className="flex-none">⚡</span>
+              <span>Reconnected — This {setupRunning && setupReconnected ? "motor setup" : "calibration"} process was recovered from a previous server session. You can still stop it.</span>
+            </div>
+          )}
+
           <div className="flex flex-col gap-6">
             <SubTabs
               tabs={[
@@ -827,31 +1051,28 @@ export function MotorSetup() {
             {motorTab === "setup" && (
               <SetupTabPanel
                 wizardRunning={wizardRunning}
+                wizardProcessActive={setupProcessActive}
                 wizardAllDone={wizardAllDone}
                 noPort={noPort}
                 arms={arms}
                 hasConflict={hasConflict}
                 setupArmType={setupArmType}
-                armTypes={armTypes}
+                armTypes={setupArmTypes}
                 setupPort={setupPort}
                 portOptions={portOptions}
                 wizardStep={wizardStep}
                 wizardMotorState={wizardMotorState}
                 wizardError={wizardError}
-                wizardDetectedId={wizardDetectedId}
-                wizardBaudRate={wizardBaudRate}
-                wizardConnectionConfirmed={wizardConnectionConfirmed}
                 onSetSetupArmType={setSetupArmType}
                 onSetSetupPort={setSetupPort}
                 onHandleSetupStart={() => { void handleSetupStart(); }}
-                onSetWizardDetectedId={setWizardDetectedId}
-                onSetWizardBaudRate={setWizardBaudRate}
-                onSetWizardConnectionConfirmed={setWizardConnectionConfirmed}
-                onWizardPressEnter={wizardPressEnter}
+                onWizardPressEnter={() => { void wizardPressEnter(); }}
                 onWizardRetry={wizardRetry}
+                onWizardRestart={() => { void restartWizard(); }}
                 onWizardSimulateError={wizardSimulateError}
-                onStopWizard={stopWizard}
+                onStopWizard={() => { void handleSetupStop(); }}
                 onResetWizard={resetWizardState}
+                onExitWizard={exitWizard}
                 onSetMotorTab={setMotorTab}
               />
             )}
@@ -900,6 +1121,10 @@ export function MotorSetup() {
                 calibBiId={calibBiId}
                 calibBiIdAuto={calibMode === "Bi-Arm"}
                 calibFiles={calibFiles}
+                selectedCalibrationExists={Boolean(calibSelectedFileStatus?.exists)}
+                selectedCalibrationPath={calibSelectedFileStatus?.path ?? ""}
+                calibrationAssistantStage={calibrationAssistantStage}
+                calibrateReconnected={calibrateReconnected}
                 onSetCalibMode={setCalibMode}
                 onSetCalibArmType={setCalibArmType}
                 onSetCalibPort={setCalibPort}
@@ -911,6 +1136,11 @@ export function MotorSetup() {
                 onHandleCalibrationStart={() => { void handleCalibrationStart(); }}
                 onHandleCalibrationStop={() => { void handleCalibrationStop(); }}
                 onHandleCalibrationDelete={(file) => { void handleCalibrationDelete(file); }}
+                onUseSavedCalibration={() => { void handleCalibrationInput("", "finishing"); }}
+                onRunNewCalibration={() => { void handleCalibrationInput("c", "center_arm"); }}
+                onCalibrationArmCentered={() => { void handleCalibrationInput("", "record_range"); }}
+                onCalibrationFinishRange={() => { void handleCalibrationInput("", "finishing"); }}
+                onCalibrationSendEnter={() => { void handleCalibrationInput(""); }}
               />
             )}
           </div>

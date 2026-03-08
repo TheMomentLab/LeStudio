@@ -33,12 +33,119 @@ type ActionResponse = {
   error?: string;
 };
 
+type DepsStatusResponse = {
+  teleop_antijitter_plugin?: boolean;
+};
+
 type DevicesResponse = {
   cameras: Array<{ device: string; path: string; kernels: string; symlink: string; model: string }>;
   arms: Array<{ device: string; path: string; symlink?: string | null }>;
 };
 
 type CalibFile = { id: string; guessed_type: string };
+
+type TeleopDebugMeta = {
+  antijitter_alpha?: number;
+  antijitter_deadband?: number;
+  antijitter_enabled?: boolean;
+  antijitter_max_step?: number | null;
+  debug_enabled?: boolean;
+  debug_supported?: boolean;
+  debug_interval_s?: number;
+  invert_joints?: string[];
+  reason?: string;
+  schema_version?: number;
+};
+
+type TeleopDebugSnapshot = {
+  schema_version: number;
+  emitted_at_ms: number;
+  joint_count_total: number;
+  joint_count_emitted: number;
+  truncated: boolean;
+  loop_index: number;
+  uptime_s: number;
+  active_loop_ms: number;
+  leader_raw_pos: Record<string, number>;
+  follower_current_pos: Record<string, number>;
+  teleop_action_pos: Record<string, number>;
+  follower_goal_pos: Record<string, number>;
+  goal_minus_current_pos: Record<string, number>;
+  max_abs_goal_error: number;
+  rms_goal_error: number;
+  worst_joint: string;
+};
+
+type TeleopLogLine = {
+  id: string;
+  text: string;
+  kind: string;
+  ts: number;
+  replace?: string;
+};
+
+const TELEOP_DEBUG_PREFIX = "[LESTUDIO_TELEOP_DEBUG] ";
+const TELEOP_DEBUG_META_PREFIX = "[LESTUDIO_TELEOP_DEBUG_META] ";
+const TELEOP_LOOP_METRIC_RE = /Teleop loop time:\s*([0-9.]+)ms\s*\(([0-9.]+)\s*Hz\)/i;
+const EMPTY_TELEOP_LOGS: TeleopLogLine[] = [];
+
+function asConfigRecord(value: unknown): Record<string, unknown> {
+  return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
+}
+
+function getConfigBoolean(config: Record<string, unknown>, key: string, fallback: boolean): boolean {
+  const value = config[key];
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    if (value === "true") return true;
+    if (value === "false") return false;
+  }
+  return fallback;
+}
+
+function getConfigNumber(config: Record<string, unknown>, key: string, fallback: number): number {
+  const value = config[key];
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return fallback;
+}
+
+function getOptionalNumberInput(config: Record<string, unknown>, key: string): string {
+  const value = config[key];
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  if (typeof value === "string") return value;
+  return "";
+}
+
+function parsePrefixedJson<T>(text: string, prefix: string): T | null {
+  if (!text.startsWith(prefix)) return null;
+  try {
+    return JSON.parse(text.slice(prefix.length)) as T;
+  } catch {
+    return null;
+  }
+}
+
+function formatJointName(key: string): string {
+  return key.replace(/\.pos$/, "").replace(/_/g, " ");
+}
+
+function formatDebugNumber(value: number | undefined): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "-";
+  return value.toFixed(2);
+}
+
+function asNumberRecord(value: unknown): Record<string, number> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const entries = Object.entries(value).filter((entry): entry is [string, number] => {
+    const [key, item] = entry;
+    return typeof key === "string" && typeof item === "number" && Number.isFinite(item);
+  });
+  return Object.fromEntries(entries);
+}
 
 const LOADING_STEPS = [
   { label: "Opening camera...", pattern: /OpenCVCamera.*connected\./i },
@@ -49,8 +156,12 @@ const LOADING_STEPS = [
 
 export function Teleop() {
   const config = useLeStudioStore((s) => s.config);
+  const updateConfig = useLeStudioStore((s) => s.updateConfig);
+  const teleopLogLines = useLeStudioStore((s) => s.logLines["teleop"]);
+  const wsReady = useLeStudioStore((s) => s.wsReady);
   const [mode, setMode] = useState("Single Arm");
   const teleopRunningOnBackend = useLeStudioStore((s) => !!s.procStatus.teleop);
+  const teleopReconnected = useLeStudioStore((s) => !!s.procReconnected.teleop);
   const [phase, setPhase] = useState<TeleopPhase>(() => teleopRunningOnBackend ? "running" : "idle");
   const [loadingStep, setLoadingStep] = useState(0);
   const [loadingWaitingInput, setLoadingWaitingInput] = useState(false);
@@ -74,16 +185,260 @@ export function Teleop() {
   const [selectedLeaderId, setSelectedLeaderId] = useState("");
   const [selectedBimanualId, setSelectedBimanualId] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
+  const [antiJitterAvailable, setAntiJitterAvailable] = useState(true);
   const running = phase === "running";
+  const configRecord = useMemo(() => asConfigRecord(config), [config]);
+  const antiJitterEnabled = getConfigBoolean(configRecord, "teleop_antijitter_enabled", false);
+  const antiJitterAlpha = getConfigNumber(configRecord, "teleop_antijitter_alpha", 0.35);
+  const antiJitterDeadband = getConfigNumber(configRecord, "teleop_antijitter_deadband", 0.75);
+  const antiJitterMaxStep = getOptionalNumberInput(configRecord, "teleop_antijitter_max_step");
+  const debugEnabled = getConfigBoolean(configRecord, "teleop_debug_enabled", false);
+  const invertShoulderLift = getConfigBoolean(configRecord, "teleop_invert_shoulder_lift", false);
+  const invertWristRoll = getConfigBoolean(configRecord, "teleop_invert_wrist_roll", false);
+  const teleopLogs = teleopLogLines ?? EMPTY_TELEOP_LOGS;
+  const effectiveConfig = useMemo(() => ({
+    ...config,
+    follower_port: selectedFollowerPort || configRecord.follower_port,
+    leader_port: selectedLeaderPort || configRecord.leader_port,
+    robot_id: selectedFollowerId || configRecord.robot_id,
+    teleop_id: selectedLeaderId || configRecord.teleop_id,
+  }), [config, configRecord.follower_port, configRecord.leader_port, configRecord.robot_id, configRecord.teleop_id, selectedFollowerId, selectedFollowerPort, selectedLeaderId, selectedLeaderPort]);
   const feedTargets = useMemo(
     () => camerasMapped.map((cam) => ({ id: cam.role, videoName: toVideoName(cam.path) })),
     [camerasMapped],
   );
   const previewFeedsActive = phase === "idle" && teleopTab === "camera";
   const cameraFrames = useCameraFeeds(feedTargets, previewFeedsActive || running, 30, pausedFeeds);
+  const debugMeta = useMemo(() => {
+    let latest: TeleopDebugMeta | null = null;
+    for (const line of teleopLogs) {
+      const parsed = parsePrefixedJson<TeleopDebugMeta>(line.text, TELEOP_DEBUG_META_PREFIX);
+      if (parsed) latest = parsed;
+    }
+    return latest;
+  }, [teleopLogs]);
+  const debugSnapshot = useMemo(() => {
+    let latest: TeleopDebugSnapshot | null = null;
+    for (const line of teleopLogs) {
+      const parsed = parsePrefixedJson<TeleopDebugSnapshot>(line.text, TELEOP_DEBUG_PREFIX);
+      if (!parsed) continue;
+      latest = {
+        ...parsed,
+        leader_raw_pos: asNumberRecord(parsed.leader_raw_pos),
+        follower_current_pos: asNumberRecord(parsed.follower_current_pos),
+        teleop_action_pos: asNumberRecord(parsed.teleop_action_pos),
+        follower_goal_pos: asNumberRecord(parsed.follower_goal_pos),
+        goal_minus_current_pos: asNumberRecord(parsed.goal_minus_current_pos),
+      };
+    }
+    return latest;
+  }, [teleopLogs]);
+  const loopMetrics = useMemo(() => {
+    for (let index = teleopLogs.length - 1; index >= 0; index -= 1) {
+      const match = teleopLogs[index].text.match(TELEOP_LOOP_METRIC_RE);
+      if (!match) continue;
+      return {
+        loopMs: Number(match[1]),
+        hz: Number(match[2]),
+      };
+    }
+    return null;
+  }, [teleopLogs]);
+  const debugJointRows = useMemo(() => {
+    if (!debugSnapshot) return [];
+    const keys = new Set<string>([
+      ...Object.keys(debugSnapshot.leader_raw_pos ?? {}),
+      ...Object.keys(debugSnapshot.follower_current_pos ?? {}),
+      ...Object.keys(debugSnapshot.teleop_action_pos ?? {}),
+      ...Object.keys(debugSnapshot.follower_goal_pos ?? {}),
+      ...Object.keys(debugSnapshot.goal_minus_current_pos ?? {}),
+    ]);
+    return Array.from(keys)
+      .sort((left, right) => left.localeCompare(right))
+      .map((key) => ({
+        key,
+        leader: debugSnapshot.leader_raw_pos[key],
+        current: debugSnapshot.follower_current_pos[key],
+        mapped: debugSnapshot.teleop_action_pos[key],
+        goal: debugSnapshot.follower_goal_pos[key],
+        error: debugSnapshot.goal_minus_current_pos[key],
+      }));
+  }, [debugSnapshot]);
+  const debugAgeMs = debugSnapshot ? Math.max(0, Date.now() - debugSnapshot.emitted_at_ms) : null;
+  const debugTelemetryPanel = (
+    <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-3 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800">
+        <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Teleop Debug Telemetry</span>
+        <span className="text-xs font-mono text-zinc-400">
+          {debugEnabled
+            ? (debugMeta?.debug_interval_s ? `sample ${debugMeta.debug_interval_s}s` : "waiting for process telemetry")
+            : "disabled"}
+        </span>
+      </div>
+
+      <div className="px-4 py-4 flex flex-col gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+          <div className="rounded border border-zinc-200 dark:border-zinc-800 bg-zinc-50/60 dark:bg-zinc-950/40 p-3">
+            <div className="text-xs uppercase tracking-wide text-zinc-400">Runtime</div>
+            <div className="mt-2 text-sm text-zinc-600 dark:text-zinc-300 flex flex-col gap-1">
+              <span>WS: {wsReady ? "connected" : "disconnected"}</span>
+              <span>Loop Hz: {loopMetrics ? formatDebugNumber(loopMetrics.hz) : "-"}</span>
+              <span>Loop ms: {debugSnapshot ? formatDebugNumber(debugSnapshot.active_loop_ms) : loopMetrics ? formatDebugNumber(loopMetrics.loopMs) : "-"}</span>
+              <span>Loop #: {debugSnapshot?.loop_index ?? "-"}</span>
+              <span>Uptime: {debugSnapshot ? formatDebugNumber(debugSnapshot.uptime_s) : "-"}s</span>
+              <span>Sample age: {debugAgeMs !== null ? `${debugAgeMs}ms` : "-"}</span>
+            </div>
+          </div>
+
+          <div className="rounded border border-zinc-200 dark:border-zinc-800 bg-zinc-50/60 dark:bg-zinc-950/40 p-3">
+            <div className="text-xs uppercase tracking-wide text-zinc-400">Device Mapping</div>
+            <div className="mt-2 text-sm text-zinc-600 dark:text-zinc-300 flex flex-col gap-1 font-mono">
+              <span>Follower: {selectedFollowerPort || "-"}</span>
+              <span>Leader: {selectedLeaderPort || "-"}</span>
+              <span>Robot ID: {selectedFollowerId || "-"}</span>
+              <span>Teleop ID: {selectedLeaderId || "-"}</span>
+              <span>Cams: {camerasMapped.length}</span>
+            </div>
+          </div>
+
+          <div className="rounded border border-zinc-200 dark:border-zinc-800 bg-zinc-50/60 dark:bg-zinc-950/40 p-3">
+            <div className="text-xs uppercase tracking-wide text-zinc-400">Mapping Controls</div>
+            <div className="mt-2 text-sm text-zinc-600 dark:text-zinc-300 flex flex-col gap-1">
+              <span>Invert shoulder: {invertShoulderLift ? "on" : "off"}</span>
+              <span>Invert wrist: {invertWristRoll ? "on" : "off"}</span>
+              <span>Anti-jitter: {(debugMeta?.antijitter_enabled ?? antiJitterEnabled) ? "on" : "off"}</span>
+              <span>Alpha: {formatDebugNumber(debugMeta?.antijitter_alpha ?? antiJitterAlpha)}</span>
+              <span>Deadband: {formatDebugNumber(debugMeta?.antijitter_deadband ?? antiJitterDeadband)}</span>
+            </div>
+          </div>
+
+          <div className="rounded border border-zinc-200 dark:border-zinc-800 bg-zinc-50/60 dark:bg-zinc-950/40 p-3">
+            <div className="text-xs uppercase tracking-wide text-zinc-400">Signals</div>
+            <div className="mt-2 text-sm text-zinc-600 dark:text-zinc-300 flex flex-col gap-1">
+              <span>Log lines: {teleopLogs.length}</span>
+              <span>Supported: {debugMeta?.debug_supported === false ? "no" : "yes"}</span>
+              <span>Leader joints: {debugSnapshot ? Object.keys(debugSnapshot.leader_raw_pos).length : 0}</span>
+              <span>Current joints: {debugSnapshot ? Object.keys(debugSnapshot.follower_current_pos).length : 0}</span>
+              <span>Goal joints: {debugSnapshot ? Object.keys(debugSnapshot.follower_goal_pos).length : 0}</span>
+              <span>Invert joints: {debugMeta?.invert_joints?.join(", ") || "none"}</span>
+            </div>
+          </div>
+        </div>
+
+        {debugEnabled && debugSnapshot ? (
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+              <div className="rounded border border-zinc-200 dark:border-zinc-800 bg-zinc-50/60 dark:bg-zinc-950/40 p-3">
+                <div className="text-xs uppercase tracking-wide text-zinc-400">Joint Coverage</div>
+                <div className="mt-2 text-sm text-zinc-600 dark:text-zinc-300 flex flex-col gap-1">
+                  <span>Total joints: {debugSnapshot.joint_count_total}</span>
+                  <span>Shown joints: {debugSnapshot.joint_count_emitted}</span>
+                  <span>Truncated: {debugSnapshot.truncated ? "yes" : "no"}</span>
+                  <span>Schema: v{debugSnapshot.schema_version}</span>
+                </div>
+              </div>
+
+              <div className="rounded border border-zinc-200 dark:border-zinc-800 bg-zinc-50/60 dark:bg-zinc-950/40 p-3">
+                <div className="text-xs uppercase tracking-wide text-zinc-400">Goal Error</div>
+                <div className="mt-2 text-sm text-zinc-600 dark:text-zinc-300 flex flex-col gap-1">
+                  <span>Max abs: {formatDebugNumber(debugSnapshot.max_abs_goal_error)}</span>
+                  <span>RMS: {formatDebugNumber(debugSnapshot.rms_goal_error)}</span>
+                  <span>Worst joint: {debugSnapshot.worst_joint ? formatJointName(debugSnapshot.worst_joint) : "-"}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto rounded border border-zinc-200 dark:border-zinc-800">
+              <table className="min-w-full text-sm font-mono">
+                <thead className="bg-zinc-50 dark:bg-zinc-800/30 text-zinc-500 dark:text-zinc-400">
+                  <tr>
+                    <th className="px-3 py-2 text-left">Joint</th>
+                    <th className="px-3 py-2 text-right">Leader Raw</th>
+                    <th className="px-3 py-2 text-right">Current</th>
+                    <th className="px-3 py-2 text-right">Mapped</th>
+                    <th className="px-3 py-2 text-right">Goal</th>
+                    <th className="px-3 py-2 text-right">Goal-Current</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {debugJointRows.map((row) => (
+                    <tr key={row.key} className="border-t border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300">
+                      <td className="px-3 py-2 whitespace-nowrap">{formatJointName(row.key)}</td>
+                      <td className="px-3 py-2 text-right">{formatDebugNumber(row.leader)}</td>
+                      <td className="px-3 py-2 text-right">{formatDebugNumber(row.current)}</td>
+                      <td className="px-3 py-2 text-right">{formatDebugNumber(row.mapped)}</td>
+                      <td className="px-3 py-2 text-right">{formatDebugNumber(row.goal)}</td>
+                      <td className="px-3 py-2 text-right">{formatDebugNumber(row.error)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="rounded border border-zinc-200 dark:border-zinc-800 bg-zinc-950 text-zinc-200 p-3 overflow-x-auto">
+              <div className="text-xs uppercase tracking-wide text-zinc-500 mb-2">Latest Raw Snapshot</div>
+              <pre className="text-xs whitespace-pre-wrap break-all">{JSON.stringify(debugSnapshot, null, 2)}</pre>
+            </div>
+          </>
+        ) : (
+          <div className="rounded border border-dashed border-zinc-300 dark:border-zinc-700 px-4 py-6 text-sm text-zinc-500 dark:text-zinc-400">
+            {!debugEnabled
+              ? "Verbose debug overlay is currently off. Turn it on above to keep last snapshot data visible here and stream live Teleop telemetry."
+              : debugMeta?.debug_supported === false
+              ? `Debug overlay is enabled, but this teleop runtime reported that structured snapshots are unsupported (${debugMeta.reason ?? "unknown reason"}).`
+              : running
+                ? "Debug overlay is enabled, but Teleop has not emitted a snapshot yet. Start Teleop and move the leader slightly to populate runtime data."
+                : "Debug overlay is enabled. Start Teleop to stream live leader/current/goal telemetry here."}
+          </div>
+        )}
+      </div>
+    </div>
+  );
 
   const toggleFeed = (role: string) =>
     setPausedFeeds((prev) => ({ ...prev, [role]: !prev[role] }));
+
+  const persistConfigPatch = (patch: Record<string, unknown>) => {
+    updateConfig(patch);
+    void apiPost<Record<string, unknown>>("/api/config", patch).catch(() => undefined);
+  };
+
+  const handleFollowerPortChange = (value: string) => {
+    setSelectedFollowerPort(value);
+    persistConfigPatch({ follower_port: value });
+  };
+
+  const handleLeaderPortChange = (value: string) => {
+    setSelectedLeaderPort(value);
+    persistConfigPatch({ leader_port: value });
+  };
+
+  const handleFollowerIdChange = (value: string) => {
+    setSelectedFollowerId(value);
+    persistConfigPatch({ robot_id: value });
+  };
+
+  const handleLeaderIdChange = (value: string) => {
+    setSelectedLeaderId(value);
+    persistConfigPatch({ teleop_id: value });
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    void apiGet<DepsStatusResponse>("/api/deps/status")
+      .then((result) => {
+        if (cancelled) return;
+        setAntiJitterAvailable(result.teleop_antijitter_plugin !== false);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setAntiJitterAvailable(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleStart = async () => {
     if (actionPending) return;
@@ -93,13 +448,15 @@ export function Teleop() {
     setPhase("loading");
     setLoadingStep(0);
     loadingStepRef.current = 0;
-    loadingStartIdxRef.current = (teleopLogs ?? []).length;
+      loadingStartIdxRef.current = teleopLogs.length;
     try {
       const payload = toBackendTeleopPayload({
         modeLabel: mode,
         speedLabel: speed,
         cameras: camerasMapped,
-        config,
+        config: antiJitterAvailable
+          ? effectiveConfig
+          : { ...effectiveConfig, teleop_antijitter_enabled: false },
       });
 
       const preflight = await apiPost<PreflightResult>("/api/preflight", payload);
@@ -168,14 +525,13 @@ export function Teleop() {
   }, [teleopRunningOnBackend]);
 
   // Real log-based loading sequence
-  const teleopLogs = useLeStudioStore((s) => s.logLines["teleop"]);
   const loadingStartIdxRef = useRef(0);
   const loadingStepRef = useRef(0);
 
   useEffect(() => {
     if (phase !== "loading" || !startAccepted) return;
 
-    const logs = teleopLogs ?? [];
+    const logs = teleopLogs;
     const logsToScan = logs.slice(loadingStartIdxRef.current);
     let step = loadingStepRef.current;
     let waiting = false;
@@ -221,7 +577,7 @@ export function Teleop() {
   // Watch for process end — detect "[teleop process ended]" in logs
   useEffect(() => {
     if (phase === "idle") return;
-    const logs = teleopLogs ?? [];
+    const logs = teleopLogs;
     const endMarker = logs.find(
       (l, i) => i >= loadingStartIdxRef.current && /\[teleop process ended\]/i.test(l.text),
     );
@@ -274,6 +630,11 @@ export function Teleop() {
     if (!flowError) return;
     lastErrorAtRef.current = Date.now();
   }, [flowError]);
+
+  useEffect(() => {
+    if (!flowError) return;
+    setFlowError(null);
+  }, [selectedFollowerPort, selectedLeaderPort, selectedFollowerId, selectedLeaderId]);
 
   useEffect(() => {
     const wasRunning = prevRunningRef.current;
@@ -346,7 +707,7 @@ export function Teleop() {
                             placeholder={armPortOptions.length === 0 ? "No ports detected" : undefined}
                             value={selectedFollowerPort}
                             options={armPortOptions}
-                            onChange={setSelectedFollowerPort}
+                            onChange={handleFollowerPortChange}
                           />
                         </FieldRow>
                         <FieldRow label="Leader Port">
@@ -354,7 +715,7 @@ export function Teleop() {
                             placeholder={armPortOptions.length === 0 ? "No ports detected" : undefined}
                             value={selectedLeaderPort}
                             options={armPortOptions}
-                            onChange={setSelectedLeaderPort}
+                            onChange={handleLeaderPortChange}
                           />
                         </FieldRow>
                       </>
@@ -383,7 +744,7 @@ export function Teleop() {
                             placeholder={followerIdOptions.length === 0 ? "No calibration files" : undefined}
                             value={selectedFollowerId}
                             options={followerIdOptions}
-                            onChange={setSelectedFollowerId}
+                            onChange={handleFollowerIdChange}
                           />
                         </FieldRow>
                         <FieldRow label="Leader ID">
@@ -391,7 +752,7 @@ export function Teleop() {
                             placeholder={leaderIdOptions.length === 0 ? "No calibration files" : undefined}
                             value={selectedLeaderId}
                             options={leaderIdOptions}
-                            onChange={setSelectedLeaderId}
+                            onChange={handleLeaderIdChange}
                           />
                         </FieldRow>
                       </>
@@ -407,9 +768,128 @@ export function Teleop() {
                     )}
                     </div>
                   </div>
+
+                  <div className="border-t border-zinc-100 dark:border-zinc-800 pt-3 flex flex-col gap-2">
+                    <p className="text-sm text-zinc-400">Verbose runtime telemetry overlays the latest leader/current/goal joint values while Teleop is running.</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3">
+                      <FieldRow label="Verbose Debug Overlay">
+                        <WireSelect
+                          value={debugEnabled ? "On" : "Off"}
+                          options={["Off", "On"]}
+                          onChange={(value) => {
+                            persistConfigPatch({ teleop_debug_enabled: value === "On" });
+                          }}
+                        />
+                      </FieldRow>
+                    </div>
+                  </div>
+
+                  <div className="border-t border-zinc-100 dark:border-zinc-800 pt-3 flex flex-col gap-2">
+                    <p className="text-sm text-zinc-400">Optional joint-direction overrides applied only in Teleop action mapping.</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3">
+                      <FieldRow label="Invert Shoulder Lift">
+                        <WireSelect
+                          value={invertShoulderLift ? "On" : "Off"}
+                          options={["Off", "On"]}
+                          onChange={(value) => {
+                            persistConfigPatch({ teleop_invert_shoulder_lift: value === "On" });
+                          }}
+                        />
+                      </FieldRow>
+                      <FieldRow label="Invert Wrist Roll">
+                        <WireSelect
+                          value={invertWristRoll ? "On" : "Off"}
+                          options={["Off", "On"]}
+                          onChange={(value) => {
+                            persistConfigPatch({ teleop_invert_wrist_roll: value === "On" });
+                          }}
+                        />
+                      </FieldRow>
+                    </div>
+                  </div>
+
+                  <div className="border-t border-zinc-100 dark:border-zinc-800 pt-3 flex flex-col gap-2">
+                    <p className="text-sm text-zinc-400">
+                      {antiJitterAvailable
+                        ? "Optional filtering inserted between leader reads and follower commands."
+                        : "Anti-jitter plugin is unavailable, so these controls are disabled."}
+                    </p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3">
+                      <FieldRow label="Anti-Jitter">
+                        <WireSelect
+                          value={antiJitterAvailable && antiJitterEnabled ? "On" : "Off"}
+                          options={["Off", "On"]}
+                          onChange={(value) => {
+                            if (!antiJitterAvailable) return;
+                            persistConfigPatch({ teleop_antijitter_enabled: value === "On" });
+                          }}
+                        />
+                      </FieldRow>
+                      <FieldRow label="EMA Alpha">
+                        <input
+                          type="number"
+                          min={0}
+                          max={1}
+                          step="0.05"
+                          value={antiJitterAlpha}
+                          disabled={!antiJitterAvailable}
+                          onChange={(event) => {
+                            if (!antiJitterAvailable) return;
+                            const next = Number(event.target.value);
+                            if (Number.isFinite(next)) {
+                              persistConfigPatch({ teleop_antijitter_alpha: next });
+                            }
+                          }}
+                          className="w-full h-9 px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-800 dark:text-zinc-200 text-sm outline-none hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all"
+                        />
+                      </FieldRow>
+                      <FieldRow label="Deadband (deg)">
+                        <input
+                          type="number"
+                          min={0}
+                          step="0.05"
+                          value={antiJitterDeadband}
+                          disabled={!antiJitterAvailable}
+                          onChange={(event) => {
+                            if (!antiJitterAvailable) return;
+                            const next = Number(event.target.value);
+                            if (Number.isFinite(next)) {
+                              persistConfigPatch({ teleop_antijitter_deadband: next });
+                            }
+                          }}
+                          className="w-full h-9 px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-800 dark:text-zinc-200 text-sm outline-none hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all"
+                        />
+                      </FieldRow>
+                      <FieldRow label="Max Step (opt)">
+                        <input
+                          type="number"
+                          min={0}
+                          step="0.1"
+                          value={antiJitterMaxStep}
+                          disabled={!antiJitterAvailable}
+                          placeholder="Disabled"
+                          onChange={(event) => {
+                            if (!antiJitterAvailable) return;
+                            const raw = event.target.value;
+                            if (!raw.trim()) {
+                              persistConfigPatch({ teleop_antijitter_max_step: "" });
+                              return;
+                            }
+                            const next = Number(raw);
+                            if (Number.isFinite(next)) {
+                              persistConfigPatch({ teleop_antijitter_max_step: next });
+                            }
+                          }}
+                          className="w-full h-9 px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-800 dark:text-zinc-200 text-sm outline-none placeholder:text-zinc-400 hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all"
+                        />
+                      </FieldRow>
+                    </div>
+                  </div>
                 </div>
                 </div>
               )}
+
+              {teleopTab === "motor" && debugTelemetryPanel}
 
               {/* Camera Setting Tab — settings above, preview below */}
               {teleopTab === "camera" && (
@@ -539,6 +1019,12 @@ export function Teleop() {
           )}
 
           {/* ─── RUNNING: Camera feed focus ─── */}
+          {phase === "running" && teleopReconnected && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-blue-500/30 bg-blue-500/5 text-sm text-blue-600 dark:text-blue-400">
+              <span className="flex-none">⚡</span>
+              <span>Reconnected — This teleop session was recovered from a previous server session. You can still stop the process.</span>
+            </div>
+          )}
           {phase === "running" && (
             <div className="flex flex-col gap-4">
               {/* Camera feeds — full width */}
@@ -596,8 +1082,14 @@ export function Teleop() {
 
               {/* Session info */}
               <div className="flex items-center gap-2 px-3 py-2 rounded border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/50">
-                <span className="text-sm text-zinc-500">{mode} · {speed} · {camerasMapped.length} cams</span>
+                <span className="text-sm text-zinc-500">
+                  {mode} · {speed} · {antiJitterAvailable
+                    ? (antiJitterEnabled ? `anti-jitter a=${antiJitterAlpha} d=${antiJitterDeadband}` : "anti-jitter off")
+                    : "anti-jitter unavailable"} · {debugEnabled ? "debug on" : "debug off"} · {camerasMapped.length} cams
+                </span>
               </div>
+
+              {debugTelemetryPanel}
             </div>
           )}
         </div>

@@ -2,9 +2,7 @@ import { AlertCircle, Check, Circle, CornerDownLeft, Loader2, Play, RotateCcw } 
 import {
   BlockerCard,
   FieldRow,
-  WireInput,
   WireSelect,
-  WireToggle,
 } from "../../../components/wireframe";
 import { cn } from "../../../components/ui/utils";
 import { SETUP_MOTORS } from "../constants";
@@ -14,6 +12,7 @@ type WizardMotorState = "pending" | "waiting" | "writing" | "done" | "error";
 
 interface SetupTabPanelProps {
   wizardRunning: boolean;
+  wizardProcessActive: boolean;
   wizardAllDone: boolean;
   noPort: boolean;
   arms: ArmDevice[];
@@ -25,25 +24,22 @@ interface SetupTabPanelProps {
   wizardStep: number;
   wizardMotorState: WizardMotorState[];
   wizardError: string | null;
-  wizardDetectedId: string;
-  wizardBaudRate: string;
-  wizardConnectionConfirmed: boolean;
   onSetSetupArmType: (value: string) => void;
   onSetSetupPort: (value: string) => void;
   onHandleSetupStart: () => void;
-  onSetWizardDetectedId: (value: string) => void;
-  onSetWizardBaudRate: (value: string) => void;
-  onSetWizardConnectionConfirmed: (value: boolean) => void;
   onWizardPressEnter: () => void;
   onWizardRetry: () => void;
+  onWizardRestart: () => void;
   onWizardSimulateError: () => void;
   onStopWizard: () => void;
   onResetWizard: () => void;
+  onExitWizard: () => void;
   onSetMotorTab: (tab: string) => void;
 }
 
 export function SetupTabPanel({
   wizardRunning,
+  wizardProcessActive,
   wizardAllDone,
   noPort,
   arms,
@@ -55,20 +51,16 @@ export function SetupTabPanel({
   wizardStep,
   wizardMotorState,
   wizardError,
-  wizardDetectedId,
-  wizardBaudRate,
-  wizardConnectionConfirmed,
   onSetSetupArmType,
   onSetSetupPort,
   onHandleSetupStart,
-  onSetWizardDetectedId,
-  onSetWizardBaudRate,
-  onSetWizardConnectionConfirmed,
   onWizardPressEnter,
   onWizardRetry,
+  onWizardRestart,
   onWizardSimulateError,
   onStopWizard,
   onResetWizard,
+  onExitWizard,
   onSetMotorTab,
 }: SetupTabPanelProps) {
   return (
@@ -121,6 +113,7 @@ export function SetupTabPanel({
 
       {wizardRunning && (
         <div className="flex flex-col gap-4">
+          {/* ── Progress bar ── */}
           <div className="flex items-center gap-2">
             <span className="text-sm text-zinc-500 flex-none">Progress</span>
             <div className="flex-1 h-1.5 rounded-full bg-zinc-200 dark:bg-zinc-700 overflow-hidden">
@@ -134,7 +127,8 @@ export function SetupTabPanel({
             </span>
           </div>
 
-          <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 overflow-hidden divide-y divide-zinc-100 dark:divide-zinc-800/50">
+          {/* ── Motor pills ── */}
+          <div className="flex flex-wrap gap-1.5">
             {SETUP_MOTORS.map((motor, i) => {
               const state = wizardMotorState[i];
               const isCurrent = i === wizardStep && wizardRunning;
@@ -142,108 +136,115 @@ export function SetupTabPanel({
                 <div
                   key={motor.name}
                   className={cn(
-                    "flex items-center gap-3 px-4 py-2.5 transition-colors",
-                    isCurrent && "bg-emerald-500/5 dark:bg-emerald-500/10",
-                    state === "done" && "opacity-60"
+                    "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-mono border transition-colors",
+                    state === "done" && "border-emerald-500/30 bg-emerald-500/10 text-emerald-400",
+                    state === "writing" && "border-emerald-500/30 bg-emerald-500/5 text-emerald-400",
+                    state === "waiting" && isCurrent && "border-emerald-400 bg-emerald-500/10 text-emerald-300 ring-1 ring-emerald-400/30",
+                    state === "error" && "border-red-500/30 bg-red-500/10 text-red-400",
+                    state === "pending" && "border-zinc-200 dark:border-zinc-700 text-zinc-400"
                   )}
                 >
-                  <div className="flex-none">
-                    {state === "done" && <Check size={16} className="text-emerald-500" />}
-                    {state === "writing" && <Loader2 size={16} className="text-emerald-400 animate-spin" />}
-                    {state === "waiting" && <Circle size={16} className="text-emerald-400 fill-emerald-400/20" />}
-                    {state === "error" && <AlertCircle size={16} className="text-red-500" />}
-                    {state === "pending" && <Circle size={16} className="text-zinc-300 dark:text-zinc-600" />}
-                  </div>
-                  <span className={cn("text-sm font-mono flex-1", isCurrent ? "text-zinc-800 dark:text-zinc-100 font-medium" : "text-zinc-500")}>
-                    {motor.name}
-                  </span>
-                  <span className="text-sm text-zinc-400 font-mono flex-none">ID {motor.id}</span>
-                  {state === "done" && <span className="text-xs text-emerald-400 flex-none">Configured</span>}
-                  {state === "writing" && <span className="text-xs text-emerald-400 flex-none">Writing EEPROM...</span>}
-                  {state === "error" && <span className="text-xs text-red-500 flex-none">Failed</span>}
+                  {state === "done" && <Check size={12} />}
+                  {state === "writing" && <Loader2 size={12} className="animate-spin" />}
+                  {state === "waiting" && isCurrent && <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse" />}
+                  {state === "error" && <AlertCircle size={12} />}
+                  {motor.name}
                 </div>
               );
             })}
           </div>
 
+          {/* ── Waiting: instruction + ENTER button ── */}
           {!wizardError && wizardMotorState[wizardStep] === "waiting" && (
-            <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-4 flex flex-col gap-3">
+            <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-5 flex flex-col items-center gap-4">
               <div className="flex items-center gap-2">
                 <span className="size-2 rounded-full bg-emerald-400 animate-pulse flex-none" />
-                <p className="text-sm text-emerald-400">
-                  <span className="font-medium">'{SETUP_MOTORS[wizardStep].name}'</span> motor only connected, then click below
+                <p className="text-base text-emerald-300 font-medium">
+                  Connect only <span className="text-emerald-100 font-semibold">'{SETUP_MOTORS[wizardStep].name}'</span> motor
                 </p>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-                <FieldRow label="Detected ID">
-                  <WireInput value={wizardDetectedId} onChange={onSetWizardDetectedId} placeholder="e.g., 1" />
-                </FieldRow>
-                <FieldRow label="Target ID">
-                  <WireInput value={String(SETUP_MOTORS[wizardStep].id)} />
-                </FieldRow>
-                <FieldRow label="Baud Rate">
-                  <WireSelect value={wizardBaudRate} options={["1000000", "2000000", "3000000"]} onChange={onSetWizardBaudRate} />
-                </FieldRow>
-              </div>
-              <div className="flex items-center justify-between gap-2">
-                <button
-                  onClick={() => onSetWizardDetectedId(String((wizardStep + 1) * 11))}
-                  className="px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-700 text-sm text-zinc-500 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800"
-                >
-                  Auto-fill detected value
-                </button>
-                <WireToggle label="Only current motor connected" checked={wizardConnectionConfirmed} onChange={onSetWizardConnectionConfirmed} />
               </div>
               <button
                 onClick={onWizardPressEnter}
-                disabled={!wizardConnectionConfirmed || !wizardDetectedId.trim()}
-                className="w-full px-4 py-3 rounded-lg border border-emerald-500/50 bg-emerald-500/10 text-emerald-400 text-sm font-medium cursor-pointer hover:bg-emerald-500/20 transition-colors flex items-center justify-center gap-2"
+                className="w-full max-w-sm px-6 py-4 rounded-lg border border-emerald-500/50 bg-emerald-500/10 text-emerald-400 text-base font-semibold cursor-pointer hover:bg-emerald-500/20 active:bg-emerald-500/30 transition-colors flex items-center justify-center gap-2"
               >
-                <CornerDownLeft size={14} /> Connection Complete (Enter)
+                <CornerDownLeft size={18} /> Next Motor ↵
               </button>
+              {!wizardProcessActive && (
+                <p className="text-xs text-amber-400">
+                  The motor setup process is no longer running. Check the console logs before continuing.
+                </p>
+              )}
             </div>
           )}
 
+          {/* ── Writing state ── */}
           {wizardMotorState[wizardStep] === "writing" && (
             <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-4 flex items-center gap-3">
               <Loader2 size={16} className="text-zinc-400 animate-spin flex-none" />
               <p className="text-sm text-zinc-400">
-                '{SETUP_MOTORS[wizardStep].name}' motor writing ID {SETUP_MOTORS[wizardStep].id} / Baud {wizardBaudRate}...
+                '{SETUP_MOTORS[wizardStep].name}' motor write in progress. Waiting for the real process output...
               </p>
             </div>
           )}
 
+          {/* ── Error state ── */}
           {wizardError && (
-            <div className="rounded-lg border border-red-500/30 bg-red-500/5 px-4 py-2 flex items-center gap-3">
-              <AlertCircle size={14} className="text-red-500 flex-none" />
-              <p className="text-sm text-red-400 flex-1">{wizardError}</p>
-              <button onClick={onWizardRetry} className="flex-none px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-700 text-xs text-zinc-500 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800 flex items-center gap-2">
-                <RotateCcw size={12} /> Retry
-              </button>
+            <div className="rounded-lg border border-red-500/30 bg-red-500/5 px-4 py-3 flex items-start gap-3">
+              <AlertCircle size={14} className="text-red-500 flex-none mt-0.5" />
+              <div className="flex-1 flex flex-col gap-3">
+                <p className="text-sm text-red-400">{wizardError}</p>
+                {!wizardProcessActive && (
+                  <p className="text-xs text-red-300/80">
+                    Recovery: reconnect only the highlighted motor, then either run the setup again or go back and choose a different port/type.
+                  </p>
+                )}
+              </div>
+              <div className="flex flex-none items-center gap-2 self-center">
+                {wizardProcessActive ? (
+                  <button onClick={onWizardRetry} className="px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-700 text-xs text-zinc-500 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800 flex items-center gap-2">
+                    <RotateCcw size={12} /> Retry Step
+                  </button>
+                ) : (
+                  <>
+                    <button onClick={onExitWizard} className="px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-700 text-xs text-zinc-500 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800">
+                      Back to Setup
+                    </button>
+                    <button onClick={onWizardRestart} className="px-3 py-1.5 rounded-lg border border-red-500/40 bg-red-500/10 text-xs text-red-300 cursor-pointer hover:bg-red-500/15 flex items-center gap-2">
+                      <RotateCcw size={12} /> Run Again
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
           )}
 
-          {import.meta.env.DEV && (
-            <div className="flex items-center gap-2 pt-2 border-t border-zinc-100 dark:border-zinc-800">
-              <span className="text-xs text-zinc-400">Demo:</span>
-              <button
-                onClick={onWizardSimulateError}
-                disabled={wizardMotorState[wizardStep] !== "waiting"}
-                className="text-xs px-2 py-0.5 rounded border border-zinc-200 dark:border-zinc-700 text-zinc-500 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
-              >
-                Simulate Error
-              </button>
+          {/* ── Footer: stop / demo ── */}
+          <div className="flex items-center gap-2 pt-2 border-t border-zinc-100 dark:border-zinc-800">
+            {import.meta.env.DEV && (
+              <>
+                <span className="text-xs text-zinc-400">Demo:</span>
+                <button
+                  onClick={onWizardSimulateError}
+                  disabled={wizardMotorState[wizardStep] !== "waiting"}
+                  className="text-xs px-2 py-0.5 rounded border border-zinc-200 dark:border-zinc-700 text-zinc-500 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  Simulate Error
+                </button>
+              </>
+            )}
+            {wizardProcessActive && (
               <button
                 onClick={onStopWizard}
                 className="text-xs px-2 py-0.5 rounded border border-red-500/30 text-red-500 cursor-pointer"
               >
-                Stop
+                Stop Process
               </button>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       )}
 
+      {/* ── All done ── */}
       {!wizardRunning && wizardAllDone && (
         <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-4 flex flex-col gap-3">
           <div className="flex items-center gap-2">

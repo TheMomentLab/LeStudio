@@ -146,7 +146,13 @@ def create_app(
     class NoCacheStaticMiddleware(BaseHTTPMiddleware):
         async def dispatch(self, request, call_next):
             response: Response = await call_next(request)
-            if request.url.path.startswith("/static/"):
+            path = request.url.path
+            if path.startswith("/api") or path.startswith("/ws"):
+                return response
+
+            is_asset = path.startswith("/assets/") or path in {"/favicon.ico", "/logo.svg"}
+            is_spa_route = path == "/" or (not Path(path).suffix and path != "")
+            if is_asset or is_spa_route:
                 response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
             return response
 
@@ -169,7 +175,8 @@ def create_app(
             unlock_cameras()
         state.append_history(f"{name}_end")
 
-    state.proc_mgr = ProcessManager(lerobot_src, on_process_exit=_on_process_exit)
+    state.proc_mgr = ProcessManager(lerobot_src, on_process_exit=_on_process_exit, state_dir=config_dir)
+    state.proc_mgr.recover_orphans()
 
     # ─── Include routers ───────────────────────────────────────────────────────
     app.include_router(devices.create_router(state))

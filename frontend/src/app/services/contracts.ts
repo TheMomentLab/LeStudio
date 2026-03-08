@@ -150,6 +150,13 @@ type BaseProcessPayload = {
   right_robot_id: string;
   left_teleop_id: string;
   right_teleop_id: string;
+  teleop_antijitter_enabled: boolean;
+  teleop_antijitter_alpha: number;
+  teleop_antijitter_deadband: number;
+  teleop_antijitter_max_step: number | string;
+  teleop_debug_enabled: boolean;
+  teleop_invert_shoulder_lift: boolean;
+  teleop_invert_wrist_roll: boolean;
   cameras: Record<string, string>;
 };
 
@@ -171,6 +178,18 @@ function buildBaseProcessPayload(config: LeStudioConfig, modeLabel: string, came
     right_robot_id: getString(cfg, "right_robot_id", "follower_arm_2"),
     left_teleop_id: getString(cfg, "left_teleop_id", "leader_arm_1"),
     right_teleop_id: getString(cfg, "right_teleop_id", "leader_arm_2"),
+    teleop_antijitter_enabled: getBoolean(cfg, "teleop_antijitter_enabled", false),
+    teleop_antijitter_alpha: getNumber(cfg, "teleop_antijitter_alpha", 0.35),
+    teleop_antijitter_deadband: getNumber(cfg, "teleop_antijitter_deadband", 0.75),
+    teleop_debug_enabled: getBoolean(cfg, "teleop_debug_enabled", false),
+    teleop_invert_shoulder_lift: getBoolean(cfg, "teleop_invert_shoulder_lift", false),
+    teleop_invert_wrist_roll: getBoolean(cfg, "teleop_invert_wrist_roll", false),
+    teleop_antijitter_max_step: (() => {
+      const raw = cfg["teleop_antijitter_max_step"];
+      if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+      if (typeof raw === "string") return raw.trim();
+      return "";
+    })(),
     cameras: cameraRecord(cameras),
   };
 }

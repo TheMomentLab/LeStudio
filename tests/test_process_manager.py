@@ -80,6 +80,59 @@ def test_push_translation_deduplicates():
     assert items[1]["line"].endswith("other")
 
 
+def test_process_line_replaces_latest_teleop_debug_snapshot():
+    pm = ProcessManager(Path("/tmp/lerobot-src"))
+    pm._process_line("teleop", '[LESTUDIO_TELEOP_DEBUG] {"loop_index":1}')
+
+    item = pm.out_q.get_nowait()
+    assert item["replace"] == "teleop:teleop_debug"
+
+
+def test_process_line_replaces_latest_teleop_debug_meta():
+    pm = ProcessManager(Path("/tmp/lerobot-src"))
+    pm._process_line("teleop", '[LESTUDIO_TELEOP_DEBUG_META] {"debug_enabled":true}')
+
+    item = pm.out_q.get_nowait()
+    assert item["replace"] == "teleop:teleop_debug_meta"
+
+
+def test_open_session_log_writes_latest_pointer(tmp_path: Path):
+    pm = ProcessManager(Path("/tmp/lerobot-src"), state_dir=tmp_path)
+
+    path = pm._open_session_log("teleop")
+
+    assert path is not None
+    assert path.parent == tmp_path / "logs" / "teleop"
+    latest = tmp_path / "logs" / "teleop" / "latest.txt"
+    assert latest.read_text(encoding="utf-8").strip() == str(path)
+    pm._close_session_log("teleop")
+
+
+def test_process_line_writes_to_session_log(tmp_path: Path):
+    pm = ProcessManager(Path("/tmp/lerobot-src"), state_dir=tmp_path)
+    path = pm._open_session_log("teleop")
+    assert path is not None
+
+    pm._process_line("teleop", '[LESTUDIO_TELEOP_DEBUG] {"loop_index":1}')
+    pm._close_session_log("teleop")
+
+    content = path.read_text(encoding="utf-8")
+    assert '[LESTUDIO_TELEOP_DEBUG] {"loop_index":1}' in content
+
+
+def test_flush_partial_buffer_writes_progress_to_session_log(tmp_path: Path):
+    pm = ProcessManager(Path("/tmp/lerobot-src"), state_dir=tmp_path)
+    path = pm._open_session_log("teleop")
+    assert path is not None
+
+    remainder = pm._flush_partial_buffer("teleop", b"Teleop loop time: 32.00ms (31 Hz)\r")
+
+    assert remainder == b""
+    pm._close_session_log("teleop")
+    content = path.read_text(encoding="utf-8")
+    assert "Teleop loop time: 32.00ms (31 Hz)" in content
+
+
 def test_start_handles_popen_failure(monkeypatch):
     pm = ProcessManager(Path("/tmp/lerobot-src"))
 

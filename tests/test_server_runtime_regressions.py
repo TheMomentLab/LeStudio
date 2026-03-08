@@ -100,6 +100,61 @@ def test_api_record_start_stops_streamers_and_injects_camera_settings(monkeypatc
     assert cfg["record_cam_fps"] == 25
 
 
+def test_api_eval_start_blocks_missing_real_robot_calibration(monkeypatch, tmp_path: Path):
+    started = {"called": False}
+
+    monkeypatch.setattr("lestudio.process_manager.ProcessManager.is_running", lambda self, name: False)
+    monkeypatch.setattr("lestudio.process_manager.ProcessManager.conflicting_processes", lambda self, name: [])
+    monkeypatch.setattr("lestudio.routes.eval._check_train_python_deps", lambda python_exe: {"ok": True})
+    monkeypatch.setattr("lestudio.routes.eval._check_torchcodec_compat", lambda python_exe: {"ok": True})
+    monkeypatch.setattr("lestudio.routes.eval._check_cuda_runtime_compat", lambda python_exe: (True, ""))
+    monkeypatch.setattr("lestudio.routes.eval.stop_all_streamers_for_process", lambda: None)
+    monkeypatch.setattr("lestudio.routes.eval.unlock_cameras", lambda: None)
+    monkeypatch.setattr(
+        "lestudio.routes.eval.build_eval_args",
+        lambda python_exe, data: [python_exe, "-m", "lerobot.scripts.lerobot_eval", "--env.type=gym_manipulator"],
+    )
+
+    def fake_start(self, name: str, args: list[str]) -> bool:
+        started["called"] = True
+        return True
+
+    monkeypatch.setattr("lestudio.process_manager.ProcessManager.start", fake_start)
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+    app = _make_app(tmp_path)
+    endpoint = _find_endpoint(app, "/api/eval/start", "POST")
+    payload = asyncio.run(
+        endpoint(
+            {
+                "eval_env_type": "gym_manipulator",
+                "eval_task": "real_robot",
+                "robot_mode": "single",
+                "eval_robot_type": "so101_follower",
+                "eval_teleop_type": "so101_leader",
+                "robot_id": "follower_arm_1",
+                "teleop_id": "leader_arm_1",
+            }
+        )
+    )
+
+    assert payload["ok"] is False
+    assert "Missing follower calibration file" in payload["error"]
+    assert started["called"] is False
+
+
+def test_api_motor_setup_start_rejects_unsupported_type(monkeypatch, tmp_path: Path):
+    monkeypatch.setattr("lestudio.process_manager.ProcessManager.is_running", lambda self, name: False)
+    monkeypatch.setattr("lestudio.process_manager.ProcessManager.conflicting_processes", lambda self, name: [])
+
+    app = _make_app(tmp_path)
+    endpoint = _find_endpoint(app, "/api/motor_setup/start", "POST")
+    payload = asyncio.run(endpoint({"robot_type": "bi_so_follower", "port": "/dev/follower_arm_1"}))
+
+    assert payload["ok"] is False
+    assert "Motor Setup does not support 'bi_so_follower'" in payload["error"]
+
+
 def test_snapshot_camera_returns_streamer_frame(monkeypatch, tmp_path: Path):
     monkeypatch.setattr("lestudio.process_manager.ProcessManager.is_running", lambda self, name: False)
     monkeypatch.setattr("lestudio.routes.streaming.snapshot_get_frame", lambda video_path, config_path: b"jpeg-bytes")
