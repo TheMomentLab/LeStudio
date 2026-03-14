@@ -6,19 +6,30 @@
 모든 핸들러는 blocking serial I/O 때문에 동기(def)로 작성한다.
 FastAPI는 sync 핸들러를 자동으로 스레드풀에서 실행한다.
 """
+
 from __future__ import annotations
 
 import logging
+from typing import cast
 
 from fastapi import APIRouter
 
-from lestudio.motor_monitor_bridge import get_bridge
-from lestudio.routes._state import AppState
+from ..capabilities import Capability, register
+from ..motor_monitor_bridge import get_bridge
+from ._state import AppState
 
 logger = logging.getLogger(__name__)
 
 # 포트를 점유하는 프로세스 목록 — 모터 모니터 연결 전 충돌 검사에 사용
 _ARM_PROCESSES = ("teleop", "record", "calibrate", "motor_setup")
+
+register("/api/motor/connect", Capability.HARDWARE_CONTROL)
+register("/api/motor/{motor_id}/move", Capability.HARDWARE_CONTROL)
+register("/api/motor/torque_off", Capability.HARDWARE_CONTROL)
+register("/api/motor/{motor_id}/clear_collision", Capability.HARDWARE_CONTROL)
+register("/api/motor/freewheel/enter", Capability.HARDWARE_CONTROL)
+register("/api/motor/freewheel/exit", Capability.HARDWARE_CONTROL)
+register("/api/motor/disconnect", Capability.HARDWARE_CONTROL)
 
 
 def create_router(state: AppState) -> APIRouter:
@@ -28,7 +39,7 @@ def create_router(state: AppState) -> APIRouter:
     # ── 연결 ─────────────────────────────────────────────────────────────
 
     @router.post("/connect")
-    def api_motor_connect(data: dict):
+    def api_motor_connect(data: dict[str, object]):
         """포트에 연결하고 모터를 초기화한다.
 
         body: { port, motor_ids?, model? }
@@ -36,12 +47,12 @@ def create_router(state: AppState) -> APIRouter:
           - model: 모터 모델명 (기본값: "sts3215")
         response: { ok, connected_ids } or { ok, error }
         """
-        port = data.get("port", "")
+        port = cast(str, data.get("port", ""))
         if not port:
             return {"ok": False, "error": "port is required"}
 
-        motor_ids: list[int] = data.get("motor_ids") or list(range(1, 7))
-        model: str = data.get("model") or "sts3215"
+        motor_ids = cast(list[int], data.get("motor_ids") or list(range(1, 7)))
+        model = cast(str, data.get("model") or "sts3215")
 
         # 팔 포트를 점유하는 프로세스가 실행 중이면 거부
         running = [p for p in _ARM_PROCESSES if state.proc_mgr.is_running(p)]
@@ -67,7 +78,7 @@ def create_router(state: AppState) -> APIRouter:
     # ── 모터 이동 ─────────────────────────────────────────────────────────
 
     @router.post("/{motor_id}/move")
-    def api_motor_move(motor_id: int, data: dict):
+    def api_motor_move(motor_id: int, data: dict[str, object]):
         """지정 모터를 목표 위치로 이동한다.
 
         body: { position: 0-4095 }
@@ -76,7 +87,7 @@ def create_router(state: AppState) -> APIRouter:
         raw = data.get("position")
         if raw is None:
             return {"ok": False, "error": "position is required"}
-        position = max(0, min(int(raw), 4095))
+        position = max(0, min(int(cast(int | str, raw)), 4095))
         return bridge.move_motor(motor_id, position)
 
     # ── 긴급 정지 ─────────────────────────────────────────────────────────

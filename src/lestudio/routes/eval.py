@@ -13,6 +13,7 @@ from fastapi import APIRouter
 
 from .._device_helpers import ensure_bimanual_calibration_files, get_calibration_file_path
 from ..command_builders import build_eval_args
+from ..capabilities import Capability, register
 from .._streaming import stop_all_streamers_for_process, unlock_cameras
 from .._train_helpers import (
     _check_cuda_runtime_compat,
@@ -32,6 +33,8 @@ KNOWN_ENV_TYPES = [
     {"type": "xarm", "label": "xArm (sim)"},
     {"type": "dora_aloha_real", "label": "Dora Aloha (real)"},
 ]
+
+register("/api/eval/start", Capability.PROCESS_CONTROL)
 
 
 def _is_bimanual_mode(value: object) -> bool:

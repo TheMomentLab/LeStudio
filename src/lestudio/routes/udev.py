@@ -7,18 +7,23 @@ import os
 import shutil
 import subprocess
 from pathlib import Path
+from typing import cast
 
 from fastapi import APIRouter
 
-from lestudio._udev_helpers import (
+from ..capabilities import Capability, register
+from .._udev_helpers import (
     _apply_rules_with_fallback,
     _build_rules,
     _manual_udev_install_commands,
     _parse_udev_rules,
 )
-from lestudio.routes._state import AppState
+from ._state import AppState
 
 logger = logging.getLogger(__name__)
+
+register("/api/rules/preview", Capability.HARDWARE_CONTROL)
+register("/api/rules/apply", Capability.HARDWARE_CONTROL)
 
 
 def create_router(state: AppState) -> APIRouter:
@@ -34,8 +39,14 @@ def create_router(state: AppState) -> APIRouter:
     @router.get("/api/udev/rules")
     def api_udev_rules():
         payload = _current_rules_payload()
-        cam = [r.get("symlink") for r in payload.get("camera_rules", []) if r.get("symlink")]
-        arm = {r.get("serial", "?"): r.get("symlink") for r in payload.get("arm_rules", []) if r.get("symlink")}
+        camera_rules = payload.get("camera_rules", [])
+        if not isinstance(camera_rules, list):
+            camera_rules = []
+        arm_rules = payload.get("arm_rules", [])
+        if not isinstance(arm_rules, list):
+            arm_rules = []
+        cam = [r.get("symlink") for r in camera_rules if isinstance(r, dict) and r.get("symlink")]
+        arm = {r.get("serial", "?"): r.get("symlink") for r in arm_rules if isinstance(r, dict) and r.get("symlink")}
         logger.info("GET /api/udev/rules → cameras=%s, arms=%s", cam, arm)
         return payload
 
@@ -74,19 +85,25 @@ def create_router(state: AppState) -> APIRouter:
         }
 
     @router.post("/api/rules/preview")
-    async def api_rules_preview(data: dict):
+    async def api_rules_preview(data: dict[str, object]):
+        raw_assignments = data.get("assignments", {})
+        raw_arm_assignments = data.get("arm_assignments", {})
+        assignments = cast(dict[str, str], raw_assignments) if isinstance(raw_assignments, dict) else {}
+        arm_assignments = cast(dict[str, str], raw_arm_assignments) if isinstance(raw_arm_assignments, dict) else {}
         return {
             "content": _build_rules(
-                data.get("assignments", {}),
-                data.get("arm_assignments", {}),
+                assignments,
+                arm_assignments,
                 state.rules_path,
             )
         }
 
     @router.post("/api/rules/apply")
-    async def api_rules_apply(data: dict):
-        assignments = data.get("assignments", {})
-        arm_assignments = data.get("arm_assignments", {})
+    async def api_rules_apply(data: dict[str, object]):
+        raw_assignments = data.get("assignments", {})
+        raw_arm_assignments = data.get("arm_assignments", {})
+        assignments = cast(dict[str, str], raw_assignments) if isinstance(raw_assignments, dict) else {}
+        arm_assignments = cast(dict[str, str], raw_arm_assignments) if isinstance(raw_arm_assignments, dict) else {}
         logger.info(
             "Applying udev rules — cameras: %s, arms: %s",
             {k: v for k, v in assignments.items() if v != "(none)"},

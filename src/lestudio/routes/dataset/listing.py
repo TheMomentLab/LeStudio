@@ -6,9 +6,12 @@ from fastapi import APIRouter, Request
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from starlette.responses import Response
 
+from ...capabilities import Capability, register
 from ...services import dataset_service
 
 from .._state import AppState
+
+register("/api/datasets/{user}/{repo}", Capability.DATASET_MUTATION)
 
 
 def _discover_parquet_files(source_path: Path) -> list[Path]:

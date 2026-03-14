@@ -4,6 +4,8 @@ import importlib
 
 from fastapi import APIRouter
 
+from ..capabilities import Capability, register
+
 from ._state import AppState
 from .models import DepsStatusResponse, TrainPreflightResponse
 from ..services.process_service import _guard_process_start
@@ -11,6 +13,11 @@ from ..services.process_service import _guard_process_start
 training_service = importlib.import_module("lestudio.services.training_service")
 
 DEFAULT_COLAB_NOTEBOOK_URL = training_service.DEFAULT_COLAB_NOTEBOOK_URL
+
+register("/api/train/install_pytorch", Capability.PROCESS_CONTROL)
+register("/api/train/install_torchcodec_fix", Capability.PROCESS_CONTROL)
+register("/api/train/start", Capability.PROCESS_CONTROL)
+register("/api/train/colab/config", Capability.PROCESS_CONTROL)
 
 
 def create_router(state: AppState) -> APIRouter:

@@ -1,4 +1,5 @@
 """Config and history routes."""
+
 from __future__ import annotations
 
 import json
@@ -6,9 +7,13 @@ import logging
 
 from fastapi import APIRouter
 
-from lestudio.routes._state import AppState
+from ..capabilities import Capability, register
+from ._state import AppState
 
 logger = logging.getLogger(__name__)
+
+register("/api/config", Capability.CONFIG_MUTATION)
+register("/api/history/clear", Capability.CONFIG_MUTATION)
 
 
 def create_router(state: AppState) -> APIRouter:
@@ -20,9 +25,10 @@ def create_router(state: AppState) -> APIRouter:
         return state.load_config()
 
     @router.post("/api/config")
-    async def api_config_save(data: dict):
+    async def api_config_save(data: dict[str, object]):
         state.save_config(data)
         return {"ok": True}
+
     # ─── History ───────────────────────────────────────────────────────────────
     @router.get("/api/history")
     def api_history(limit: int = 50):

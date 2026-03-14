@@ -7,6 +7,7 @@ import os
 
 from fastapi import APIRouter
 
+from ..capabilities import Capability, register
 from .. import device_registry
 from .._config_helpers import DEFAULT_CONFIG
 from .._device_helpers import CAMERA_ROLES, get_arms, get_cameras
@@ -15,6 +16,9 @@ from ._state import AppState
 from .models import CameraPathsRequest, CameraSettingsRequest, DevicesResponse
 
 logger = logging.getLogger(__name__)
+
+register("/api/camera/check_paths", Capability.DEVICE_CONFIG)
+register("/api/camera_settings", Capability.DEVICE_CONFIG)
 
 
 def create_router(state: AppState) -> APIRouter:

@@ -5,9 +5,17 @@ from typing import Any
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
+from ...capabilities import Capability, register
 from ...services import dataset_service
 
 from .._state import AppState
+
+register("/api/datasets/{user}/{repo}/tags", Capability.DATASET_MUTATION)
+register("/api/datasets/{user}/{repo}/tags/bulk", Capability.DATASET_MUTATION)
+register("/api/datasets/{user}/{repo}/stats/recompute", Capability.DATASET_MUTATION)
+register("/api/datasets/stats/cancel/{job_id}", Capability.DATASET_MUTATION)
+register("/api/datasets/{user}/{repo}/derive", Capability.DATASET_MUTATION)
+register("/api/datasets/derive/cancel/{job_id}", Capability.DATASET_MUTATION)
 
 
 def register_routes(router: APIRouter, state: AppState):

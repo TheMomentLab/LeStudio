@@ -1,4 +1,7 @@
+# pyright: reportMissingImports=false
+
 """Tests for TokenAuthMiddleware and related auth helpers."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -10,9 +13,12 @@ from lestudio._auth import (
     _is_localhost,
     _needs_auth,
 )
+from lestudio.routes import config as _config_routes
+from lestudio.routes import process as _process_routes
 
 
 # ─── Helper ────────────────────────────────────────────────────────────────────
+
 
 def _make_app(tmp_path: Path, token: str = "test-token-abc"):
     lerobot_src = tmp_path / "lerobot_src"
@@ -40,6 +46,7 @@ def _mock_request(host: str, method: str = "POST", path: str = "/api/process/foo
 
 # ─── generate_token ────────────────────────────────────────────────────────────
 
+
 def test_generate_token_returns_64_hex_chars():
     t = generate_token()
     assert len(t) == 64
@@ -58,6 +65,7 @@ def test_generate_token_unique():
 
 # ─── _is_localhost ─────────────────────────────────────────────────────────────
 
+
 def test_is_localhost_ipv4():
     assert _is_localhost(_mock_request("127.0.0.1")) is True
 
@@ -71,6 +79,7 @@ def test_is_localhost_external():
 
 
 # ─── _needs_auth ───────────────────────────────────────────────────────────────
+
 
 def test_needs_auth_localhost_exempt():
     req = _mock_request("127.0.0.1", "POST", "/api/process/foo/stop")
@@ -97,12 +106,13 @@ def test_needs_auth_external_teleop():
     assert _needs_auth(req) is True
 
 
-def test_needs_auth_external_unprotected_path():
+def test_needs_auth_external_config_mutation_protected():
     req = _mock_request("192.168.1.10", "POST", "/api/config")
-    assert _needs_auth(req) is False
+    assert _needs_auth(req) is True
 
 
 # ─── session_token on app.state ────────────────────────────────────────────────
+
 
 def test_session_token_stored_on_app_state(tmp_path: Path):
     """create_app stores the session token on app.state.session_token."""

@@ -13,34 +13,21 @@ Rules
 - Safe HTTP methods (GET, HEAD, OPTIONS) and non-sensitive paths are exempt.
 - A random 32-byte hex token is generated at server start and printed to stdout.
 """
+
 from __future__ import annotations
 
 import logging
 import os
 import secrets
-from typing import Callable
 
-from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.types import ASGIApp
 
-logger = logging.getLogger(__name__)
+from .capabilities import requires_protection
 
-# ─── Paths that require token auth from non-localhost origins ──────────────────
-_PROTECTED_PREFIXES = (
-    "/api/process/",
-    "/api/teleop/",
-    "/api/record/",
-    "/api/calibrate/",
-    "/api/motor_setup/",
-    "/api/train/",
-    "/api/eval/",
-    "/api/udev/",
-    "/api/dataset/push",
-    "/api/dataset/delete",
-    "/api/dataset/download",
-)
+logger = logging.getLogger(__name__)
 
 # Methods that never mutate state — always exempt
 _SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
@@ -62,8 +49,7 @@ def _needs_auth(request: Request) -> bool:
         return False
     if request.method in _SAFE_METHODS:
         return False
-    path = request.url.path
-    return any(path.startswith(prefix) for prefix in _PROTECTED_PREFIXES)
+    return requires_protection(request.url.path)
 
 
 class TokenAuthMiddleware(BaseHTTPMiddleware):
@@ -73,7 +59,7 @@ class TokenAuthMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
         self._token = token
 
-    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         if _needs_auth(request):
             provided = request.headers.get("X-LeStudio-Token", "")
             if not secrets.compare_digest(provided, self._token):

@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import inspect
+from pathlib import Path
 
+from lestudio.capabilities import get_capability
 import lestudio.routes.process as process_routes
 import lestudio.routes.training as training_routes
+from lestudio.server import create_app
 import lestudio.services.dataset_service as dataset_service
 import lestudio.services.process_service as process_service
 import lestudio.services.training_service as training_service
@@ -75,3 +78,30 @@ def test_training_route_module_does_not_define_service_domain_functions():
     assert "def deps_status(" not in src
     assert "def train_start(" not in src
     assert "def _ensure_train_installer(" not in src
+
+
+def _make_app(tmp_path: Path):
+    lerobot_src = tmp_path / "lerobot_src"
+    (lerobot_src / "lerobot").mkdir(parents=True)
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    rules_path = tmp_path / "99-lerobot.rules"
+    return create_app(lerobot_src=lerobot_src, config_dir=config_dir, rules_path=rules_path)
+
+
+def test_all_mutating_routes_are_capability_protected(tmp_path: Path):
+    app = _make_app(tmp_path)
+    mutating_methods = {"POST", "PUT", "DELETE"}
+    missing: list[str] = []
+
+    for route in app.routes:
+        path = getattr(route, "path", "")
+        methods = set(getattr(route, "methods", set()) or set())
+        if not path.startswith("/api/"):
+            continue
+        if not (methods & mutating_methods):
+            continue
+        if get_capability(path) is None:
+            missing.append(f"{path} [{','.join(sorted(methods & mutating_methods))}]")
+
+    assert not missing, f"Mutating routes missing capabilities: {missing}"

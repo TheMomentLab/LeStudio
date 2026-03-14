@@ -22,6 +22,15 @@ class TrainMetric(TypedDict, total=False):
     lr: float
 
 
+class RunMeta(TypedDict, total=False):
+    name: str
+    pid: int
+    started_at: float
+    ended_at: float
+    command: list[str]
+    exit_code: int | None
+
+
 class OrphanInfo(TypedDict):
     pid: int
     pgid: int
@@ -218,6 +227,8 @@ class ProcessManager:
         self._orphan_monitor_stop: threading.Event = threading.Event()
         self._session_log_handles: dict[str, Any] = {}
         self._session_log_paths: dict[str, Path] = {}
+        self.run_meta: dict[str, RunMeta] = {}
+        self._run_history: deque[RunMeta] = deque(maxlen=50)
 
     # ── PID persistence helpers ──────────────────────────────────────────────
 
@@ -469,6 +480,12 @@ class ProcessManager:
         self.seen_translations.pop(name, None)
         self._table_buf.pop(name, None)
         self._table_tag.pop(name, None)
+        self.run_meta[name] = RunMeta(
+            name=name,
+            pid=0,
+            started_at=time.time(),
+            command=args,
+        )
         logger.info("Starting process %s: %s", name, shlex.join(args))
         env = {
             **os.environ,
@@ -490,6 +507,7 @@ class ProcessManager:
                 popen_kwargs["start_new_session"] = True
             proc = subprocess.Popen(**popen_kwargs)
             self.procs[name] = proc
+            self.run_meta[name]["pid"] = proc.pid
             logger.info("Process %s launched: PID=%d", name, proc.pid)
             session_log_path = self._open_session_log(name) if name == "teleop" else None
             threading.Thread(target=self._reader, args=(name, proc), daemon=True).start()
@@ -608,6 +626,12 @@ class ProcessManager:
 
     def status_all(self) -> dict[str, bool]:
         return {n: self.is_running(n) for n in PROCESS_NAMES}
+
+    def get_run_meta(self, name: str) -> RunMeta | None:
+        return self.run_meta.get(name)
+
+    def get_run_history(self, limit: int = 20) -> list[RunMeta]:
+        return list(self._run_history)[-limit:]
 
     def conflicting_processes(self, name: str) -> list[str]:
         """Return running process names that share a hardware group with *name*."""
@@ -749,6 +773,10 @@ class ProcessManager:
         # Flush any remaining table buffer
         self._flush_table(name)
         exit_code = proc.poll()
+        if name in self.run_meta:
+            self.run_meta[name]["ended_at"] = time.time()
+            self.run_meta[name]["exit_code"] = exit_code
+            self._run_history.append(self.run_meta.pop(name))
         logger.info("Process %s ended: exit_code=%s PID=%d", name, exit_code, proc.pid)
         exit_msg = f"[{name} process ended (exit code: {exit_code})]"
         self._write_session_log(name, exit_msg)

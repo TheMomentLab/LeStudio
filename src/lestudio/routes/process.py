@@ -4,12 +4,13 @@ import logging
 
 from fastapi import APIRouter
 
-from lestudio._streaming import unlock_cameras
-from lestudio._train_helpers import _normalize_console_command
-from lestudio.process_manager import PROCESS_NAMES
-from lestudio.routes._state import AppState
-from lestudio.routes.models import ProcessCommandRequest, ProcessInputRequest
-from lestudio.services.process_service import (
+from .._streaming import unlock_cameras
+from .._train_helpers import _normalize_console_command
+from ..capabilities import Capability, register
+from ..process_manager import PROCESS_NAMES
+from ._state import AppState
+from .models import ProcessCommandRequest, ProcessInputRequest
+from ..services.process_service import (
     calibrate_delete,
     calibrate_file_status,
     calibrate_list,
@@ -23,6 +24,17 @@ from lestudio.services.process_service import (
 )
 
 logger = logging.getLogger(__name__)
+
+register("/api/process/{name}/stop", Capability.PROCESS_CONTROL)
+register("/api/process/{name}/input", Capability.PROCESS_CONTROL)
+register("/api/process/{name}/command", Capability.PROCESS_CONTROL)
+register("/api/preflight", Capability.PROCESS_CONTROL)
+register("/api/teleop/start", Capability.PROCESS_CONTROL)
+register("/api/record/start", Capability.PROCESS_CONTROL)
+register("/api/calibrate/validate-pair", Capability.PROCESS_CONTROL)
+register("/api/calibrate/file", Capability.PROCESS_CONTROL)
+register("/api/calibrate/start", Capability.PROCESS_CONTROL)
+register("/api/motor_setup/start", Capability.PROCESS_CONTROL)
 
 
 def create_router(state: AppState) -> APIRouter:
@@ -99,15 +111,15 @@ def create_router(state: AppState) -> APIRouter:
         }
 
     @router.post("/api/preflight")
-    async def api_preflight(data: dict):
+    async def api_preflight(data: dict[str, object]):
         return run_preflight(data, state)
 
     @router.post("/api/teleop/start")
-    async def api_teleop_start(data: dict):
+    async def api_teleop_start(data: dict[str, object]):
         return start_teleop(data, state)
 
     @router.post("/api/record/start")
-    async def api_record_start(data: dict):
+    async def api_record_start(data: dict[str, object]):
         return start_record(data, state)
 
     @router.get("/api/calibrate/file")
@@ -123,7 +135,7 @@ def create_router(state: AppState) -> APIRouter:
         return calibrate_validate(robot_type, robot_id)
 
     @router.post("/api/calibrate/validate-pair")
-    async def api_calibrate_validate_pair(data: dict):
+    async def api_calibrate_validate_pair(data: dict[str, object]):
         return calibrate_validate_pair(data)
 
     @router.delete("/api/calibrate/file")
@@ -131,11 +143,11 @@ def create_router(state: AppState) -> APIRouter:
         return calibrate_delete(robot_type, robot_id)
 
     @router.post("/api/calibrate/start")
-    async def api_calibrate_start(data: dict):
+    async def api_calibrate_start(data: dict[str, object]):
         return start_calibrate(data, state)
 
     @router.post("/api/motor_setup/start")
-    async def api_motor_setup_start(data: dict):
+    async def api_motor_setup_start(data: dict[str, object]):
         return start_motor_setup(data, state)
 
     return router
