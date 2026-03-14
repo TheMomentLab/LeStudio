@@ -112,11 +112,19 @@ def test_build_teleop_args_bi_mode_without_limit_when_speed_1():
             "right_follower_port": "/dev/f2",
             "left_leader_port": "/dev/l1",
             "right_leader_port": "/dev/l2",
+            "left_robot_id": "bimanual_follower_left",
+            "right_robot_id": "bimanual_follower_right",
+            "left_teleop_id": "bimanual_leader_left",
+            "right_teleop_id": "bimanual_leader_right",
             "teleop_speed": "1.0",
         },
     )
     assert "--robot.type=bi_so_follower" in args
     assert "--teleop.type=bi_so_leader" in args
+    assert "--robot.id=bimanual_follower" in args
+    assert "--teleop.id=bimanual_leader" in args
+    assert "--robot.calibration_dir=" in " ".join(args)
+    assert "--teleop.calibration_dir=" in " ".join(args)
     assert not any("max_relative_target" in a for a in args)
     assert "--lestudio.antijitter.enabled=false" in args
 
@@ -128,6 +136,8 @@ def test_build_record_args_single_with_camera_serialization():
         "record_task": "pick",
         "follower_port": "/dev/f",
         "leader_port": "/dev/l",
+        "robot_type": "so100_follower",
+        "teleop_type": "so100_leader",
         "cameras": {"top_1": "video0", "wrist_1": "/dev/video1", "none": ""},
         "record_cam_width": 320,
         "record_cam_height": 240,
@@ -139,7 +149,8 @@ def test_build_record_args_single_with_camera_serialization():
     payload = json.loads(cam_arg.split("=", 1)[1])
     assert payload["top_1"]["index_or_path"] == "/dev/video0"
     assert payload["wrist_1"]["width"] == 320
-    assert "--robot.type=so101_follower" in args
+    assert "--robot.type=so100_follower" in args
+    assert "--teleop.type=so100_leader" in args
 
 
 def test_build_record_args_bi_mode_places_camera_on_left_arm():
@@ -149,14 +160,61 @@ def test_build_record_args_bi_mode_places_camera_on_left_arm():
         "right_follower_port": "/dev/f2",
         "left_leader_port": "/dev/l1",
         "right_leader_port": "/dev/l2",
+        "left_robot_id": "bimanual_follower_left",
+        "right_robot_id": "bimanual_follower_right",
+        "left_teleop_id": "bimanual_leader_left",
+        "right_teleop_id": "bimanual_leader_right",
         "cameras": {"top_1": "/dev/video0"},
     }
     args = cb.build_record_args("/py", cfg, resume_enabled=False)
     assert "--robot.type=bi_so_follower" in args
     assert "--teleop.type=bi_so_leader" in args
-    assert "--robot.cameras={}" in args
+    assert "--robot.id=bimanual_follower" in args
+    assert "--teleop.id=bimanual_leader" in args
+    assert "--robot.calibration_dir=" in " ".join(args)
+    assert "--teleop.calibration_dir=" in " ".join(args)
+    # BiSOFollowerConfig has no top-level 'cameras' — only left_arm_config.cameras
+    assert "--robot.cameras={}" not in args
     left_cam = next(a for a in args if a.startswith("--robot.left_arm_config.cameras="))
     assert "video0" in left_cam
+
+
+def test_build_record_args_bi_mode_normalizes_non_bi_types():
+    cfg = {
+        "robot_mode": "bi",
+        "robot_type": "so101_follower",
+        "teleop_type": "so101_leader",
+        "left_follower_port": "/dev/f1",
+        "right_follower_port": "/dev/f2",
+        "left_leader_port": "/dev/l1",
+        "right_leader_port": "/dev/l2",
+        "left_robot_id": "bimanual_follower_left",
+        "right_robot_id": "bimanual_follower_right",
+        "left_teleop_id": "bimanual_leader_left",
+        "right_teleop_id": "bimanual_leader_right",
+    }
+    args = cb.build_record_args("/py", cfg, resume_enabled=False)
+    assert "--robot.type=bi_so_follower" in args
+    assert "--teleop.type=bi_so_leader" in args
+
+
+def test_build_teleop_args_bi_mode_auto_normalizes_ids_without_suffixes():
+    args = cb.build_teleop_args(
+        "/py",
+        {
+            "robot_mode": "bi",
+            "left_follower_port": "/dev/f1",
+            "right_follower_port": "/dev/f2",
+            "left_leader_port": "/dev/l1",
+            "right_leader_port": "/dev/l2",
+            "left_robot_id": "follower",
+            "right_robot_id": "follower",
+            "left_teleop_id": "leader",
+            "right_teleop_id": "leader",
+        },
+    )
+    assert "--robot.id=follower" in args
+    assert "--teleop.id=leader" in args
 
 
 def test_build_calibrate_args_single_robot_and_leader():
@@ -184,8 +242,27 @@ def test_build_calibrate_args_bi_leader_uses_teleop_namespace():
     )
     assert args[:3] == ["/py", "-m", "lestudio.calibrate_bridge"]
     assert "--teleop.type=bi_so_leader" in args
+    assert any(a.startswith("--teleop.calibration_dir=") for a in args)
     assert "--teleop.left_arm_config.port=/dev/l1" in args
     assert "--teleop.right_arm_config.port=/dev/l2" in args
+
+
+def test_build_calibrate_args_bi_follower_uses_robot_calibration_dir():
+    args = cb.build_calibrate_args(
+        "/py",
+        {
+            "robot_mode": "bi",
+            "bi_type": "bi_so_follower",
+            "robot_id": "bi-id",
+            "left_port": "/dev/f1",
+            "right_port": "/dev/f2",
+        },
+    )
+    assert args[:3] == ["/py", "-m", "lestudio.calibrate_bridge"]
+    assert "--robot.type=bi_so_follower" in args
+    assert any(a.startswith("--robot.calibration_dir=") for a in args)
+    assert "--robot.left_arm_config.port=/dev/f1" in args
+    assert "--robot.right_arm_config.port=/dev/f2" in args
 
 
 def test_build_motor_setup_args_switches_namespace_for_leader():
@@ -236,7 +313,9 @@ def test_build_eval_args_requires_env_type_when_not_inferable():
 
 
 def test_build_eval_args_includes_dataset_override_when_provided():
-    args = cb.build_eval_args("/py", {"eval_repo_id": "u/ds", "eval_env_type": "aloha", "eval_task": "AlohaInsertion-v0"})
+    args = cb.build_eval_args(
+        "/py", {"eval_repo_id": "u/ds", "eval_env_type": "aloha", "eval_task": "AlohaInsertion-v0"}
+    )
     assert "--dataset.repo_id=u/ds" not in args
 
 
@@ -264,8 +343,14 @@ def test_build_eval_args_single_real_robot_includes_calibration_dirs_and_ids(tmp
         },
     )
 
-    assert f"--env.robot.calibration_dir={tmp_path / '.cache' / 'huggingface' / 'lerobot' / 'calibration' / 'robots' / 'so_follower'}" in args
-    assert f"--env.teleop.calibration_dir={tmp_path / '.cache' / 'huggingface' / 'lerobot' / 'calibration' / 'teleoperators' / 'so_leader'}" in args
+    assert (
+        f"--env.robot.calibration_dir={tmp_path / '.cache' / 'huggingface' / 'lerobot' / 'calibration' / 'robots' / 'so_follower'}"
+        in args
+    )
+    assert (
+        f"--env.teleop.calibration_dir={tmp_path / '.cache' / 'huggingface' / 'lerobot' / 'calibration' / 'teleoperators' / 'so_leader'}"
+        in args
+    )
     assert "--env.robot.id=follower_arm_1" in args
     assert "--env.teleop.id=leader_arm_1" in args
 
@@ -280,11 +365,42 @@ def test_build_eval_args_bi_real_robot_includes_calibration_dirs(tmp_path: Path,
             "eval_task": "real_robot",
             "eval_robot_type": "bi_so_follower",
             "eval_teleop_type": "bi_so_leader",
+            "left_robot_id": "bimanual_follower_left",
+            "right_robot_id": "bimanual_follower_right",
+            "left_teleop_id": "bimanual_leader_left",
+            "right_teleop_id": "bimanual_leader_right",
         },
     )
 
-    assert f"--env.robot.calibration_dir={tmp_path / '.cache' / 'huggingface' / 'lerobot' / 'calibration' / 'robots' / 'bi_so_follower'}" in args
-    assert f"--env.teleop.calibration_dir={tmp_path / '.cache' / 'huggingface' / 'lerobot' / 'calibration' / 'teleoperators' / 'bi_so_leader'}" in args
+    assert (
+        f"--env.robot.calibration_dir={tmp_path / '.cache' / 'huggingface' / 'lerobot' / 'calibration' / 'robots' / 'bi_so_follower'}"
+        in args
+    )
+    assert (
+        f"--env.teleop.calibration_dir={tmp_path / '.cache' / 'huggingface' / 'lerobot' / 'calibration' / 'teleoperators' / 'bi_so_leader'}"
+        in args
+    )
+    assert "--env.robot.id=bimanual_follower" in args
+    assert "--env.teleop.id=bimanual_leader" in args
+
+
+def test_build_eval_args_bi_real_robot_auto_normalizes_numbered_ids():
+    args = cb.build_eval_args(
+        "/py",
+        {
+            "robot_mode": "bi",
+            "eval_env_type": "gym_manipulator",
+            "eval_task": "real_robot",
+            "eval_robot_type": "bi_so_follower",
+            "eval_teleop_type": "bi_so_leader",
+            "left_robot_id": "follower_arm_1",
+            "right_robot_id": "follower_arm_2",
+            "left_teleop_id": "leader_arm_1",
+            "right_teleop_id": "leader_arm_2",
+        },
+    )
+    assert "--env.robot.id=follower_arm" in args
+    assert "--env.teleop.id=leader_arm" in args
 
 
 def test_build_eval_args_infers_env_from_train_config(tmp_path: Path):

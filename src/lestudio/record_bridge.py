@@ -1,10 +1,39 @@
 #!/usr/bin/env python3
 
+import builtins
 import logging
 import sys
 import threading
+from typing import Callable
 
 logger = logging.getLogger(__name__)
+
+_CALIBRATION_REUSE_PROMPT = "Press ENTER to use provided calibration file associated with the id"
+
+
+def _install_input_prompt_passthrough() -> Callable[[], None]:
+    original_input = builtins.input
+
+    def patched_input(prompt: object = "") -> str:
+        prompt_text = "" if prompt is None else str(prompt)
+        if prompt_text:
+            if prompt_text.endswith("\n"):
+                sys.stdout.write(prompt_text)
+            else:
+                sys.stdout.write(f"{prompt_text}\n")
+            sys.stdout.flush()
+            if _CALIBRATION_REUSE_PROMPT in prompt_text:
+                logger.info("Auto-accepting lerobot calibration reuse prompt during record")
+                return ""
+            return original_input("")
+        return original_input()
+
+    builtins.input = patched_input
+
+    def restore() -> None:
+        builtins.input = original_input
+
+    return restore
 
 
 def _install_stdin_bridge():
@@ -42,6 +71,7 @@ def _install_stdin_bridge():
     # fork() inside ProcessPoolExecutor inherits the pipe file descriptors
     # and causes deadlock or silent crash during video encoding.
     from lerobot.datasets.lerobot_dataset import LeRobotDataset
+
     _orig_save_episode = LeRobotDataset.save_episode
 
     def _sequential_save_episode(self, episode_data=None, parallel_encoding=True):
@@ -61,8 +91,10 @@ def _install_stdin_bridge():
 
 def main():
     from lestudio.camera_patch import install_camera_patch
+
     install_camera_patch()
     record_mod = _install_stdin_bridge()
+    restore_input = _install_input_prompt_passthrough()
     try:
         record_mod.main()
     except FileNotFoundError as exc:
@@ -70,6 +102,8 @@ def main():
             _auto_clean_broken_cache_and_retry(exc, record_mod)
         else:
             raise
+    finally:
+        restore_input()
 
 
 def _auto_clean_broken_cache_and_retry(exc: FileNotFoundError, record_mod):

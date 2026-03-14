@@ -1,19 +1,27 @@
 """Device detection helpers (cameras, arms, USB)."""
+
 from __future__ import annotations
 
 import logging
-import os
 import re
+import shutil
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+
+from lestudio import device_registry
+from lestudio import path_policy
 
 logger = logging.getLogger(__name__)
 
 # Stable symlink role names for cameras
 CAMERA_ROLES = [
-    "(none)", "top_cam_1", "top_cam_2", "top_cam_3",
-    "wrist_cam_1", "wrist_cam_2",
+    "(none)",
+    "top_cam_1",
+    "top_cam_2",
+    "top_cam_3",
+    "wrist_cam_1",
+    "wrist_cam_2",
 ]
 
 
@@ -21,7 +29,9 @@ def udev_props(dev_path: str) -> dict:
     try:
         r = subprocess.run(
             ["udevadm", "info", "--query=property", dev_path],
-            capture_output=True, text=True, timeout=2,
+            capture_output=True,
+            text=True,
+            timeout=2,
         )
         return dict(ln.split("=", 1) for ln in r.stdout.splitlines() if "=" in ln)
     except (OSError, subprocess.SubprocessError):
@@ -45,6 +55,162 @@ def find_symlink(target_name: str) -> str:
     return ""
 
 
+def get_calibration_dir(device_type: str) -> Path:
+    category, dir_name = device_registry.get_calibration_path_prefix(device_type)
+    return path_policy.calibration_dir(category, dir_name)
+
+
+def get_calibration_file_path(device_type: str, device_id: str) -> Path:
+    return get_calibration_dir(device_type) / f"{device_id}.json"
+
+
+def validate_calibration_profile_id(device_id: str, label: str) -> str:
+    value = (device_id or "").strip()
+    if not value:
+        raise ValueError(f"Missing {label} calibration profile id.")
+    if value in {".", ".."} or "/" in value or "\\" in value:
+        raise ValueError(f"Invalid {label} calibration profile id '{value}'.")
+    if len(value) > 64 or not re.fullmatch(r"[A-Za-z0-9._-]+", value):
+        raise ValueError(f"Invalid {label} calibration profile id '{value}'.")
+    return value
+
+
+def _sanitize_calibration_candidate(raw: str) -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9._-]+", "_", (raw or "").strip())
+    return cleaned.strip("_")[:64]
+
+
+def _single_arm_source_types(device_type: str) -> list[str]:
+    if device_type == "bi_so_follower":
+        return ["so101_follower", "so100_follower"]
+    if device_type == "bi_so_leader":
+        return ["so101_leader", "so100_leader"]
+    if device_type.startswith("bi_"):
+        return [device_type[3:]]
+    return [device_type]
+
+
+def _single_arm_calibration_candidates(port_path: str) -> list[str]:
+    candidates: list[str] = []
+    seen: set[str] = set()
+
+    def add(raw: str) -> None:
+        for candidate in (raw.strip(), _sanitize_calibration_candidate(raw)):
+            if not candidate or candidate in seen:
+                continue
+            seen.add(candidate)
+            candidates.append(candidate)
+
+    raw_path = (port_path or "").strip()
+    if not raw_path:
+        return candidates
+
+    port_name = Path(raw_path).name
+    if port_name and not re.match(r"^tty(USB|ACM)\d+$", port_name):
+        add(port_name)
+
+    try:
+        resolved_name = Path(raw_path).resolve().name
+    except OSError:
+        resolved_name = port_name
+
+    if resolved_name and not re.match(r"^tty(USB|ACM)\d+$", resolved_name):
+        add(resolved_name)
+
+    if resolved_name:
+        add(find_symlink(resolved_name))
+
+    props = udev_props(raw_path)
+    add(props.get("ID_SERIAL_SHORT", "").lower())
+    return candidates
+
+
+def _find_single_arm_calibration_path(device_type: str, port_path: str) -> Path | None:
+    for source_type in _single_arm_source_types(device_type):
+        for candidate in _single_arm_calibration_candidates(port_path):
+            path = get_calibration_file_path(source_type, candidate)
+            if path.exists():
+                return path
+    return None
+
+
+def ensure_bimanual_calibration_files(
+    device_type: str,
+    left_id: str,
+    right_id: str,
+    left_port: str,
+    right_port: str,
+    label: str,
+) -> tuple[str, dict[str, Path]]:
+    shared_id = derive_bi_calibration_profile_id(left_id, right_id, label)
+    copied_from: dict[str, Path] = {}
+    targets = {
+        "left": get_calibration_file_path(device_type, f"{shared_id}_left"),
+        "right": get_calibration_file_path(device_type, f"{shared_id}_right"),
+    }
+    ports = {"left": left_port, "right": right_port}
+
+    for side, target_path in targets.items():
+        if target_path.exists():
+            continue
+        source_path = _find_single_arm_calibration_path(device_type, ports[side])
+        if source_path is None:
+            continue
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source_path, target_path)
+        copied_from[side] = source_path
+        logger.info(
+            "Auto-copied %s bimanual calibration for %s from %s to %s",
+            side,
+            device_type,
+            source_path,
+            target_path,
+        )
+
+    return shared_id, copied_from
+
+
+_TRAILING_INDEX_RE = re.compile(r"_\d+$")
+
+
+def _normalize_bi_id(raw: str, side: str, label: str) -> str:
+    if raw.endswith(f"_{side}"):
+        return raw
+    base = _TRAILING_INDEX_RE.sub("", raw)
+    normalised = f"{base}_{side}"
+    logger.warning(
+        "Bimanual %s %s id '%s' auto-normalised to '%s'",
+        label,
+        side,
+        raw,
+        normalised,
+    )
+    return normalised
+
+
+def derive_bi_calibration_profile_id(left_id: str, right_id: str, label: str) -> str:
+    left = _normalize_bi_id(
+        validate_calibration_profile_id(left_id, f"{label} left"),
+        "left",
+        label,
+    )
+    right = _normalize_bi_id(
+        validate_calibration_profile_id(right_id, f"{label} right"),
+        "right",
+        label,
+    )
+
+    shared_left = left[: -len("_left")]
+    shared_right = right[: -len("_right")]
+    if not shared_left or shared_left != shared_right:
+        raise ValueError(
+            f"Bimanual {label} calibration ids must share the same base name, for example '{label}_left' and '{label}_right'. "
+            f"Got left='{left}' right='{right}' (bases: '{shared_left}' vs '{shared_right}')."
+        )
+
+    return shared_left
+
+
 def get_cameras() -> list[dict]:
     # 1st pass: index 필터 (fast, no subprocess)
     videos = []
@@ -66,11 +232,11 @@ def get_cameras() -> list[dict]:
         props = udev_props(str(video))
         kernels = kernels_from_devpath(props.get("DEVPATH", ""))
         return {
-            "device":  video.name,
-            "path":    str(video),
+            "device": video.name,
+            "path": str(video),
             "kernels": kernels,
             "symlink": find_symlink(video.name),
-            "model":   props.get("ID_MODEL", "Unknown"),
+            "model": props.get("ID_MODEL", "Unknown"),
         }
 
     with ThreadPoolExecutor(max_workers=min(len(videos), 8)) as ex:
@@ -78,20 +244,17 @@ def get_cameras() -> list[dict]:
 
 
 def get_arms() -> list[dict]:
-    ports = [
-        p for p in sorted(Path("/dev").glob("tty*"))
-        if any(x in p.name for x in ("USB", "ACM"))
-    ]
+    ports = [p for p in sorted(Path("/dev").glob("tty*")) if any(x in p.name for x in ("USB", "ACM"))]
     if not ports:
         return []
 
     def _probe_arm(p: Path) -> dict:
         props = udev_props(str(p))
         return {
-            "device":  p.name,
-            "path":    str(p),
+            "device": p.name,
+            "path": str(p),
             "symlink": find_symlink(p.name),
-            "serial":  props.get("ID_SERIAL_SHORT", ""),
+            "serial": props.get("ID_SERIAL_SHORT", ""),
             "kernels": kernels_from_devpath(props.get("DEVPATH", "")),
         }
 

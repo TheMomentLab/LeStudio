@@ -6,7 +6,9 @@ import shutil
 from json import JSONDecodeError
 from pathlib import Path
 
-from ._device_helpers import get_calibration_dir
+from lestudio import path_policy
+
+from ._device_helpers import derive_bi_calibration_profile_id, get_calibration_dir
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +24,31 @@ MOTOR_SETUP_COMPATIBLE_TYPES = {
     "lekiwi",
 }
 
+
+def _normalized_process_types(cfg: dict, *, is_bi: bool) -> tuple[str, str]:
+    default_robot = "bi_so_follower" if is_bi else "so101_follower"
+    default_teleop = "bi_so_leader" if is_bi else "so101_leader"
+    robot_type = str(cfg.get("robot_type", default_robot) or default_robot).strip()
+    teleop_type = str(cfg.get("teleop_type", default_teleop) or default_teleop).strip()
+
+    if is_bi:
+        if not robot_type.startswith("bi_"):
+            robot_type = default_robot
+        if not teleop_type.startswith("bi_"):
+            teleop_type = default_teleop
+    else:
+        if robot_type.startswith("bi_"):
+            robot_type = default_robot
+        if teleop_type.startswith("bi_"):
+            teleop_type = default_teleop
+
+    return robot_type, teleop_type
+
+
+def _is_bimanual_mode(value: object) -> bool:
+    return str(value or "single").strip().lower() != "single"
+
+
 def dataset_cache_path(repo_id: str, root: str | None = None) -> Path:
     """Return the local path where a dataset is stored.
 
@@ -30,7 +57,7 @@ def dataset_cache_path(repo_id: str, root: str | None = None) -> Path:
     """
     if root:
         return Path(root).expanduser() / repo_id
-    return Path.home() / ".cache" / "huggingface" / "lerobot" / repo_id
+    return path_policy.dataset_local_dir(repo_id)
 
 
 def resolve_record_resume(cfg: dict) -> tuple[bool, bool]:
@@ -83,51 +110,76 @@ def build_teleop_args(python_exe: str, cfg: dict) -> list[str]:
         if path:
             if not path.startswith("/dev/"):
                 path = f"/dev/{path}"
-            cam_dict[name] = {"type": "opencv", "index_or_path": path, "width": 640, "height": 480, "fps": 30, "fourcc": "MJPG"}
+            cam_dict[name] = {
+                "type": "opencv",
+                "index_or_path": path,
+                "width": 640,
+                "height": 480,
+                "fps": 30,
+                "fourcc": "MJPG",
+            }
 
-    is_bi = cfg.get("robot_mode") == "bi"
+    is_bi = _is_bimanual_mode(cfg.get("robot_mode"))
+    robot_type, teleop_type = _normalized_process_types(cfg, is_bi=is_bi)
     if is_bi:
+        robot_profile_id = derive_bi_calibration_profile_id(
+            str(cfg.get("left_robot_id", "")),
+            str(cfg.get("right_robot_id", "")),
+            "follower",
+        )
+        teleop_profile_id = derive_bi_calibration_profile_id(
+            str(cfg.get("left_teleop_id", "")),
+            str(cfg.get("right_teleop_id", "")),
+            "leader",
+        )
         args = [
             python_exe,
             "-m",
             "lestudio.teleop_bridge",
-            "--robot.type=bi_so_follower",
-            f'--robot.left_arm_config.port={cfg["left_follower_port"]}',
-            f'--robot.right_arm_config.port={cfg["right_follower_port"]}',
-            "--teleop.type=bi_so_leader",
-            f'--teleop.left_arm_config.port={cfg["left_leader_port"]}',
-            f'--teleop.right_arm_config.port={cfg["right_leader_port"]}',
+            f"--robot.type={robot_type}",
+            f"--robot.id={robot_profile_id}",
+            _calibration_dir_arg("robot", robot_type),
+            f"--robot.left_arm_config.port={cfg['left_follower_port']}",
+            f"--robot.right_arm_config.port={cfg['right_follower_port']}",
+            f"--teleop.type={teleop_type}",
+            f"--teleop.id={teleop_profile_id}",
+            _calibration_dir_arg("teleop", teleop_type),
+            f"--teleop.left_arm_config.port={cfg['left_leader_port']}",
+            f"--teleop.right_arm_config.port={cfg['right_leader_port']}",
             "--display_data=false",
         ]
         if cam_dict:
             cam_str = json.dumps(cam_dict)
-            args.append(f"--robot.cameras={{}}")
             args.append(f"--robot.left_arm_config.cameras={cam_str}")
         if max_rel is not None:
             args.append(f"--robot.left_arm_config.max_relative_target={max_rel}")
             args.append(f"--robot.right_arm_config.max_relative_target={max_rel}")
-        args.extend(_build_antijitter_bridge_args(
-            enabled=anti_jitter_enabled,
-            alpha=anti_jitter_alpha,
-            deadband=anti_jitter_deadband,
-            max_step=anti_jitter_max_step,
-        ))
-        args.extend(_build_joint_invert_bridge_args(
-            shoulder_lift=invert_shoulder_lift,
-            wrist_roll=invert_wrist_roll,
-        ))
+        args.extend(
+            _build_antijitter_bridge_args(
+                enabled=anti_jitter_enabled,
+                alpha=anti_jitter_alpha,
+                deadband=anti_jitter_deadband,
+                max_step=anti_jitter_max_step,
+            )
+        )
+        args.extend(
+            _build_joint_invert_bridge_args(
+                shoulder_lift=invert_shoulder_lift,
+                wrist_roll=invert_wrist_roll,
+            )
+        )
         args.extend(_build_debug_bridge_args(enabled=teleop_debug_enabled))
         return args
     args = [
         python_exe,
         "-m",
         "lestudio.teleop_bridge",
-        "--robot.type=so101_follower",
-        f'--robot.port={cfg["follower_port"]}',
-        f'--robot.id={cfg.get("robot_id", "follower_arm_1")}',
-        "--teleop.type=so101_leader",
-        f'--teleop.port={cfg["leader_port"]}',
-        f'--teleop.id={cfg.get("teleop_id", "leader_arm_1")}',
+        f"--robot.type={robot_type}",
+        f"--robot.port={cfg['follower_port']}",
+        f"--robot.id={cfg.get('robot_id', 'follower_arm_1')}",
+        f"--teleop.type={teleop_type}",
+        f"--teleop.port={cfg['leader_port']}",
+        f"--teleop.id={cfg.get('teleop_id', 'leader_arm_1')}",
         "--display_data=false",
     ]
     if cam_dict:
@@ -135,16 +187,20 @@ def build_teleop_args(python_exe: str, cfg: dict) -> list[str]:
         args.append(f"--robot.cameras={cam_str}")
     if max_rel is not None:
         args.append(f"--robot.max_relative_target={max_rel}")
-    args.extend(_build_antijitter_bridge_args(
-        enabled=anti_jitter_enabled,
-        alpha=anti_jitter_alpha,
-        deadband=anti_jitter_deadband,
-        max_step=anti_jitter_max_step,
-    ))
-    args.extend(_build_joint_invert_bridge_args(
-        shoulder_lift=invert_shoulder_lift,
-        wrist_roll=invert_wrist_roll,
-    ))
+    args.extend(
+        _build_antijitter_bridge_args(
+            enabled=anti_jitter_enabled,
+            alpha=anti_jitter_alpha,
+            deadband=anti_jitter_deadband,
+            max_step=anti_jitter_max_step,
+        )
+    )
+    args.extend(
+        _build_joint_invert_bridge_args(
+            shoulder_lift=invert_shoulder_lift,
+            wrist_roll=invert_wrist_roll,
+        )
+    )
     args.extend(_build_debug_bridge_args(enabled=teleop_debug_enabled))
     return args
 
@@ -186,8 +242,8 @@ def build_record_args(python_exe: str, cfg: dict, resume_enabled: bool) -> list[
 
     base = [
         f"--dataset.repo_id={repo_id}",
-        f'--dataset.num_episodes={cfg.get("record_episodes", 50)}',
-        f'--dataset.single_task={cfg.get("record_task", "task")}',
+        f"--dataset.num_episodes={cfg.get('record_episodes', 50)}",
+        f"--dataset.single_task={cfg.get('record_task', 'task')}",
         "--display_data=false",
         "--dataset.vcodec=h264",
         "--dataset.push_to_hub=true" if cfg.get("record_push_to_hub") else "--dataset.push_to_hub=false",
@@ -203,53 +259,74 @@ def build_record_args(python_exe: str, cfg: dict, resume_enabled: bool) -> list[
     rec_w = cfg.get("record_cam_width", 640)
     rec_h = cfg.get("record_cam_height", 480)
     rec_fps = cfg.get("record_cam_fps", 30)
-    
+
     cameras = cfg.get("cameras", {})
     cam_dict = {}
     for name, path in cameras.items():
         if path:
             if not path.startswith("/dev/"):
                 path = f"/dev/{path}"
-            cam_dict[name] = {"type": "opencv", "index_or_path": path, "width": rec_w, "height": rec_h, "fps": rec_fps, "fourcc": "MJPG"}
-    
-    is_bi = cfg.get("robot_mode") == "bi"
+            cam_dict[name] = {
+                "type": "opencv",
+                "index_or_path": path,
+                "width": rec_w,
+                "height": rec_h,
+                "fps": rec_fps,
+                "fourcc": "MJPG",
+            }
+
+    is_bi = _is_bimanual_mode(cfg.get("robot_mode"))
+    robot_type, teleop_type = _normalized_process_types(cfg, is_bi=is_bi)
     if cam_dict:
         cam_str = json.dumps(cam_dict)
         if is_bi:
-            base.append(f"--robot.cameras={{}}")
             base.append(f"--robot.left_arm_config.cameras={cam_str}")
         else:
             base.append(f"--robot.cameras={cam_str}")
 
     if is_bi:
+        robot_profile_id = derive_bi_calibration_profile_id(
+            str(cfg.get("left_robot_id", "")),
+            str(cfg.get("right_robot_id", "")),
+            "follower",
+        )
+        teleop_profile_id = derive_bi_calibration_profile_id(
+            str(cfg.get("left_teleop_id", "")),
+            str(cfg.get("right_teleop_id", "")),
+            "leader",
+        )
         return [
             python_exe,
             "-m",
             "lestudio.record_bridge",
-            "--robot.type=bi_so_follower",
-            f'--robot.left_arm_config.port={cfg["left_follower_port"]}',
-            f'--robot.right_arm_config.port={cfg["right_follower_port"]}',
-            "--teleop.type=bi_so_leader",
-            f'--teleop.left_arm_config.port={cfg["left_leader_port"]}',
-            f'--teleop.right_arm_config.port={cfg["right_leader_port"]}',
+            f"--robot.type={robot_type}",
+            f"--robot.id={robot_profile_id}",
+            _calibration_dir_arg("robot", robot_type),
+            f"--robot.left_arm_config.port={cfg['left_follower_port']}",
+            f"--robot.right_arm_config.port={cfg['right_follower_port']}",
+            f"--teleop.type={teleop_type}",
+            f"--teleop.id={teleop_profile_id}",
+            _calibration_dir_arg("teleop", teleop_type),
+            f"--teleop.left_arm_config.port={cfg['left_leader_port']}",
+            f"--teleop.right_arm_config.port={cfg['right_leader_port']}",
         ] + base
     return [
         python_exe,
         "-m",
         "lestudio.record_bridge",
-        "--robot.type=so101_follower",
-        f'--robot.port={cfg["follower_port"]}',
-        f'--robot.id={cfg.get("robot_id", "follower_arm_1")}',
-        "--teleop.type=so101_leader",
-        f'--teleop.port={cfg["leader_port"]}',
-        f'--teleop.id={cfg.get("teleop_id", "leader_arm_1")}',
+        f"--robot.type={robot_type}",
+        f"--robot.port={cfg['follower_port']}",
+        f"--robot.id={cfg.get('robot_id', 'follower_arm_1')}",
+        f"--teleop.type={teleop_type}",
+        f"--teleop.port={cfg['leader_port']}",
+        f"--teleop.id={cfg.get('teleop_id', 'leader_arm_1')}",
     ] + base
 
 
 def build_calibrate_args(python_exe: str, data: dict) -> list[str]:
     robot_mode = data.get("robot_mode", "single")
 
-    if robot_mode == "bi":
+    if _is_bimanual_mode(robot_mode):
         bi_type = data.get("bi_type", "bi_so_follower")
         robot_id = data.get("robot_id", "bimanual_follower")
         left_port = data.get("left_port", "/dev/follower_arm_1")
@@ -260,6 +337,7 @@ def build_calibrate_args(python_exe: str, data: dict) -> list[str]:
                 "-m",
                 "lestudio.calibrate_bridge",
                 f"--teleop.type={bi_type}",
+                _calibration_dir_arg("teleop", bi_type),
                 f"--teleop.left_arm_config.port={left_port}",
                 f"--teleop.right_arm_config.port={right_port}",
                 f"--teleop.id={robot_id}",
@@ -269,6 +347,7 @@ def build_calibrate_args(python_exe: str, data: dict) -> list[str]:
             "-m",
             "lestudio.calibrate_bridge",
             f"--robot.type={bi_type}",
+            _calibration_dir_arg("robot", bi_type),
             f"--robot.left_arm_config.port={left_port}",
             f"--robot.right_arm_config.port={right_port}",
             f"--robot.id={robot_id}",
@@ -359,7 +438,15 @@ def build_eval_args(python_exe: str, cfg: dict) -> list[str]:
     if not policy_path:
         # Find the most recently modified pretrained_model directory under outputs/train
         outputs_dir = Path("outputs/train")
-        candidates = sorted(outputs_dir.glob("*/*/checkpoints/last/pretrained_model"), key=lambda p: p.stat().st_mtime, reverse=True) if outputs_dir.exists() else []
+        candidates = (
+            sorted(
+                outputs_dir.glob("*/*/checkpoints/last/pretrained_model"),
+                key=lambda p: p.stat().st_mtime,
+                reverse=True,
+            )
+            if outputs_dir.exists()
+            else []
+        )
         policy_path = str(candidates[0]) if candidates else "outputs/train/checkpoints/last/pretrained_model"
 
     episodes = int(cfg.get("eval_episodes", 10) or 10)
@@ -414,19 +501,31 @@ def build_eval_args(python_exe: str, cfg: dict) -> list[str]:
     ]
     # gym_manipulator (real robot) requires robot and teleop config
     if env_type == "gym_manipulator":
-        is_bi = cfg.get("robot_mode") == "bi"
+        is_bi = _is_bimanual_mode(cfg.get("robot_mode"))
         if is_bi:
             robot_type = str(cfg.get("eval_robot_type", "bi_so_follower")).strip() or "bi_so_follower"
             teleop_type = str(cfg.get("eval_teleop_type", "bi_so_leader")).strip() or "bi_so_leader"
+            robot_id = derive_bi_calibration_profile_id(
+                str(cfg.get("left_robot_id", "")),
+                str(cfg.get("right_robot_id", "")),
+                "robot",
+            )
+            teleop_id = derive_bi_calibration_profile_id(
+                str(cfg.get("left_teleop_id", "")),
+                str(cfg.get("right_teleop_id", "")),
+                "teleop",
+            )
             args += [
                 f"--env.robot.type={robot_type}",
                 _calibration_dir_arg("env.robot", robot_type),
-                f'--env.robot.left_arm_config.port={cfg.get("left_follower_port", "/dev/follower_arm_1")}',
-                f'--env.robot.right_arm_config.port={cfg.get("right_follower_port", "/dev/follower_arm_2")}',
+                f"--env.robot.id={robot_id}",
+                f"--env.robot.left_arm_config.port={cfg.get('left_follower_port', '/dev/follower_arm_1')}",
+                f"--env.robot.right_arm_config.port={cfg.get('right_follower_port', '/dev/follower_arm_2')}",
                 f"--env.teleop.type={teleop_type}",
                 _calibration_dir_arg("env.teleop", teleop_type),
-                f'--env.teleop.left_arm_config.port={cfg.get("left_leader_port", "/dev/leader_arm_1")}',
-                f'--env.teleop.right_arm_config.port={cfg.get("right_leader_port", "/dev/leader_arm_2")}',
+                f"--env.teleop.id={teleop_id}",
+                f"--env.teleop.left_arm_config.port={cfg.get('left_leader_port', '/dev/leader_arm_1')}",
+                f"--env.teleop.right_arm_config.port={cfg.get('right_leader_port', '/dev/leader_arm_2')}",
             ]
         else:
             robot_type = str(cfg.get("eval_robot_type", "so101_follower")).strip() or "so101_follower"
@@ -487,9 +586,11 @@ def build_derive_args(python_exe: str, cfg: dict) -> list[str]:
     """
     delete_indices = cfg.get("delete_indices", [])
     args = [
-        python_exe, "-m", "lerobot.scripts.lerobot_edit_dataset",
-        f'--repo_id={cfg["source_repo_id"]}',
-        f'--new_repo_id={cfg["new_repo_id"]}',
+        python_exe,
+        "-m",
+        "lerobot.scripts.lerobot_edit_dataset",
+        f"--repo_id={cfg['source_repo_id']}",
+        f"--new_repo_id={cfg['new_repo_id']}",
         "--operation.type=delete_episodes",
         f"--operation.episode_indices={delete_indices}",
         "--push_to_hub=false",

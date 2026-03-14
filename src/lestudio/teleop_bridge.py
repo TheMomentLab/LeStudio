@@ -23,6 +23,7 @@ _TELEOP_DEBUG_PREFIX = "[LESTUDIO_TELEOP_DEBUG] "
 _TELEOP_DEBUG_META_PREFIX = "[LESTUDIO_TELEOP_DEBUG_META] "
 _DEFAULT_DEBUG_INTERVAL_S = 0.25
 _DEBUG_JOINT_LIMIT = 16
+_CALIBRATION_REUSE_PROMPT = "Press ENTER to use provided calibration file associated with the id"
 
 
 @dataclass(frozen=True)
@@ -94,11 +95,7 @@ def extract_antijitter_settings(argv: list[str] | None = None) -> tuple[AntiJitt
         enabled=_parse_bool(values.get("enabled", "false")),
         alpha=_parse_float(values.get("alpha", "0.35"), 0.35),
         deadband=_parse_float(values.get("deadband", "0.75"), 0.75),
-        max_step=(
-            _parse_float(values["max_step"], 0.0)
-            if values.get("max_step", "").strip()
-            else None
-        ),
+        max_step=(_parse_float(values["max_step"], 0.0) if values.get("max_step", "").strip() else None),
     )
     return settings, filtered_args
 
@@ -138,7 +135,9 @@ def extract_debug_settings(argv: list[str]) -> tuple[TeleopDebugSettings, list[s
 
     settings = TeleopDebugSettings(
         enabled=_parse_bool(values.get("enabled", "false")),
-        sample_interval_s=max(_parse_float(values.get("interval_s", str(_DEFAULT_DEBUG_INTERVAL_S)), _DEFAULT_DEBUG_INTERVAL_S), 0.05),
+        sample_interval_s=max(
+            _parse_float(values.get("interval_s", str(_DEFAULT_DEBUG_INTERVAL_S)), _DEFAULT_DEBUG_INTERVAL_S), 0.05
+        ),
     )
     return settings, filtered_args
 
@@ -174,7 +173,9 @@ def _patch_default_processors(
         processors = original_factory()
         teleop_action_processor, robot_action_processor, robot_observation_processor = processors
         if antijitter_settings.enabled and step_class is not None:
-            teleop_action_processor = _prepend_antijitter_step(teleop_action_processor, step_class, antijitter_settings)
+            teleop_action_processor = _prepend_antijitter_step(
+                teleop_action_processor, step_class, antijitter_settings
+            )
         if invert_settings.joints():
             teleop_action_processor = _prepend_joint_inversion_step(teleop_action_processor, invert_settings)
         return teleop_action_processor, robot_action_processor, robot_observation_processor
@@ -477,6 +478,9 @@ def _install_input_prompt_passthrough() -> Callable[[], None]:
             else:
                 sys.stdout.write(f"{prompt_text}\n")
             sys.stdout.flush()
+            if _CALIBRATION_REUSE_PROMPT in prompt_text:
+                logger.info("Auto-accepting lerobot calibration reuse prompt during teleop")
+                return ""
             return original_input("")
         return original_input()
 
@@ -494,6 +498,19 @@ def main() -> None:
     debug_settings, filtered_args = extract_debug_settings(filtered_args)
     sys.argv = [sys.argv[0], *filtered_args]
 
+    logger.info(
+        "Teleop bridge starting: antijitter=%s(alpha=%.2f, deadband=%.2f, max_step=%s) "
+        "invert=%s debug=%s(interval=%.2fs) remaining_args=%d",
+        antijitter_settings.enabled,
+        antijitter_settings.alpha,
+        antijitter_settings.deadband,
+        antijitter_settings.max_step,
+        invert_settings.joints() or "none",
+        debug_settings.enabled,
+        debug_settings.sample_interval_s,
+        len(filtered_args),
+    )
+
     from .camera_patch import install_camera_patch
 
     install_camera_patch()
@@ -505,6 +522,12 @@ def main() -> None:
     restore_input = _install_input_prompt_passthrough()
     try:
         teleop_mod.main()
+        logger.info("Teleop bridge finished normally")
+    except KeyboardInterrupt:
+        logger.info("Teleop bridge interrupted by user (KeyboardInterrupt)")
+    except Exception:
+        logger.exception("Teleop bridge crashed with unhandled exception")
+        raise
     finally:
         restore_input()
 

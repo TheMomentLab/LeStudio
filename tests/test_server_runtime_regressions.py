@@ -100,16 +100,186 @@ def test_api_record_start_stops_streamers_and_injects_camera_settings(monkeypatc
     assert cfg["record_cam_fps"] == 25
 
 
+def test_api_teleop_start_auto_copies_bimanual_calibration_from_single_arm_files(monkeypatch, tmp_path: Path):
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr("lestudio.process_manager.ProcessManager.is_running", lambda self, name: False)
+    monkeypatch.setattr("lestudio.process_manager.ProcessManager.conflicting_processes", lambda self, name: [])
+    monkeypatch.setattr("lestudio.routes.process.stop_all_streamers_for_process", lambda: None)
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+    def fake_start(self, name: str, args: list[str]) -> bool:
+        captured["name"] = name
+        captured["args"] = args
+        return True
+
+    monkeypatch.setattr("lestudio.process_manager.ProcessManager.start", fake_start)
+
+    robot_single_dir = tmp_path / ".cache" / "huggingface" / "lerobot" / "calibration" / "robots" / "so_follower"
+    teleop_single_dir = tmp_path / ".cache" / "huggingface" / "lerobot" / "calibration" / "teleoperators" / "so_leader"
+    robot_single_dir.mkdir(parents=True)
+    teleop_single_dir.mkdir(parents=True)
+    robot_calibration = {"joint_a": {"id": 1, "drive_mode": 0, "homing_offset": 0, "range_min": 1, "range_max": 2}}
+    leader_calibration = {"joint_a": {"id": 1, "drive_mode": 1, "homing_offset": 0, "range_min": 1, "range_max": 2}}
+    for name in ("follower_arm_1", "follower_arm_2"):
+        (robot_single_dir / f"{name}.json").write_text(json.dumps(robot_calibration), encoding="utf-8")
+    for name in ("leader_arm_1", "leader_arm_2"):
+        (teleop_single_dir / f"{name}.json").write_text(json.dumps(leader_calibration), encoding="utf-8")
+
+    app = _make_app(tmp_path)
+    endpoint = _find_endpoint(app, "/api/teleop/start", "POST")
+    payload = asyncio.run(
+        endpoint(
+            {
+                "robot_mode": "bi",
+                "robot_type": "bi_so_follower",
+                "teleop_type": "bi_so_leader",
+                "left_robot_id": "bimanual_follower_left",
+                "right_robot_id": "bimanual_follower_right",
+                "left_teleop_id": "bimanual_leader_left",
+                "right_teleop_id": "bimanual_leader_right",
+                "left_follower_port": "/dev/follower_arm_1",
+                "right_follower_port": "/dev/follower_arm_2",
+                "left_leader_port": "/dev/leader_arm_1",
+                "right_leader_port": "/dev/leader_arm_2",
+                "cameras": {},
+            }
+        )
+    )
+
+    assert payload["ok"] is True
+    assert captured["name"] == "teleop"
+    bi_robot_dir = tmp_path / ".cache" / "huggingface" / "lerobot" / "calibration" / "robots" / "bi_so_follower"
+    bi_teleop_dir = tmp_path / ".cache" / "huggingface" / "lerobot" / "calibration" / "teleoperators" / "bi_so_leader"
+    assert (bi_robot_dir / "bimanual_follower_left.json").exists()
+    assert (bi_robot_dir / "bimanual_follower_right.json").exists()
+    assert (bi_teleop_dir / "bimanual_leader_left.json").exists()
+    assert (bi_teleop_dir / "bimanual_leader_right.json").exists()
+
+
+def test_api_teleop_start_auto_normalizes_bimanual_ids_without_suffixes(monkeypatch, tmp_path: Path):
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr("lestudio.process_manager.ProcessManager.is_running", lambda self, name: False)
+    monkeypatch.setattr("lestudio.process_manager.ProcessManager.conflicting_processes", lambda self, name: [])
+    monkeypatch.setattr("lestudio.routes.process.stop_all_streamers_for_process", lambda: None)
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+    def fake_start(self, name: str, args: list[str]) -> bool:
+        captured["name"] = name
+        captured["args"] = args
+        return True
+
+    monkeypatch.setattr("lestudio.process_manager.ProcessManager.start", fake_start)
+
+    robot_single_dir = tmp_path / ".cache" / "huggingface" / "lerobot" / "calibration" / "robots" / "so_follower"
+    teleop_single_dir = tmp_path / ".cache" / "huggingface" / "lerobot" / "calibration" / "teleoperators" / "so_leader"
+    robot_single_dir.mkdir(parents=True)
+    teleop_single_dir.mkdir(parents=True)
+    robot_cal = {"j": {"id": 1, "drive_mode": 0, "homing_offset": 0, "range_min": 1, "range_max": 2}}
+    leader_cal = {"j": {"id": 1, "drive_mode": 1, "homing_offset": 0, "range_min": 1, "range_max": 2}}
+    for name in ("follower_arm_1", "follower_arm_2"):
+        (robot_single_dir / f"{name}.json").write_text(json.dumps(robot_cal), encoding="utf-8")
+    for name in ("leader_arm_1", "leader_arm_2"):
+        (teleop_single_dir / f"{name}.json").write_text(json.dumps(leader_cal), encoding="utf-8")
+
+    app = _make_app(tmp_path)
+    endpoint = _find_endpoint(app, "/api/teleop/start", "POST")
+    payload = asyncio.run(
+        endpoint(
+            {
+                "robot_mode": "bi",
+                "robot_type": "bi_so_follower",
+                "teleop_type": "bi_so_leader",
+                "left_robot_id": "follower",
+                "right_robot_id": "follower",
+                "left_teleop_id": "leader",
+                "right_teleop_id": "leader",
+                "left_follower_port": "/dev/follower_arm_1",
+                "right_follower_port": "/dev/follower_arm_2",
+                "left_leader_port": "/dev/leader_arm_1",
+                "right_leader_port": "/dev/leader_arm_2",
+                "cameras": {},
+            }
+        )
+    )
+
+    assert payload["ok"] is True
+    bi_robot_dir = tmp_path / ".cache" / "huggingface" / "lerobot" / "calibration" / "robots" / "bi_so_follower"
+    bi_teleop_dir = tmp_path / ".cache" / "huggingface" / "lerobot" / "calibration" / "teleoperators" / "bi_so_leader"
+    assert (bi_robot_dir / "follower_left.json").exists()
+    assert (bi_robot_dir / "follower_right.json").exists()
+    assert (bi_teleop_dir / "leader_left.json").exists()
+    assert (bi_teleop_dir / "leader_right.json").exists()
+
+
+def test_api_preflight_uses_bimanual_defaults_for_non_single_mode(monkeypatch, tmp_path: Path):
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    monkeypatch.setattr(
+        "lestudio.routes.process.validate_calibration_file",
+        lambda path: types.SimpleNamespace(errors=[], warnings=[]),
+    )
+
+    robot_single_dir = tmp_path / ".cache" / "huggingface" / "lerobot" / "calibration" / "robots" / "so_follower"
+    teleop_single_dir = tmp_path / ".cache" / "huggingface" / "lerobot" / "calibration" / "teleoperators" / "so_leader"
+    robot_single_dir.mkdir(parents=True)
+    teleop_single_dir.mkdir(parents=True)
+    calibration = {"joint_a": {"id": 1, "drive_mode": 0, "homing_offset": 0, "range_min": 1, "range_max": 2}}
+    for name in ("follower_arm_1", "follower_arm_2"):
+        (robot_single_dir / f"{name}.json").write_text(json.dumps(calibration), encoding="utf-8")
+    for name in ("leader_arm_1", "leader_arm_2"):
+        (teleop_single_dir / f"{name}.json").write_text(json.dumps(calibration), encoding="utf-8")
+
+    left_follower = tmp_path / "follower_arm_1"
+    right_follower = tmp_path / "follower_arm_2"
+    left_leader = tmp_path / "leader_arm_1"
+    right_leader = tmp_path / "leader_arm_2"
+    for path in (left_follower, right_follower, left_leader, right_leader):
+        path.write_text("", encoding="utf-8")
+
+    app = _make_app(tmp_path)
+    endpoint = _find_endpoint(app, "/api/preflight", "POST")
+    payload = asyncio.run(
+        endpoint(
+            {
+                "robot_mode": "bimanual",
+                "left_robot_id": "bimanual_follower_left",
+                "right_robot_id": "bimanual_follower_right",
+                "left_teleop_id": "bimanual_leader_left",
+                "right_teleop_id": "bimanual_leader_right",
+                "left_follower_port": str(left_follower),
+                "right_follower_port": str(right_follower),
+                "left_leader_port": str(left_leader),
+                "right_leader_port": str(right_leader),
+                "cameras": {},
+            }
+        )
+    )
+
+    assert payload["ok"] is True
+    checks = {entry["label"]: entry["msg"] for entry in payload["checks"]}
+    assert "bimanual_follower_left.json" in checks["follower"]
+    assert "bimanual_leader_left.json" in checks["leader"]
+
+
 def test_api_eval_start_blocks_missing_real_robot_calibration(monkeypatch, tmp_path: Path):
     started = {"called": False}
+    streamer_calls = {"count": 0}
+    unlock_calls = {"count": 0}
 
     monkeypatch.setattr("lestudio.process_manager.ProcessManager.is_running", lambda self, name: False)
     monkeypatch.setattr("lestudio.process_manager.ProcessManager.conflicting_processes", lambda self, name: [])
     monkeypatch.setattr("lestudio.routes.eval._check_train_python_deps", lambda python_exe: {"ok": True})
     monkeypatch.setattr("lestudio.routes.eval._check_torchcodec_compat", lambda python_exe: {"ok": True})
     monkeypatch.setattr("lestudio.routes.eval._check_cuda_runtime_compat", lambda python_exe: (True, ""))
-    monkeypatch.setattr("lestudio.routes.eval.stop_all_streamers_for_process", lambda: None)
-    monkeypatch.setattr("lestudio.routes.eval.unlock_cameras", lambda: None)
+    monkeypatch.setattr(
+        "lestudio.routes.eval.stop_all_streamers_for_process",
+        lambda: streamer_calls.__setitem__("count", streamer_calls["count"] + 1),
+    )
+    monkeypatch.setattr(
+        "lestudio.routes.eval.unlock_cameras",
+        lambda: unlock_calls.__setitem__("count", unlock_calls["count"] + 1),
+    )
     monkeypatch.setattr(
         "lestudio.routes.eval.build_eval_args",
         lambda python_exe, data: [python_exe, "-m", "lerobot.scripts.lerobot_eval", "--env.type=gym_manipulator"],
@@ -141,6 +311,175 @@ def test_api_eval_start_blocks_missing_real_robot_calibration(monkeypatch, tmp_p
     assert payload["ok"] is False
     assert "Missing follower calibration file" in payload["error"]
     assert started["called"] is False
+    assert streamer_calls["count"] == 0
+    assert unlock_calls["count"] == 0
+
+
+def test_api_eval_start_rejects_invalid_bimanual_profile_ids(monkeypatch, tmp_path: Path):
+    monkeypatch.setattr("lestudio.process_manager.ProcessManager.is_running", lambda self, name: False)
+    monkeypatch.setattr("lestudio.process_manager.ProcessManager.conflicting_processes", lambda self, name: [])
+    monkeypatch.setattr("lestudio.routes.eval._check_train_python_deps", lambda python_exe: {"ok": True})
+    monkeypatch.setattr("lestudio.routes.eval._check_torchcodec_compat", lambda python_exe: {"ok": True})
+    monkeypatch.setattr("lestudio.routes.eval._check_cuda_runtime_compat", lambda python_exe: (True, ""))
+
+    app = _make_app(tmp_path)
+    endpoint = _find_endpoint(app, "/api/eval/start", "POST")
+    payload = asyncio.run(
+        endpoint(
+            {
+                "eval_env_type": "gym_manipulator",
+                "eval_task": "real_robot",
+                "robot_mode": "bi",
+                "eval_robot_type": "bi_so_follower",
+                "eval_teleop_type": "bi_so_leader",
+                "left_robot_id": "../evil_left",
+                "right_robot_id": "bimanual_follower_right",
+                "left_teleop_id": "bimanual_leader_left",
+                "right_teleop_id": "bimanual_leader_right",
+            }
+        )
+    )
+
+    assert payload["ok"] is False
+    assert "Invalid" in payload["error"]
+
+
+def test_api_eval_start_auto_copies_missing_bimanual_calibration(monkeypatch, tmp_path: Path):
+    started = {"called": False}
+
+    monkeypatch.setattr("lestudio.process_manager.ProcessManager.is_running", lambda self, name: False)
+    monkeypatch.setattr("lestudio.process_manager.ProcessManager.conflicting_processes", lambda self, name: [])
+    monkeypatch.setattr("lestudio.routes.eval._check_train_python_deps", lambda python_exe: {"ok": True})
+    monkeypatch.setattr("lestudio.routes.eval._check_torchcodec_compat", lambda python_exe: {"ok": True})
+    monkeypatch.setattr("lestudio.routes.eval._check_cuda_runtime_compat", lambda python_exe: (True, ""))
+    monkeypatch.setattr("lestudio.routes.eval.stop_all_streamers_for_process", lambda: None)
+    monkeypatch.setattr("lestudio.routes.eval.unlock_cameras", lambda: None)
+    monkeypatch.setattr(
+        "lestudio.routes.eval.build_eval_args",
+        lambda python_exe, data: [python_exe, "-m", "lerobot.scripts.lerobot_eval", "--env.type=gym_manipulator"],
+    )
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+    def fake_start(self, name: str, args: list[str]) -> bool:
+        started["called"] = True
+        return True
+
+    monkeypatch.setattr("lestudio.process_manager.ProcessManager.start", fake_start)
+
+    robot_single_dir = tmp_path / ".cache" / "huggingface" / "lerobot" / "calibration" / "robots" / "so_follower"
+    teleop_single_dir = tmp_path / ".cache" / "huggingface" / "lerobot" / "calibration" / "teleoperators" / "so_leader"
+    robot_single_dir.mkdir(parents=True)
+    teleop_single_dir.mkdir(parents=True)
+    robot_calibration = {"joint_a": {"id": 1, "drive_mode": 0, "homing_offset": 0, "range_min": 1, "range_max": 2}}
+    leader_calibration = {"joint_a": {"id": 1, "drive_mode": 1, "homing_offset": 0, "range_min": 1, "range_max": 2}}
+    for name in ("follower_arm_1", "follower_arm_2"):
+        (robot_single_dir / f"{name}.json").write_text(json.dumps(robot_calibration), encoding="utf-8")
+    for name in ("leader_arm_1", "leader_arm_2"):
+        (teleop_single_dir / f"{name}.json").write_text(json.dumps(leader_calibration), encoding="utf-8")
+
+    app = _make_app(tmp_path)
+    endpoint = _find_endpoint(app, "/api/eval/start", "POST")
+    payload = asyncio.run(
+        endpoint(
+            {
+                "eval_env_type": "gym_manipulator",
+                "eval_task": "real_robot",
+                "robot_mode": "bi",
+                "eval_robot_type": "bi_so_follower",
+                "eval_teleop_type": "bi_so_leader",
+                "left_robot_id": "bimanual_follower_left",
+                "right_robot_id": "bimanual_follower_right",
+                "left_teleop_id": "bimanual_leader_left",
+                "right_teleop_id": "bimanual_leader_right",
+                "left_follower_port": "/dev/follower_arm_1",
+                "right_follower_port": "/dev/follower_arm_2",
+                "left_leader_port": "/dev/leader_arm_1",
+                "right_leader_port": "/dev/leader_arm_2",
+            }
+        )
+    )
+
+    assert payload["ok"] is True
+    assert started["called"] is True
+    bi_robot_dir = tmp_path / ".cache" / "huggingface" / "lerobot" / "calibration" / "robots" / "bi_so_follower"
+    bi_teleop_dir = tmp_path / ".cache" / "huggingface" / "lerobot" / "calibration" / "teleoperators" / "bi_so_leader"
+    assert (bi_robot_dir / "bimanual_follower_left.json").exists()
+    assert (bi_robot_dir / "bimanual_follower_right.json").exists()
+    assert (bi_teleop_dir / "bimanual_leader_left.json").exists()
+    assert (bi_teleop_dir / "bimanual_leader_right.json").exists()
+
+
+def test_api_teleop_start_rejects_invalid_bimanual_profile_id(monkeypatch, tmp_path: Path):
+    monkeypatch.setattr("lestudio.process_manager.ProcessManager.is_running", lambda self, name: False)
+    monkeypatch.setattr("lestudio.process_manager.ProcessManager.conflicting_processes", lambda self, name: [])
+    monkeypatch.setattr("lestudio.routes.process.stop_all_streamers_for_process", lambda: None)
+
+    app = _make_app(tmp_path)
+    endpoint = _find_endpoint(app, "/api/teleop/start", "POST")
+    payload = asyncio.run(
+        endpoint(
+            {
+                "robot_mode": "bi",
+                "robot_type": "bi_so_follower",
+                "teleop_type": "bi_so_leader",
+                "left_robot_id": "../evil_left",
+                "right_robot_id": "bimanual_follower_right",
+                "left_teleop_id": "bimanual_leader_left",
+                "right_teleop_id": "bimanual_leader_right",
+                "left_follower_port": "/dev/follower_arm_1",
+                "right_follower_port": "/dev/follower_arm_2",
+                "left_leader_port": "/dev/leader_arm_1",
+                "right_leader_port": "/dev/leader_arm_2",
+                "cameras": {},
+            }
+        )
+    )
+
+    assert payload["ok"] is False
+    assert "Invalid follower left calibration profile id" in payload["error"]
+
+
+def test_api_calibrate_file_supports_bimanual_shared_profile_id(monkeypatch, tmp_path: Path):
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    monkeypatch.setattr(
+        "lestudio.routes.process.validate_calibration_file",
+        lambda path: types.SimpleNamespace(errors=[], warnings=[]),
+    )
+
+    bi_dir = tmp_path / ".cache" / "huggingface" / "lerobot" / "calibration" / "teleoperators" / "bi_so_leader"
+    bi_dir.mkdir(parents=True)
+    left_path = bi_dir / "leader_arm_left.json"
+    right_path = bi_dir / "leader_arm_right.json"
+    left_path.write_text(json.dumps({"left": True}), encoding="utf-8")
+    right_path.write_text(json.dumps({"right": True}), encoding="utf-8")
+
+    app = _make_app(tmp_path)
+    endpoint = _find_endpoint(app, "/api/calibrate/file", "GET")
+    payload = endpoint("bi_so_leader", "leader_arm")
+
+    assert payload["exists"] is True
+    assert payload["path"].endswith("leader_arm_{left,right}.json")
+    assert payload["size"] == left_path.stat().st_size + right_path.stat().st_size
+    assert payload["validation"]["ok"] is True
+
+
+def test_api_calibrate_delete_supports_bimanual_shared_profile_id(monkeypatch, tmp_path: Path):
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+    bi_dir = tmp_path / ".cache" / "huggingface" / "lerobot" / "calibration" / "robots" / "bi_so_follower"
+    bi_dir.mkdir(parents=True)
+    left_path = bi_dir / "follower_arm_left.json"
+    right_path = bi_dir / "follower_arm_right.json"
+    left_path.write_text(json.dumps({"left": True}), encoding="utf-8")
+    right_path.write_text(json.dumps({"right": True}), encoding="utf-8")
+
+    app = _make_app(tmp_path)
+    endpoint = _find_endpoint(app, "/api/calibrate/file", "DELETE")
+    payload = endpoint("bi_so_follower", "follower_arm")
+
+    assert payload["ok"] is True
+    assert not left_path.exists()
+    assert not right_path.exists()
 
 
 def test_api_motor_setup_start_rejects_unsupported_type(monkeypatch, tmp_path: Path):
@@ -197,7 +536,10 @@ def test_train_preflight_cache_is_used_and_invalidated(monkeypatch, tmp_path: Pa
         return False, "cuda mismatch"
 
     monkeypatch.setattr("lestudio.routes.training._check_cuda_runtime_compat", fake_cuda_compat)
-    monkeypatch.setattr("lestudio.routes.training._build_torch_install_args", lambda python_exe, cuda_tag, nightly: ["pip", "install", "torch"])
+    monkeypatch.setattr(
+        "lestudio.routes.training._build_torch_install_args",
+        lambda python_exe, cuda_tag, nightly: ["pip", "install", "torch"],
+    )
     monkeypatch.setattr("lestudio.routes.training._format_cmd", lambda args: "pip install torch")
 
     app = _make_app(tmp_path)
@@ -311,16 +653,20 @@ def test_train_colab_config_uploads_json_and_returns_link(monkeypatch, tmp_path:
 
     app = _make_app(tmp_path)
     endpoint = _find_endpoint(app, "/api/train/colab/config", "POST")
-    payload = asyncio.run(endpoint({
-        "train_repo_id": "user/my-dataset",
-        "train_policy": "act",
-        "train_steps": 12345,
-        "train_device": "mps",
-        "train_batch_size": 16,
-        "train_lr": "1e-4",
-        "train_output_repo": "user/my-policy",
-        "colab_notebook_url": "https://colab.research.google.com/github/acme/repo/blob/main/notebooks/train.ipynb?foo=bar&repo_id={repo_id}&config_path={config_path}",
-    }))
+    payload = asyncio.run(
+        endpoint(
+            {
+                "train_repo_id": "user/my-dataset",
+                "train_policy": "act",
+                "train_steps": 12345,
+                "train_device": "mps",
+                "train_batch_size": 16,
+                "train_lr": "1e-4",
+                "train_output_repo": "user/my-policy",
+                "colab_notebook_url": "https://colab.research.google.com/github/acme/repo/blob/main/notebooks/train.ipynb?foo=bar&repo_id={repo_id}&config_path={config_path}",
+            }
+        )
+    )
 
     assert payload["ok"] is True
     assert payload["repo_id"] == "user/my-dataset"
@@ -364,7 +710,10 @@ def test_train_colab_link_defaults_to_starter_notebook(monkeypatch, tmp_path: Pa
 
     assert payload["ok"] is True
     assert payload["repo_id"] == "user/my-dataset"
-    assert payload["url"] == "https://colab.research.google.com/github/TheMomentLab/lerobot-studio/blob/dev/notebooks/lerobot_train.ipynb"
+    assert (
+        payload["url"]
+        == "https://colab.research.google.com/github/TheMomentLab/lerobot-studio/blob/dev/notebooks/lerobot_train.ipynb"
+    )
 
 
 def test_train_colab_link_does_not_mutate_colab_root_url(monkeypatch, tmp_path: Path):
@@ -394,14 +743,7 @@ def test_api_checkpoints_scans_nested_train_run_layout(monkeypatch, tmp_path: Pa
     monkeypatch.chdir(tmp_path)
 
     pretrained = (
-        tmp_path
-        / "outputs"
-        / "train"
-        / "2026-02-28"
-        / "02-34-35_act"
-        / "checkpoints"
-        / "020000"
-        / "pretrained_model"
+        tmp_path / "outputs" / "train" / "2026-02-28" / "02-34-35_act" / "checkpoints" / "020000" / "pretrained_model"
     )
     pretrained.mkdir(parents=True)
     (pretrained / "config.json").write_text("{}")

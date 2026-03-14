@@ -1,4 +1,5 @@
 """Process management, preflight, teleop, record, calibrate, motor setup routes."""
+
 from __future__ import annotations
 
 import datetime
@@ -10,8 +11,21 @@ import cv2
 from fastapi import APIRouter
 
 from lestudio import device_registry
-from lestudio.command_builders import build_calibrate_args, build_motor_setup_args, build_record_args, build_teleop_args
+from lestudio import path_policy
+from lestudio.calibration_validator import (
+    CalibrationIssue,
+    CalibrationValidationResult,
+    validate_and_cross_validate,
+    validate_calibration_file,
+)
+from lestudio.command_builders import (
+    build_calibrate_args,
+    build_motor_setup_args,
+    build_record_args,
+    build_teleop_args,
+)
 from lestudio.command_builders import resolve_record_resume
+from lestudio._device_helpers import ensure_bimanual_calibration_files, get_calibration_file_path
 from lestudio.process_manager import PROCESS_NAMES
 from lestudio._streaming import (
     _streamers,
@@ -29,6 +43,62 @@ from lestudio.routes.models import ProcessCommandRequest, ProcessInputRequest
 logger = logging.getLogger(__name__)
 
 
+def _is_bimanual_mode(value: object) -> bool:
+    return str(value or "single").strip().lower() != "single"
+
+
+def _is_bimanual_calibration_type(robot_type: str) -> bool:
+    return str(robot_type or "").startswith("bi_")
+
+
+def _bimanual_member_ids(robot_id: str) -> list[str]:
+    value = str(robot_id or "").strip()
+    if value.endswith("_left") or value.endswith("_right"):
+        return [value]
+    return [f"{value}_left", f"{value}_right"] if value else []
+
+
+def _bimanual_member_paths(robot_type: str, robot_id: str) -> list[Path]:
+    return [get_calibration_file_path(robot_type, member_id) for member_id in _bimanual_member_ids(robot_id)]
+
+
+def _bimanual_display_path(robot_type: str, robot_id: str) -> str:
+    member_paths = _bimanual_member_paths(robot_type, robot_id)
+    if not member_paths:
+        return ""
+    if len(member_paths) == 1:
+        return str(member_paths[0])
+    shared_base = str(robot_id or "").strip()
+    return str(member_paths[0].parent / f"{shared_base}_{{left,right}}.json")
+
+
+def _merge_bimanual_validation(robot_type: str, robot_id: str, paths: list[Path]) -> CalibrationValidationResult:
+    merged = CalibrationValidationResult(path=_bimanual_display_path(robot_type, robot_id))
+    if len(paths) != 2:
+        return merged
+    for side, path in zip(("left", "right"), paths, strict=True):
+        result = validate_calibration_file(path)
+        merged.errors.extend(
+            CalibrationIssue(
+                severity=issue.severity,
+                joint=f"{side}.{issue.joint}" if issue.joint else side,
+                code=issue.code,
+                message=f"{side}: {issue.message}",
+            )
+            for issue in result.errors
+        )
+        merged.warnings.extend(
+            CalibrationIssue(
+                severity=issue.severity,
+                joint=f"{side}.{issue.joint}" if issue.joint else side,
+                code=issue.code,
+                message=f"{side}: {issue.message}",
+            )
+            for issue in result.warnings
+        )
+    return merged
+
+
 def _guard_process_start(state: AppState, name: str) -> dict | None:
     """Check if process can start. Returns error dict if blocked, None if OK."""
     if state.proc_mgr.is_running(name):
@@ -38,18 +108,29 @@ def _guard_process_start(state: AppState, name: str) -> dict | None:
         return {"ok": False, "error": f"Cannot start: {', '.join(conflicts)} is using shared hardware"}
     return None
 
+
 def create_router(state: AppState) -> APIRouter:
     router = APIRouter()
 
     # ─── Process Control ───────────────────────────────────────────────────────
     @router.get("/api/process/{name}/status")
     def api_proc_status(name: str):
-        return {"running": state.proc_mgr.is_running(name)}
+        return {"running": state.proc_mgr.is_running(name), "reconnected": state.proc_mgr.is_orphan(name)}
 
     @router.post("/api/process/{name}/stop")
     def api_proc_stop(name: str):
         if name not in PROCESS_NAMES:
+            logger.warning("Stop requested for unknown process: %s", name)
             return {"ok": False, "error": f"Unknown process: {name}"}
+
+        is_running = state.proc_mgr.is_running(name)
+        is_orphan = state.proc_mgr.is_orphan(name)
+        logger.info(
+            "Process stop requested: name=%s running=%s orphan=%s",
+            name,
+            is_running,
+            is_orphan,
+        )
 
         targets = [name]
         if name == "train":
@@ -58,6 +139,7 @@ def create_router(state: AppState) -> APIRouter:
         for target in targets:
             state.proc_mgr.stop(target)
         unlock_cameras()
+        logger.info("Process stopped: targets=%s", targets)
         return {"ok": True, "stopped": targets}
 
     @router.post("/api/process/{name}/input")
@@ -106,6 +188,15 @@ def create_router(state: AppState) -> APIRouter:
     async def api_preflight(data: dict):
         checks = []
         hard_error = False
+        bimanual = _is_bimanual_mode(data.get("robot_mode", "single"))
+        logger.info(
+            "Preflight requested: robot_mode=%s bimanual=%s robot_type=%s teleop_type=%s cameras=%d",
+            data.get("robot_mode"),
+            bimanual,
+            data.get("robot_type"),
+            data.get("teleop_type"),
+            len(data.get("cameras", {}) or {}),
+        )
 
         def add(status: str, label: str, msg: str):
             nonlocal hard_error
@@ -119,7 +210,11 @@ def create_router(state: AppState) -> APIRouter:
                 return
             if not os.path.exists(path):
                 if "/lerobot/" in path:
-                    add("error", label, f"{path} does not exist — apply udev rules in Status page and re-plug the device")
+                    add(
+                        "error",
+                        label,
+                        f"{path} does not exist — apply udev rules in Status page and re-plug the device",
+                    )
                 else:
                     add("error", label, f"{path} does not exist")
                 return
@@ -133,21 +228,78 @@ def create_router(state: AppState) -> APIRouter:
             if not device_id:
                 add("warn", label, "Missing device id")
                 return
-            base = Path.home() / ".cache" / "huggingface" / "lerobot" / "calibration"
-            base = Path.home() / ".cache" / "huggingface" / "lerobot" / "calibration"
-            category, dir_name = device_registry.get_calibration_path_prefix(device_type)
-            path = base / category / dir_name / f"{device_id}.json"
-            if path.exists():
-                add("ok", label, f"Found calibration file ({path.name})")
-            else:
+            path = get_calibration_file_path(device_type, device_id)
+            if not path.exists():
                 add("warn", label, f"Calibration file not found ({path.name})")
+                return
+            validation = validate_calibration_file(path)
+            if validation.errors:
+                msgs = "; ".join(e.message for e in validation.errors[:3])
+                add("error", label, f"Calibration file has errors: {msgs}")
+            elif validation.warnings:
+                msgs = "; ".join(w.message for w in validation.warnings[:3])
+                add("warn", label, f"Found calibration file ({path.name}) — {msgs}")
+            else:
+                add("ok", label, f"Found calibration file ({path.name})")
+
+        def check_bimanual_calibration(
+            device_type: str,
+            left_id: str,
+            right_id: str,
+            left_port: str,
+            right_port: str,
+            label: str,
+        ):
+            try:
+                shared_id, copied = ensure_bimanual_calibration_files(
+                    device_type,
+                    left_id,
+                    right_id,
+                    left_port,
+                    right_port,
+                    label,
+                )
+            except ValueError as exc:
+                add("error", label, str(exc))
+                return
+
+            left_path = get_calibration_file_path(device_type, f"{shared_id}_left")
+            right_path = get_calibration_file_path(device_type, f"{shared_id}_right")
+            missing = [path.name for path in (left_path, right_path) if not path.exists()]
+            if missing:
+                add("warn", label, f"Calibration file not found ({', '.join(missing)})")
+                return
+            validation_results = [validate_calibration_file(left_path), validate_calibration_file(right_path)]
+            errors = [err.message for result in validation_results for err in result.errors[:3]]
+            warnings = [warn.message for result in validation_results for warn in result.warnings[:3]]
+            copied_msg = ""
+            if copied:
+                copied_msg = " — auto-created from " + ", ".join(
+                    f"{side} {path.name}" for side, path in sorted(copied.items())
+                )
+            if errors:
+                msgs = "; ".join(errors[:3])
+                add("error", label, f"Calibration file has errors: {msgs}")
+            elif warnings:
+                msgs = "; ".join(warnings[:3])
+                add(
+                    "warn",
+                    label,
+                    f"Found calibration files ({left_path.name}, {right_path.name}){copied_msg} — {msgs}",
+                )
+            else:
+                add("ok", label, f"Found calibration files ({left_path.name}, {right_path.name}){copied_msg}")
 
         def check_camera(path: str, label: str):
             if not path:
                 return
             if not os.path.exists(path):
                 if "/lerobot/" in path:
-                    add("error", label, f"{path} does not exist — apply udev rules in Status page and re-plug the camera")
+                    add(
+                        "error",
+                        label,
+                        f"{path} does not exist — apply udev rules in Status page and re-plug the camera",
+                    )
                 else:
                     add("error", label, f"{path} does not exist")
                 return
@@ -178,11 +330,10 @@ def create_router(state: AppState) -> APIRouter:
                 if cap is not None:
                     cap.release()
 
-        mode = data.get("robot_mode", "single")
-        # robot_type/teleop_type가 config에 있으면 사용, 없으면 SO-101 기본값 (하위 호환)
-        robot_type = data.get("robot_type", "so101_follower")
-        teleop_type = data.get("teleop_type", "so101_leader")
-        if mode == "single":
+        is_bimanual = bimanual
+        robot_type = data.get("robot_type", "bi_so_follower" if is_bimanual else "so101_follower")
+        teleop_type = data.get("teleop_type", "bi_so_leader" if is_bimanual else "so101_leader")
+        if not is_bimanual:
             check_port(data.get("follower_port", ""), "Follower arm port")
             check_port(data.get("leader_port", ""), "Leader arm port")
             check_calibration(robot_type, data.get("robot_id", ""), "Follower calibration")
@@ -192,51 +343,215 @@ def create_router(state: AppState) -> APIRouter:
             check_port(data.get("right_follower_port", ""), "Right follower arm port")
             check_port(data.get("left_leader_port", ""), "Left leader arm port")
             check_port(data.get("right_leader_port", ""), "Right leader arm port")
-            check_calibration(robot_type, data.get("left_robot_id", ""), "Left follower calibration")
-            check_calibration(robot_type, data.get("right_robot_id", ""), "Right follower calibration")
-            check_calibration(teleop_type, data.get("left_teleop_id", ""), "Left leader calibration")
-            check_calibration(teleop_type, data.get("right_teleop_id", ""), "Right leader calibration")
+            check_bimanual_calibration(
+                robot_type,
+                data.get("left_robot_id", ""),
+                data.get("right_robot_id", ""),
+                data.get("left_follower_port", ""),
+                data.get("right_follower_port", ""),
+                "follower",
+            )
+            check_bimanual_calibration(
+                teleop_type,
+                data.get("left_teleop_id", ""),
+                data.get("right_teleop_id", ""),
+                data.get("left_leader_port", ""),
+                data.get("right_leader_port", ""),
+                "leader",
+            )
 
         cameras = data.get("cameras", {}) or {}
         for name, path in cameras.items():
             check_camera(path, f"Camera {name}")
+
+        ok_count = sum(1 for c in checks if c["status"] == "ok")
+        warn_count = sum(1 for c in checks if c["status"] == "warn")
+        err_count = sum(1 for c in checks if c["status"] == "error")
+        logger.info(
+            "Preflight result: pass=%s ok=%d warn=%d error=%d",
+            not hard_error,
+            ok_count,
+            warn_count,
+            err_count,
+        )
+        if hard_error:
+            failed = [c for c in checks if c["status"] == "error"]
+            for f in failed:
+                logger.warning("Preflight FAIL: [%s] %s", f["label"], f["msg"])
 
         return {"ok": not hard_error, "checks": checks}
 
     # ─── Teleop ────────────────────────────────────────────────────────────────
     @router.post("/api/teleop/start")
     async def api_teleop_start(data: dict):
+        bimanual = _is_bimanual_mode(data.get("robot_mode"))
+        logger.info(
+            "Teleop start requested: robot_mode=%s bimanual=%s robot_type=%s teleop_type=%s",
+            data.get("robot_mode"),
+            bimanual,
+            data.get("robot_type"),
+            data.get("teleop_type"),
+        )
+        if bimanual:
+            logger.info(
+                "Teleop bimanual ports: left_follower=%s right_follower=%s left_leader=%s right_leader=%s",
+                data.get("left_follower_port"),
+                data.get("right_follower_port"),
+                data.get("left_leader_port"),
+                data.get("right_leader_port"),
+            )
+            logger.info(
+                "Teleop bimanual IDs: left_robot=%s right_robot=%s left_teleop=%s right_teleop=%s",
+                data.get("left_robot_id"),
+                data.get("right_robot_id"),
+                data.get("left_teleop_id"),
+                data.get("right_teleop_id"),
+            )
+        else:
+            logger.info(
+                "Teleop single-arm: follower_port=%s leader_port=%s robot_id=%s teleop_id=%s",
+                data.get("follower_port"),
+                data.get("leader_port"),
+                data.get("robot_id"),
+                data.get("teleop_id"),
+            )
+        cameras = data.get("cameras", {})
+        if cameras:
+            logger.info("Teleop cameras: %s", cameras)
         guard = _guard_process_start(state, "teleop")
         if guard:
+            logger.warning("Teleop start blocked: %s", guard.get("error"))
             return guard
         _get_motor_bridge().disconnect()  # 모터 모니터가 포트를 점유 중이면 반환
         stop_all_streamers_for_process()
-        args = build_teleop_args(state.python_exe, data)
-        return {"ok": state.proc_mgr.start("teleop", args)}
+        if bimanual:
+            try:
+                ensure_bimanual_calibration_files(
+                    str(data.get("robot_type", "bi_so_follower") or "bi_so_follower"),
+                    str(data.get("left_robot_id", "")),
+                    str(data.get("right_robot_id", "")),
+                    str(data.get("left_follower_port", "")),
+                    str(data.get("right_follower_port", "")),
+                    "follower",
+                )
+                ensure_bimanual_calibration_files(
+                    str(data.get("teleop_type", "bi_so_leader") or "bi_so_leader"),
+                    str(data.get("left_teleop_id", "")),
+                    str(data.get("right_teleop_id", "")),
+                    str(data.get("left_leader_port", "")),
+                    str(data.get("right_leader_port", "")),
+                    "leader",
+                )
+                logger.info("Teleop bimanual calibration ensure completed")
+            except ValueError as e:
+                logger.error("Teleop bimanual calibration ensure failed: %s", e)
+                return {"ok": False, "error": str(e)}
+        try:
+            args = build_teleop_args(state.python_exe, data)
+        except ValueError as e:
+            logger.error("Teleop build_args failed: %s", e)
+            return {"ok": False, "error": str(e)}
+        logger.debug("Teleop command: %s", args)
+        ok = state.proc_mgr.start("teleop", args)
+        if ok:
+            logger.info("Teleop process started successfully")
+        else:
+            logger.error("Teleop process failed to start")
+        return {"ok": ok}
 
     # ─── Record ────────────────────────────────────────────────────────────────
     @router.post("/api/record/start")
     async def api_record_start(data: dict):
+        bimanual = _is_bimanual_mode(data.get("robot_mode"))
+        logger.info(
+            "Record start requested: repo_id=%s task=%s num_episodes=%s robot_mode=%s bimanual=%s",
+            data.get("record_repo_id"),
+            data.get("record_task"),
+            data.get("record_num_episodes"),
+            data.get("robot_mode"),
+            bimanual,
+        )
+        if bimanual:
+            logger.info(
+                "Record bimanual ports: left_follower=%s right_follower=%s left_leader=%s right_leader=%s",
+                data.get("left_follower_port"),
+                data.get("right_follower_port"),
+                data.get("left_leader_port"),
+                data.get("right_leader_port"),
+            )
+        else:
+            logger.info(
+                "Record single-arm: follower_port=%s leader_port=%s robot_id=%s teleop_id=%s",
+                data.get("follower_port"),
+                data.get("leader_port"),
+                data.get("robot_id"),
+                data.get("teleop_id"),
+            )
+        cameras = data.get("cameras", {})
+        if cameras:
+            logger.info("Record cameras: %s", cameras)
         _get_motor_bridge().disconnect()  # 모터 모니터가 포트를 점유 중이면 반환
         guard = _guard_process_start(state, "record")
         if guard:
+            logger.warning("Record start blocked: %s", guard.get("error"))
             return guard
         stop_all_streamers_for_process()
         cfg = data
+        if bimanual:
+            try:
+                ensure_bimanual_calibration_files(
+                    str(cfg.get("robot_type", "bi_so_follower") or "bi_so_follower"),
+                    str(cfg.get("left_robot_id", "")),
+                    str(cfg.get("right_robot_id", "")),
+                    str(cfg.get("left_follower_port", "")),
+                    str(cfg.get("right_follower_port", "")),
+                    "follower",
+                )
+                ensure_bimanual_calibration_files(
+                    str(cfg.get("teleop_type", "bi_so_leader") or "bi_so_leader"),
+                    str(cfg.get("left_teleop_id", "")),
+                    str(cfg.get("right_teleop_id", "")),
+                    str(cfg.get("left_leader_port", "")),
+                    str(cfg.get("right_leader_port", "")),
+                    "leader",
+                )
+                logger.info("Record bimanual calibration ensure completed")
+            except ValueError as e:
+                logger.error("Record bimanual calibration ensure failed: %s", e)
+                return {"ok": False, "error": str(e)}
         # Inject camera settings (resolution/fps) from user's config into record args
         cam_settings = _get_cam_settings(state.config_path)
         cfg["record_cam_width"] = cam_settings.get("width", 640)
         cfg["record_cam_height"] = cam_settings.get("height", 480)
         cfg["record_cam_fps"] = cam_settings.get("fps", 30)
         requested_resume, resume_enabled = resolve_record_resume(cfg)
-        args = build_record_args(state.python_exe, cfg, resume_enabled)
+        logger.info(
+            "Record resume: requested=%s enabled=%s cam=%dx%d@%dfps",
+            requested_resume,
+            resume_enabled,
+            cfg["record_cam_width"],
+            cfg["record_cam_height"],
+            cfg["record_cam_fps"],
+        )
+        try:
+            args = build_record_args(state.python_exe, cfg, resume_enabled)
+        except ValueError as e:
+            logger.error("Record build_args failed: %s", e)
+            return {"ok": False, "error": str(e)}
+        logger.debug("Record command: %s", args)
         ok = state.proc_mgr.start("record", args)
         if ok:
-            state.append_history("record_start", {
-                "repo_id": data.get("record_repo_id", ""),
-                "task": data.get("record_task", ""),
-                "num_episodes": data.get("record_num_episodes", ""),
-            })
+            logger.info("Record process started successfully")
+            state.append_history(
+                "record_start",
+                {
+                    "repo_id": data.get("record_repo_id", ""),
+                    "task": data.get("record_task", ""),
+                    "num_episodes": data.get("record_num_episodes", ""),
+                },
+            )
+        else:
+            logger.error("Record process failed to start")
         return {
             "ok": ok,
             "resume_requested": requested_resume,
@@ -246,59 +561,134 @@ def create_router(state: AppState) -> APIRouter:
     # ─── Calibrate ─────────────────────────────────────────────────────────────
     @router.get("/api/calibrate/file")
     def api_calibrate_file(robot_type: str, robot_id: str):
+        if _is_bimanual_calibration_type(robot_type):
+            paths = _bimanual_member_paths(robot_type, robot_id)
+            if len(paths) == 2 and all(path.exists() for path in paths):
+                latest_mtime = max(path.stat().st_mtime for path in paths)
+                validation = _merge_bimanual_validation(robot_type, robot_id, paths)
+                return {
+                    "exists": True,
+                    "path": _bimanual_display_path(robot_type, robot_id),
+                    "modified": datetime.datetime.fromtimestamp(latest_mtime).strftime("%Y-%m-%d %H:%M:%S"),
+                    "size": sum(path.stat().st_size for path in paths),
+                    "validation": validation.to_dict(),
+                }
+            return {"exists": False, "path": _bimanual_display_path(robot_type, robot_id)}
 
-        base = Path.home() / ".cache" / "huggingface" / "lerobot" / "calibration"
         category, dir_name = device_registry.get_calibration_path_prefix(robot_type)
-        path = base / category / dir_name / f"{robot_id}.json"
+        path = path_policy.calibration_file(category, dir_name, robot_id)
         if path.exists():
             mtime = path.stat().st_mtime
-            mdate = datetime.datetime.fromtimestamp(mtime).strftime('%Y-%m-%d %H:%M:%S')
+            mdate = datetime.datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M:%S")
+            validation = validate_calibration_file(path)
             return {
                 "exists": True,
                 "path": str(path),
                 "modified": mdate,
                 "size": path.stat().st_size,
+                "validation": validation.to_dict(),
             }
         return {"exists": False, "path": str(path)}
 
     @router.get("/api/calibrate/list")
     def api_calibrate_list():
 
-        base = Path.home() / ".cache" / "huggingface" / "lerobot" / "calibration"
+        _DIR_TO_TYPE: dict[tuple[str, str], str] = {
+            ("robots", "so_follower"): "so101_follower",
+            ("robots", "bi_so_follower"): "bi_so_follower",
+            ("robots", "koch_follower"): "koch_follower",
+            ("robots", "omx_follower"): "omx_follower",
+            ("robots", "openarm_follower"): "openarm_follower",
+            ("robots", "bi_openarm_follower"): "bi_openarm_follower",
+            ("robots", "lekiwi"): "lekiwi",
+            ("teleoperators", "so_leader"): "so101_leader",
+            ("teleoperators", "bi_so_leader"): "bi_so_leader",
+            ("teleoperators", "koch_leader"): "koch_leader",
+            ("teleoperators", "omx_leader"): "omx_leader",
+            ("teleoperators", "openarm_leader"): "openarm_leader",
+            ("teleoperators", "bi_openarm_leader"): "bi_openarm_leader",
+        }
+
+        base = path_policy.calibration_root()
         files = []
         if base.exists():
             for p in base.rglob("*.json"):
                 if not p.is_file():
                     continue
                 mtime = p.stat().st_mtime
-                mdate = datetime.datetime.fromtimestamp(mtime).strftime('%Y-%m-%d %H:%M:%S')
+                mdate = datetime.datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M:%S")
                 rel = p.relative_to(base)
-                path_str = str(rel)
+                parts = rel.parts
                 guessed_type = "so101_follower"
-                if "leader" in path_str:
-                    guessed_type = "so100_leader" if "100" in p.stem else "so101_leader"
-                else:
-                    guessed_type = "so100_follower" if "100" in p.stem else "so101_follower"
-                files.append({
-                    "id": p.stem,
-                    "rel_path": path_str,
-                    "modified": mdate,
-                    "timestamp": mtime,
-                    "size": p.stat().st_size,
-                    "guessed_type": guessed_type,
-                })
+                if len(parts) >= 3:
+                    guessed_type = _DIR_TO_TYPE.get((parts[0], parts[1]), guessed_type)
+                files.append(
+                    {
+                        "id": p.stem,
+                        "rel_path": str(rel),
+                        "modified": mdate,
+                        "timestamp": mtime,
+                        "size": p.stat().st_size,
+                        "guessed_type": guessed_type,
+                    }
+                )
         files.sort(key=lambda x: x["timestamp"], reverse=True)
         return {"files": files}
 
-    @router.delete("/api/calibrate/file")
-    def api_calibrate_delete(robot_type: str, robot_id: str):
-
-        base = Path.home() / ".cache" / "huggingface" / "lerobot" / "calibration"
+    @router.get("/api/calibrate/validate")
+    def api_calibrate_validate(robot_type: str, robot_id: str):
         try:
             category, dir_name = device_registry.get_calibration_path_prefix(robot_type)
         except (TypeError, ValueError) as e:
             return {"ok": False, "error": f"Unknown robot_type '{robot_type}': {e}"}
-        path = base / category / dir_name / f"{robot_id}.json"
+        path = path_policy.calibration_file(category, dir_name, robot_id)
+        result = validate_calibration_file(path)
+        return result.to_dict()
+
+    @router.post("/api/calibrate/validate-pair")
+    async def api_calibrate_validate_pair(data: dict):  # type: ignore[type-arg]
+        robot_type = data.get("robot_type", "")
+        robot_id = data.get("robot_id", "")
+        teleop_type = data.get("teleop_type", "")
+        teleop_id = data.get("teleop_id", "")
+
+        if not robot_type or not robot_id or not teleop_type or not teleop_id:
+            return {"ok": False, "error": "All of robot_type, robot_id, teleop_type, teleop_id are required."}
+
+        try:
+            f_cat, f_dir = device_registry.get_calibration_path_prefix(robot_type)
+            l_cat, l_dir = device_registry.get_calibration_path_prefix(teleop_type)
+        except (TypeError, ValueError) as e:
+            return {"ok": False, "error": f"Unknown device type: {e}"}
+
+        follower_path = path_policy.calibration_file(f_cat, f_dir, robot_id)
+        leader_path = path_policy.calibration_file(l_cat, l_dir, teleop_id)
+
+        result = validate_and_cross_validate(leader_path, follower_path)
+        return result
+
+    @router.delete("/api/calibrate/file")
+    def api_calibrate_delete(robot_type: str, robot_id: str):
+        try:
+            category, dir_name = device_registry.get_calibration_path_prefix(robot_type)
+        except (TypeError, ValueError) as e:
+            return {"ok": False, "error": f"Unknown robot_type '{robot_type}': {e}"}
+
+        if _is_bimanual_calibration_type(robot_type):
+            deleted_any = False
+            for path in _bimanual_member_paths(robot_type, robot_id):
+                if not path.exists():
+                    continue
+                try:
+                    path.unlink()
+                    deleted_any = True
+                except OSError as e:
+                    return {"ok": False, "error": str(e)}
+            if deleted_any:
+                return {"ok": True}
+            return {"ok": False, "error": "File not found"}
+
+        path = path_policy.calibration_file(category, dir_name, robot_id)
         if path.exists():
             try:
                 path.unlink()
@@ -309,27 +699,58 @@ def create_router(state: AppState) -> APIRouter:
 
     @router.post("/api/calibrate/start")
     async def api_calibrate_start(data: dict):
+        logger.info(
+            "Calibrate start requested: robot_type=%s robot_id=%s port=%s",
+            data.get("calibrate_robot_type"),
+            data.get("calibrate_robot_id"),
+            data.get("calibrate_port"),
+        )
         _get_motor_bridge().disconnect()  # 모터 모니터가 포트를 점유 중이면 반환
         guard = _guard_process_start(state, "calibrate")
         if guard:
+            logger.warning("Calibrate start blocked: %s", guard.get("error"))
             return guard
         args = build_calibrate_args(state.python_exe, data)
+        logger.debug("Calibrate command: %s", args)
         ok = state.proc_mgr.start("calibrate", args)
         if ok:
-            state.append_history("calibrate_start", {
-                "robot_type": data.get("calibrate_robot_type", ""),
-                "robot_id": data.get("calibrate_robot_id", ""),
-            })
+            logger.info("Calibrate process started successfully")
+            state.append_history(
+                "calibrate_start",
+                {
+                    "robot_type": data.get("calibrate_robot_type", ""),
+                    "robot_id": data.get("calibrate_robot_id", ""),
+                },
+            )
+        else:
+            logger.error("Calibrate process failed to start")
         return {"ok": ok}
 
     # ─── Motor Setup ───────────────────────────────────────────────────────────
     @router.post("/api/motor_setup/start")
     async def api_motor_setup_start(data: dict):
+        logger.info(
+            "Motor setup start requested: motor_type=%s port=%s brand=%s",
+            data.get("motor_type"),
+            data.get("motor_port"),
+            data.get("motor_brand"),
+        )
         _get_motor_bridge().disconnect()  # 모터 모니터가 포트를 점유 중이면 반환
         guard = _guard_process_start(state, "motor_setup")
         if guard:
+            logger.warning("Motor setup start blocked: %s", guard.get("error"))
             return guard
-        args = build_motor_setup_args(state.python_exe, data)
-        return {"ok": state.proc_mgr.start("motor_setup", args)}
+        try:
+            args = build_motor_setup_args(state.python_exe, data)
+        except ValueError as e:
+            logger.error("Motor setup build_args failed: %s", e)
+            return {"ok": False, "error": str(e)}
+        logger.debug("Motor setup command: %s", args)
+        ok = state.proc_mgr.start("motor_setup", args)
+        if ok:
+            logger.info("Motor setup process started successfully")
+        else:
+            logger.error("Motor setup process failed to start")
+        return {"ok": ok}
 
     return router
