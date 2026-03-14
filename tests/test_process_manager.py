@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import queue
 from pathlib import Path
 
 from lestudio.process_manager import ProcessManager, _extract_train_metric, _parse_compact_int, _translate_error_line
@@ -50,31 +49,28 @@ def test_conflicting_processes_dedupes_and_respects_running(monkeypatch):
 
 def test_flush_queue_removes_entries_for_target_process():
     pm = ProcessManager(Path("/tmp/lerobot-src"))
-    pm.out_q.put_nowait({"process": "train", "line": "1"})
-    pm.out_q.put_nowait({"process": "teleop", "line": "2"})
-    pm.flush_queue("train")
+    pm.event_buffer.push({"process": "train", "line": "1"})
+    pm.event_buffer.push({"process": "teleop", "line": "2"})
+    pm.event_buffer.flush_process("train")
 
-    got = []
-    while True:
-        try:
-            got.append(pm.out_q.get_nowait())
-        except queue.Empty:
-            break
-    assert got == [{"process": "teleop", "line": "2"}]
+    sub_id = pm.event_buffer.subscribe()
+    # Reset cursor to beginning
+    pm.event_buffer._subscribers[sub_id] = 0
+    got = pm.event_buffer.poll(sub_id)
+    pm.event_buffer.unsubscribe(sub_id)
+    assert len(got) == 1
+    assert got[0]["process"] == "teleop"
 
 
 def test_push_translation_deduplicates():
     pm = ProcessManager(Path("/tmp/lerobot-src"))
+    sub_id = pm.event_buffer.subscribe()
     pm._push_translation("train", "same")
     pm._push_translation("train", "same")
     pm._push_translation("train", "other")
 
-    items = []
-    while True:
-        try:
-            items.append(pm.out_q.get_nowait())
-        except queue.Empty:
-            break
+    items = pm.event_buffer.poll(sub_id)
+    pm.event_buffer.unsubscribe(sub_id)
     assert len(items) == 2
     assert items[0]["kind"] == "translation"
     assert items[1]["line"].endswith("other")
@@ -82,18 +78,24 @@ def test_push_translation_deduplicates():
 
 def test_process_line_replaces_latest_teleop_debug_snapshot():
     pm = ProcessManager(Path("/tmp/lerobot-src"))
+    sub_id = pm.event_buffer.subscribe()
     pm._process_line("teleop", '[LESTUDIO_TELEOP_DEBUG] {"loop_index":1}')
 
-    item = pm.out_q.get_nowait()
-    assert item["replace"] == "teleop:teleop_debug"
+    items = pm.event_buffer.poll(sub_id)
+    pm.event_buffer.unsubscribe(sub_id)
+    assert len(items) == 1
+    assert items[0]["replace"] == "teleop:teleop_debug"
 
 
 def test_process_line_replaces_latest_teleop_debug_meta():
     pm = ProcessManager(Path("/tmp/lerobot-src"))
+    sub_id = pm.event_buffer.subscribe()
     pm._process_line("teleop", '[LESTUDIO_TELEOP_DEBUG_META] {"debug_enabled":true}')
 
-    item = pm.out_q.get_nowait()
-    assert item["replace"] == "teleop:teleop_debug_meta"
+    items = pm.event_buffer.poll(sub_id)
+    pm.event_buffer.unsubscribe(sub_id)
+    assert len(items) == 1
+    assert items[0]["replace"] == "teleop:teleop_debug_meta"
 
 
 def test_open_session_log_writes_latest_pointer(tmp_path: Path):
@@ -135,6 +137,7 @@ def test_flush_partial_buffer_writes_progress_to_session_log(tmp_path: Path):
 
 def test_start_handles_popen_failure(monkeypatch):
     pm = ProcessManager(Path("/tmp/lerobot-src"))
+    sub_id = pm.event_buffer.subscribe()
 
     def boom(*args, **kwargs):
         raise RuntimeError("fail")
@@ -142,8 +145,9 @@ def test_start_handles_popen_failure(monkeypatch):
     monkeypatch.setattr("subprocess.Popen", boom)
     ok = pm.start("train", ["python", "-V"])
     assert ok is False
-    item = pm.out_q.get_nowait()
-    assert item["kind"] == "error"
+    items = pm.event_buffer.poll(sub_id)
+    pm.event_buffer.unsubscribe(sub_id)
+    assert any(item["kind"] == "error" for item in items)
 
 
 def test_send_input_returns_false_for_not_running_process():
