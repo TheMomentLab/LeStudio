@@ -34,7 +34,7 @@ def register_routes(router: APIRouter, state: AppState):
 
     @router.get("/api/datasets")
     def api_datasets_list():
-        return dataset_service.list_local_datasets()
+        return dataset_service.list_datasets()
 
     @router.get("/api/datasets/{user}/{repo}")
     def api_dataset_info(user: str, repo: str):
@@ -70,4 +70,4 @@ def register_routes(router: APIRouter, state: AppState):
 
     @router.get("/api/datasets/{user}/{repo}/quality")
     def api_dataset_quality(user: str, repo: str):
-        return dataset_service.check_dataset_quality(user, repo)
+        return dataset_service.run_quality_check(user, repo)

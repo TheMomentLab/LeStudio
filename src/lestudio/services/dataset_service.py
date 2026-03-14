@@ -31,7 +31,7 @@ def discover_parquet_files(source_path: Path) -> list[Path]:
     return sorted(data_dir.glob("**/*.parquet"))
 
 
-def list_local_datasets() -> dict[str, Any]:
+def list_datasets() -> dict[str, Any]:
     base = path_policy.lerobot_cache_root()
     datasets = []
     if base.exists():
@@ -264,7 +264,7 @@ def delete_dataset(user: str, repo: str) -> dict[str, Any]:
         return {"ok": False, "status_code": 500, "detail": f"Failed to delete dataset: {exc}"}
 
 
-def check_dataset_quality(user: str, repo: str) -> dict[str, Any]:
+def run_quality_check(user: str, repo: str) -> dict[str, Any]:
     base = path_policy.dataset_local_dir(f"{user}/{repo}")
     info_path = base / "meta" / "info.json"
     if not info_path.exists():
@@ -457,6 +457,14 @@ def check_dataset_quality(user: str, repo: str) -> dict[str, Any]:
     }
 
 
+def list_local_datasets() -> dict[str, Any]:
+    return list_datasets()
+
+
+def check_dataset_quality(user: str, repo: str) -> dict[str, Any]:
+    return run_quality_check(user, repo)
+
+
 def resolve_hf_token(token_file: Path) -> tuple[str, str]:
     token_env = (os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_HUB_TOKEN") or "").strip()
     if token_env:
@@ -481,6 +489,14 @@ def mask_token(token: str) -> str:
     if len(token) <= 8:
         return "*" * len(token)
     return f"{token[:4]}...{token[-4:]}"
+
+
+def _resolve_hf_token_file(token_file: Path | None = None, config_dir: Path | None = None) -> Path:
+    if token_file is not None:
+        return token_file
+    if config_dir is not None:
+        return config_dir / "hf_token"
+    return path_policy.config_dir_default() / "hf_token"
 
 
 def start_dataset_push_job(
@@ -614,7 +630,8 @@ def get_push_job_status(jobs_state: DatasetJobState, job_id: str) -> dict[str, A
         return {"ok": True, **job}
 
 
-def get_hf_token_status(token_file: Path) -> dict[str, Any]:
+def get_hf_token_status(token_file: Path | None = None, config_dir: Path | None = None) -> dict[str, Any]:
+    token_file = _resolve_hf_token_file(token_file, config_dir=config_dir)
     token, source = resolve_hf_token(token_file)
     return {
         "ok": True,
@@ -624,7 +641,8 @@ def get_hf_token_status(token_file: Path) -> dict[str, Any]:
     }
 
 
-def set_hf_token(token_file: Path, token: str) -> dict[str, Any]:
+def set_hf_token(token_file: Path | None, token: str, config_dir: Path | None = None) -> dict[str, Any]:
+    token_file = _resolve_hf_token_file(token_file, config_dir=config_dir)
     token_value = token.strip()
     if not token_value:
         return {"ok": False, "error": "token is required"}
@@ -643,7 +661,8 @@ def set_hf_token(token_file: Path, token: str) -> dict[str, Any]:
         return {"ok": False, "error": str(exc)}
 
 
-def clear_hf_token(token_file: Path) -> dict[str, Any]:
+def clear_hf_token(token_file: Path | None = None, config_dir: Path | None = None) -> dict[str, Any]:
+    token_file = _resolve_hf_token_file(token_file, config_dir=config_dir)
     os.environ.pop("HF_TOKEN", None)
     os.environ.pop("HUGGINGFACE_HUB_TOKEN", None)
     try:
@@ -655,7 +674,8 @@ def clear_hf_token(token_file: Path) -> dict[str, Any]:
     return {"ok": True, "has_token": False, "source": "none"}
 
 
-def hf_whoami(token_file: Path) -> dict[str, Any]:
+def hf_whoami(token_file: Path | None = None, config_dir: Path | None = None) -> dict[str, Any]:
+    token_file = _resolve_hf_token_file(token_file, config_dir=config_dir)
     token, _ = resolve_hf_token(token_file)
     if not token:
         _WHOAMI_CACHE.clear()
@@ -718,7 +738,8 @@ def hf_whoami(token_file: Path) -> dict[str, Any]:
         return {"ok": False, "username": None, "error": "auth_failed"}
 
 
-def hf_my_datasets(token_file: Path, limit: int = 50) -> dict[str, Any]:
+def hf_my_datasets(token_file: Path | None = None, limit: int = 50, config_dir: Path | None = None) -> dict[str, Any]:
+    token_file = _resolve_hf_token_file(token_file, config_dir=config_dir)
     token, _ = resolve_hf_token(token_file)
     if not token:
         return {"ok": False, "error": "no_token", "datasets": []}
@@ -1000,6 +1021,175 @@ def bulk_set_episode_tags(config_dir: Path, user: str, repo: str, updates_raw: A
 
     save_tags(tags_file, tags)
     return {"ok": True, "applied": len(normalized)}
+
+
+def delete_episode_tag(config_dir: Path, user: str, repo: str, episode_raw: Any) -> dict[str, Any]:
+    return set_episode_tag(config_dir, user, repo, episode_raw, "untagged")
+
+
+def bulk_delete_episode_tags(config_dir: Path, user: str, repo: str, episode_indices_raw: Any) -> dict[str, Any]:
+    if not isinstance(episode_indices_raw, list) or len(episode_indices_raw) == 0:
+        return {"ok": False, "error": "episode_indices must be a non-empty list"}
+
+    updates: list[dict[str, Any]] = []
+    for idx, raw in enumerate(episode_indices_raw):
+        try:
+            ep_idx = int(str(raw))
+        except Exception:
+            return {"ok": False, "error": f"episode_indices[{idx}] must be an integer"}
+        if ep_idx < 0:
+            return {"ok": False, "error": f"episode_indices[{idx}] must be >= 0"}
+        updates.append({"episode_index": ep_idx, "tag": "untagged"})
+
+    return bulk_set_episode_tags(config_dir, user, repo, updates)
+
+
+def auto_flag_episode_stats(
+    episodes_raw: Any,
+    min_frames: int = 30,
+    min_movement: float = 0.01,
+    max_jerk_score: float = 5.0,
+) -> dict[str, Any]:
+    if not isinstance(episodes_raw, list):
+        return {"ok": False, "error": "episodes must be a list"}
+
+    flagged: list[dict[str, Any]] = []
+    for item in episodes_raw:
+        if not isinstance(item, dict):
+            continue
+
+        try:
+            ep_idx = int(item.get("episode_index", 0))
+        except Exception:
+            continue
+
+        try:
+            frames = int(item.get("frames", 0) or 0)
+        except Exception:
+            frames = 0
+        try:
+            movement = float(item.get("movement", 0.0) or 0.0)
+        except Exception:
+            movement = 0.0
+        try:
+            jerk_score = float(item.get("jerk_score", 0.0) or 0.0)
+        except Exception:
+            jerk_score = 0.0
+
+        reasons: list[str] = []
+        if frames < int(min_frames):
+            reasons.append("frames")
+        if movement < float(min_movement):
+            reasons.append("movement")
+        if jerk_score > float(max_jerk_score):
+            reasons.append("jerk_score")
+
+        if reasons:
+            flagged.append(
+                {
+                    "episode_index": ep_idx,
+                    "frames": frames,
+                    "movement": round(movement, 4),
+                    "jerk_score": round(jerk_score, 4),
+                    "reasons": reasons,
+                }
+            )
+
+    flagged.sort(key=lambda x: int(x.get("episode_index", 0)))
+    return {
+        "ok": True,
+        "thresholds": {
+            "min_frames": int(min_frames),
+            "min_movement": float(min_movement),
+            "max_jerk_score": float(max_jerk_score),
+        },
+        "flagged": flagged,
+        "flagged_count": len(flagged),
+        "total_episodes": len(episodes_raw),
+    }
+
+
+def get_auto_flag_suggestions(
+    user: str,
+    repo: str,
+    min_frames: int = 30,
+    min_movement: float = 0.01,
+    max_jerk_score: float = 5.0,
+) -> dict[str, Any]:
+    stats_result = get_episode_stats(user, repo)
+    if not bool(stats_result.get("ok", False)):
+        return stats_result
+
+    flagged_result = auto_flag_episode_stats(
+        stats_result.get("episodes", []),
+        min_frames=min_frames,
+        min_movement=min_movement,
+        max_jerk_score=max_jerk_score,
+    )
+    if not bool(flagged_result.get("ok", False)):
+        return flagged_result
+
+    return {
+        "ok": True,
+        "cached": bool(stats_result.get("cached", False)),
+        **flagged_result,
+    }
+
+
+def _normalize_episode_indices(total_episodes: int, episode_indices_raw: Any) -> dict[str, Any]:
+    if not isinstance(episode_indices_raw, list) or len(episode_indices_raw) == 0:
+        return {"ok": False, "status_code": 400, "error": "episode_indices must be a non-empty array"}
+
+    values: list[int] = []
+    for idx, raw in enumerate(episode_indices_raw):
+        try:
+            values.append(int(str(raw)))
+        except Exception:
+            return {"ok": False, "status_code": 400, "error": f"episode_indices[{idx}] must be an integer"}
+
+    normalized = sorted(set(values))
+    invalid = [i for i in normalized if i < 0 or i >= total_episodes]
+    if invalid:
+        preview = ", ".join(str(i) for i in invalid[:20])
+        return {
+            "ok": False,
+            "status_code": 400,
+            "error": f"episode_indices out of range [0, {max(0, total_episodes - 1)}]: {preview}",
+        }
+
+    return {"ok": True, "episode_indices": normalized}
+
+
+def build_episode_delete_plan(user: str, repo: str, episode_indices_raw: Any) -> dict[str, Any]:
+    source_repo_id = f"{user}/{repo}"
+    source_path = path_policy.dataset_local_dir(source_repo_id)
+    info_path = source_path / "meta" / "info.json"
+    if not info_path.exists():
+        return {"ok": False, "status_code": 404, "error": f"Dataset {source_repo_id} not found locally"}
+
+    try:
+        info = json.loads(info_path.read_text())
+        total_episodes = int(info.get("total_episodes", 0))
+    except Exception as exc:
+        return {"ok": False, "status_code": 500, "error": f"Failed to parse info.json: {exc}"}
+
+    normalized = _normalize_episode_indices(total_episodes, episode_indices_raw)
+    if not bool(normalized.get("ok", False)):
+        return normalized
+
+    delete_indices = list(normalized["episode_indices"])
+    if len(delete_indices) >= total_episodes:
+        return {"ok": False, "status_code": 400, "error": "cannot delete all episodes"}
+
+    keep_lookup = set(delete_indices)
+    keep_indices = [i for i in range(total_episodes) if i not in keep_lookup]
+    return {
+        "ok": True,
+        "source_repo_id": source_repo_id,
+        "delete_indices": delete_indices,
+        "keep_indices": keep_indices,
+        "total_episodes": total_episodes,
+    }
 
 
 def compute_stats_signature(source_path: Path, info_path: Path, pq_files: list[Path]) -> str:
@@ -1636,3 +1826,63 @@ def cancel_derive_job(jobs_state: DatasetJobState, job_id: str) -> dict[str, Any
             except Exception:
                 pass
     return {"ok": True, "job_id": job_id}
+
+
+def hub_search(query: str = "", limit: int = 20, tag: str = "lerobot") -> dict[str, Any]:
+    return hub_search_datasets(query=query, limit=limit, tag=tag)
+
+
+def hub_download_start(jobs_state: DatasetJobState, repo_id: str) -> dict[str, Any]:
+    return start_hub_download_job(jobs_state, repo_id)
+
+
+def hub_push_start(
+    jobs_state: DatasetJobState,
+    repo_id: str,
+    token: str = "",
+    target_repo_id: str = "",
+    private: bool = False,
+    token_file: Path | None = None,
+    config_dir: Path | None = None,
+) -> dict[str, Any]:
+    parts = repo_id.split("/", 1)
+    if len(parts) != 2 or not parts[0] or not parts[1]:
+        return {"ok": False, "error": "repo_id must be in user/repo format"}
+
+    user, repo = parts[0], parts[1]
+    payload: dict[str, object] = {
+        "target_repo_id": target_repo_id or repo_id,
+        "private": bool(private),
+    }
+    token_file = _resolve_hf_token_file(token_file, config_dir=config_dir)
+    token_value = token.strip()
+    if not token_value:
+        return start_dataset_push_job(jobs_state, token_file, user, repo, payload)
+
+    prev_hf = os.environ.get("HF_TOKEN")
+    prev_hf_hub = os.environ.get("HUGGINGFACE_HUB_TOKEN")
+    try:
+        os.environ["HF_TOKEN"] = token_value
+        os.environ["HUGGINGFACE_HUB_TOKEN"] = token_value
+        return start_dataset_push_job(jobs_state, token_file, user, repo, payload)
+    finally:
+        if prev_hf is None:
+            os.environ.pop("HF_TOKEN", None)
+        else:
+            os.environ["HF_TOKEN"] = prev_hf
+        if prev_hf_hub is None:
+            os.environ.pop("HUGGINGFACE_HUB_TOKEN", None)
+        else:
+            os.environ["HUGGINGFACE_HUB_TOKEN"] = prev_hf_hub
+
+
+def hub_push_status(jobs_state: DatasetJobState, job_id: str) -> dict[str, Any]:
+    return get_push_job_status(jobs_state, job_id)
+
+
+def hf_token_read(token_file: Path | None = None, config_dir: Path | None = None) -> dict[str, Any]:
+    return get_hf_token_status(_resolve_hf_token_file(token_file, config_dir=config_dir))
+
+
+def hf_token_write(token: str, token_file: Path | None = None, config_dir: Path | None = None) -> dict[str, Any]:
+    return set_hf_token(_resolve_hf_token_file(token_file, config_dir=config_dir), token)
