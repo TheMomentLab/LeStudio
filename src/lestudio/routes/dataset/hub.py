@@ -1,4 +1,5 @@
 """Dataset push and HuggingFace Hub integration routes."""
+
 from __future__ import annotations
 
 import os
@@ -8,13 +9,14 @@ import subprocess
 import threading
 import time
 import uuid
-from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter
 
+from ... import path_policy
+
 from ...lib.async_job_manager import _cleanup_finished_jobs
-from ...routes.models import HfTokenRequest
+from ...routes.models import HfTokenRequest, HfWhoamiResponse
 from .._state import AppState
 
 
@@ -50,7 +52,7 @@ def register_routes(router: APIRouter, state: AppState):
     @router.post("/api/datasets/{user}/{repo}/push")
     async def api_dataset_push(user: str, repo: str, data: dict[str, object] | None = None):
         payload = data or {}
-        local_path = Path.home() / ".cache" / "huggingface" / "lerobot" / user / repo
+        local_path = path_policy.dataset_local_dir(f"{user}/{repo}")
         if not local_path.exists():
             return {"ok": False, "error": "Dataset not found in local cache"}
 
@@ -218,7 +220,7 @@ def register_routes(router: APIRouter, state: AppState):
         _whoami_cache.clear()
         return {"ok": True, "has_token": False, "source": "none"}
 
-    @router.get("/api/hf/whoami")
+    @router.get("/api/hf/whoami", response_model=HfWhoamiResponse)
     def api_hf_whoami():
         """Return the HuggingFace username associated with the current token."""
         # ok:True만 캐싱 (5분). 토큰이 달라지면 즉시 무효화.
@@ -230,10 +232,7 @@ def register_routes(router: APIRouter, state: AppState):
         expires_raw = _whoami_cache.get("expires", 0.0)
         expires = float(expires_raw) if isinstance(expires_raw, (int, float)) else 0.0
         token_cached = _whoami_cache.get("token")
-        if (cached
-                and time.monotonic() < expires
-                and isinstance(token_cached, str)
-                and token_cached == token):
+        if cached and time.monotonic() < expires and isinstance(token_cached, str) and token_cached == token:
             return cached
 
         try:
@@ -260,21 +259,11 @@ def register_routes(router: APIRouter, state: AppState):
                     status_code = status_raw
 
             if status_code in (401, 403):
-                if (
-                    "expired" in msg
-                    or "expiration" in msg
-                    or "has expired" in msg
-                ):
+                if "expired" in msg or "expiration" in msg or "has expired" in msg:
                     return {"ok": False, "username": None, "error": "expired_token"}
                 return {"ok": False, "username": None, "error": "invalid_token"}
 
-            if (
-                "401" in msg
-                or "403" in msg
-                or "unauthorized" in msg
-                or "forbidden" in msg
-                or "invalid token" in msg
-            ):
+            if "401" in msg or "403" in msg or "unauthorized" in msg or "forbidden" in msg or "invalid token" in msg:
                 if "expired" in msg or "expiration" in msg or "has expired" in msg:
                     return {"ok": False, "username": None, "error": "expired_token"}
                 return {"ok": False, "username": None, "error": "invalid_token"}
@@ -317,7 +306,7 @@ def register_routes(router: APIRouter, state: AppState):
         except Exception as e:
             return {"ok": False, "error": str(e), "datasets": []}
 
-        local_root = Path.home() / ".cache" / "huggingface" / "lerobot"
+        local_root = path_policy.lerobot_cache_root()
         limit = max(1, min(limit, 200))
         try:
             results = []
@@ -340,14 +329,16 @@ def register_routes(router: APIRouter, state: AppState):
                         size_str = ""
                 last_mod = getattr(ds, "last_modified", None)
                 modified_str = str(last_mod)[:10] if last_mod else ""
-                results.append({
-                    "id": repo_id,
-                    "downloads": getattr(ds, "downloads", 0) or 0,
-                    "likes": getattr(ds, "likes", 0) or 0,
-                    "size": size_str,
-                    "modified": modified_str,
-                    "local_sync": local_sync,
-                })
+                results.append(
+                    {
+                        "id": repo_id,
+                        "downloads": getattr(ds, "downloads", 0) or 0,
+                        "likes": getattr(ds, "likes", 0) or 0,
+                        "size": size_str,
+                        "modified": modified_str,
+                        "local_sync": local_sync,
+                    }
+                )
             return {"ok": True, "username": username, "datasets": results}
         except Exception as e:
             return {"ok": False, "error": str(e), "datasets": []}
@@ -418,7 +409,7 @@ def register_routes(router: APIRouter, state: AppState):
             try:
                 hub_mod = __import__("huggingface_hub")
                 snapshot_download = getattr(hub_mod, "snapshot_download")
-                local_dir = Path.home() / ".cache" / "huggingface" / "lerobot" / repo_id
+                local_dir = path_policy.dataset_local_dir(repo_id)
                 cli = shutil.which("huggingface-cli")
                 if cli:
                     cmd = [cli, "download", repo_id, "--repo-type", "dataset", "--local-dir", str(local_dir)]

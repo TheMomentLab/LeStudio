@@ -1,4 +1,5 @@
 """Shared application state passed to all route factories."""
+
 from __future__ import annotations
 
 import datetime
@@ -42,6 +43,7 @@ class AppState:
     history_max: int
     python_exe: str
     dataset_jobs: DatasetJobState = field(default_factory=DatasetJobState)
+    device_watcher: object | None = None
 
     def load_config(self) -> dict:
         return _load_config(self.config_path)
@@ -65,7 +67,7 @@ class AppState:
                 entries = []
             entries.append(entry)
             if len(entries) > self.history_max:
-                entries = entries[-self.history_max:]
+                entries = entries[-self.history_max :]
             self.history_path.write_text(json.dumps(entries, indent=2))
         except (OSError, json.JSONDecodeError, TypeError, ValueError):
             pass

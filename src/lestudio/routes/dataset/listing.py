@@ -1,4 +1,5 @@
 """Dataset listing and local inspection routes."""
+
 from __future__ import annotations
 
 import datetime
@@ -9,6 +10,8 @@ from pathlib import Path
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from starlette.responses import Response
+
+from lestudio import path_policy
 
 from .._state import AppState
 
@@ -26,7 +29,7 @@ def register_routes(router: APIRouter, state: AppState):
     # ─── Dataset List / Info ───────────────────────────────────────────────────
     @router.get("/api/datasets")
     def api_datasets_list():
-        base = Path.home() / ".cache" / "huggingface" / "lerobot"
+        base = path_policy.lerobot_cache_root()
         datasets = []
         if base.exists():
             for user_dir in base.iterdir():
@@ -40,23 +43,25 @@ def register_routes(router: APIRouter, state: AppState):
                         try:
                             info = json.loads(info_path.read_text())
                             mtime = info_path.stat().st_mtime
-                            mdate = datetime.datetime.fromtimestamp(mtime).strftime('%Y-%m-%d %H:%M:%S')
+                            mdate = datetime.datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M:%S")
                             # Always compute real size on disk — info.json size
                             # fields are unreliable placeholders in lerobot v3.
                             try:
-                                total_bytes = sum(f.stat().st_size for f in ds_dir.rglob('*') if f.is_file())
+                                total_bytes = sum(f.stat().st_size for f in ds_dir.rglob("*") if f.is_file())
                                 size_mb = round(total_bytes / (1024 * 1024), 1)
                             except Exception:
                                 size_mb = 0.0
-                            datasets.append({
-                                "id": f"{user_dir.name}/{ds_dir.name}",
-                                "total_episodes": info.get("total_episodes", 0),
-                                "total_frames": info.get("total_frames", 0),
-                                "fps": info.get("fps", 30),
-                                "modified": mdate,
-                                "timestamp": mtime,
-                                "size_mb": size_mb
-                            })
+                            datasets.append(
+                                {
+                                    "id": f"{user_dir.name}/{ds_dir.name}",
+                                    "total_episodes": info.get("total_episodes", 0),
+                                    "total_frames": info.get("total_frames", 0),
+                                    "fps": info.get("fps", 30),
+                                    "modified": mdate,
+                                    "timestamp": mtime,
+                                    "size_mb": size_mb,
+                                }
+                            )
                         except Exception:
                             pass
         datasets.sort(key=lambda x: x["timestamp"], reverse=True)
@@ -65,7 +70,7 @@ def register_routes(router: APIRouter, state: AppState):
     @router.get("/api/datasets/{user}/{repo}")
     def api_dataset_info(user: str, repo: str):
         repo_id = f"{user}/{repo}"
-        base = Path.home() / ".cache" / "huggingface" / "lerobot" / user / repo
+        base = path_policy.dataset_local_dir(repo_id)
         info_path = base / "meta" / "info.json"
 
         if not info_path.exists():
@@ -101,7 +106,10 @@ def register_routes(router: APIRouter, state: AppState):
                                     tasks = []
                                 elif not isinstance(tasks, list):
                                     tasks = list(tasks)
-                                length_value = row.get("length", row.get("episode_length", row.get("num_frames", row.get("frame_count", 0))))
+                                length_value = row.get(
+                                    "length",
+                                    row.get("episode_length", row.get("num_frames", row.get("frame_count", 0))),
+                                )
                                 if length_value is None or pd.isna(length_value):
                                     length_value = 0
                                 episode_index_value = row.get("episode_index", row.get("episode_id", 0))
@@ -122,15 +130,21 @@ def register_routes(router: APIRouter, state: AppState):
                                             video_files[cam] = {
                                                 "chunk_index": int(chunk_val),
                                                 "file_index": int(file_val),
-                                                "from_timestamp": None if from_val is None or pd.isna(from_val) else float(from_val),
-                                                "to_timestamp": None if to_val is None or pd.isna(to_val) else float(to_val),
+                                                "from_timestamp": None
+                                                if from_val is None or pd.isna(from_val)
+                                                else float(from_val),
+                                                "to_timestamp": None
+                                                if to_val is None or pd.isna(to_val)
+                                                else float(to_val),
                                             }
-                                rows.append({
-                                    "episode_index": int(episode_index_value),
-                                    "length": int(length_value),
-                                    "tasks": tasks,
-                                    "video_files": video_files,
-                                })
+                                rows.append(
+                                    {
+                                        "episode_index": int(episode_index_value),
+                                        "length": int(length_value),
+                                        "tasks": tasks,
+                                        "video_files": video_files,
+                                    }
+                                )
                         except Exception:
                             continue
 
@@ -141,12 +155,14 @@ def register_routes(router: APIRouter, state: AppState):
 
             if not episodes:
                 for ep_idx in range(info.get("total_episodes", 0)):
-                    episodes.append({
-                        "episode_index": ep_idx,
-                        "length": 0,
-                        "tasks": [],
-                        "video_files": {},
-                    })
+                    episodes.append(
+                        {
+                            "episode_index": ep_idx,
+                            "length": 0,
+                            "tasks": [],
+                            "video_files": {},
+                        }
+                    )
 
             return {
                 "dataset_id": repo_id,
@@ -154,7 +170,7 @@ def register_routes(router: APIRouter, state: AppState):
                 "total_frames": info.get("total_frames", 0),
                 "fps": info.get("fps", 30),
                 "cameras": cameras,
-                "episodes": episodes
+                "episodes": episodes,
             }
         except Exception as e:
             return JSONResponse(status_code=500, content={"detail": f"Failed to load dataset: {str(e)}"})
@@ -162,7 +178,7 @@ def register_routes(router: APIRouter, state: AppState):
     @router.get("/api/datasets/{user}/{repo}/videos/{camera}/{chunk}/{file}")
     def api_dataset_video(request: Request, user: str, repo: str, camera: str, chunk: str, file: str):
         # Serve MP4 with HTTP 206 Range support so browser <video> can seek freely
-        video_path = Path.home() / ".cache" / "huggingface" / "lerobot" / user / repo / "videos" / camera / chunk / file
+        video_path = path_policy.dataset_video_path(user, repo, camera, chunk, file)
         if not video_path.exists():
             return Response(status_code=404, content="Video not found")
         file_size = video_path.stat().st_size
@@ -171,7 +187,7 @@ def register_routes(router: APIRouter, state: AppState):
 
     @router.delete("/api/datasets/{user}/{repo}")
     def api_dataset_delete(user: str, repo: str):
-        base = Path.home() / ".cache" / "huggingface" / "lerobot" / user / repo
+        base = path_policy.dataset_local_dir(f"{user}/{repo}")
         if not base.exists():
             return JSONResponse(status_code=404, content={"detail": "Dataset not found"})
         try:
@@ -182,7 +198,7 @@ def register_routes(router: APIRouter, state: AppState):
 
     @router.get("/api/datasets/{user}/{repo}/quality")
     def api_dataset_quality(user: str, repo: str):
-        base = Path.home() / ".cache" / "huggingface" / "lerobot" / user / repo
+        base = path_policy.dataset_local_dir(f"{user}/{repo}")
         info_path = base / "meta" / "info.json"
         if not info_path.exists():
             return {"ok": False, "error": "Dataset not found"}
@@ -247,28 +263,39 @@ def register_routes(router: APIRouter, state: AppState):
                         except Exception:
                             df = pd.read_parquet(pq_path)
                     for _, row in df.iterrows():
-                        length_value = row.get("length", row.get("episode_length", row.get("num_frames", row.get("frame_count", 0))))
+                        length_value = row.get(
+                            "length", row.get("episode_length", row.get("num_frames", row.get("frame_count", 0)))
+                        )
                         if length_value is None or pd.isna(length_value):
                             length_value = 0
                         episode_index_value = row.get("episode_index", row.get("episode_id", 0))
                         if episode_index_value is None or pd.isna(episode_index_value):
                             episode_index_value = 0
-                        episodes.append({
-                            "episode_index": int(episode_index_value),
-                            "length": int(length_value),
-                        })
+                        episodes.append(
+                            {
+                                "episode_index": int(episode_index_value),
+                                "length": int(length_value),
+                            }
+                        )
             except Exception as e:
                 add_check("warn", "episodes", f"Could not parse episode parquet files: {e}", "episodes")
 
         actual_episodes = len(episodes)
         if total_expected > 0 and actual_episodes > 0 and actual_episodes != total_expected:
-            add_check("warn", "episode_count", f"Expected {total_expected} episodes, found {actual_episodes}", "episodes")
+            add_check(
+                "warn", "episode_count", f"Expected {total_expected} episodes, found {actual_episodes}", "episodes"
+            )
         else:
             add_check("ok", "episode_count", f"Episode count: {max(total_expected, actual_episodes)}", "episodes")
 
         non_positive_lengths = [ep for ep in episodes if ep["length"] <= 0]
         if non_positive_lengths:
-            add_check("warn", "episode_length_zero", f"Episodes with non-positive length: {len(non_positive_lengths)}", "episodes")
+            add_check(
+                "warn",
+                "episode_length_zero",
+                f"Episodes with non-positive length: {len(non_positive_lengths)}",
+                "episodes",
+            )
 
         zero_byte_videos = 0
         total_videos = 0
@@ -298,7 +325,12 @@ def register_routes(router: APIRouter, state: AppState):
 
         missing_camera_files = [cam for cam, cnt in per_camera_files.items() if cnt <= 0]
         if cameras and missing_camera_files:
-            add_check("warn", "camera_coverage", f"Cameras without any video files: {', '.join(missing_camera_files)}", "videos")
+            add_check(
+                "warn",
+                "camera_coverage",
+                f"Cameras without any video files: {', '.join(missing_camera_files)}",
+                "videos",
+            )
         elif cameras:
             add_check("ok", "camera_coverage", "All camera streams have video files", "videos")
 
@@ -320,9 +352,16 @@ def register_routes(router: APIRouter, state: AppState):
             if median_ep_len > 0:
                 ratio = avg_ep_len / max(1e-6, median_ep_len)
                 if ratio > 2.5 or ratio < 0.4:
-                    add_check("warn", "episode_length_distribution", "Episode lengths are highly imbalanced", "distribution")
+                    add_check(
+                        "warn", "episode_length_distribution", "Episode lengths are highly imbalanced", "distribution"
+                    )
                 else:
-                    add_check("ok", "episode_length_distribution", "Episode length distribution looks reasonable", "distribution")
+                    add_check(
+                        "ok",
+                        "episode_length_distribution",
+                        "Episode length distribution looks reasonable",
+                        "distribution",
+                    )
 
         if total_frames <= 0:
             add_check("warn", "total_frames", "Total frame count is zero or missing", "metadata")

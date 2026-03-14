@@ -11,6 +11,8 @@ import time
 import webbrowser
 from pathlib import Path
 
+from lestudio import path_policy
+
 logger = logging.getLogger(__name__)
 
 
@@ -63,12 +65,9 @@ def resolve_config_dir(config_dir_arg: Path | None) -> Path:
     if config_dir_arg is not None:
         config_dir = config_dir_arg
     else:
-        new_default = Path.home() / ".config" / "lestudio"
+        new_default = path_policy.config_dir_default()
         # Migration: auto-rename old config dirs to new name
-        old_default = Path.home() / ".config" / "lerobot-studio"
-        old_moment = Path.home() / ".config" / "moment-lerobot-studio"
-        moment_default = Path.home() / ".config" / "moment-lestudio"
-        legacy_default = Path.home() / ".config" / "lerobot-setup"
+        old_default, old_moment, moment_default, legacy_default = path_policy.config_dir_legacy_candidates()
         if old_default.exists() and not new_default.exists():
             old_default.rename(new_default)
         if old_moment.exists() and not moment_default.exists():
@@ -208,7 +207,9 @@ def command_install_udev(args):
         print(f"ERROR: {err}", file=sys.stderr)
         sys.exit(reload_res.returncode)
 
-    trig_video = subprocess.run(["sudo", "udevadm", "trigger", "--subsystem-match=video4linux"], capture_output=True, text=True)
+    trig_video = subprocess.run(
+        ["sudo", "udevadm", "trigger", "--subsystem-match=video4linux"], capture_output=True, text=True
+    )
     if trig_video.returncode != 0:
         err = (trig_video.stderr or "").strip() or "udevadm trigger video4linux failed"
         print(f"WARN: {err}")
@@ -234,18 +235,31 @@ def build_parser() -> argparse.ArgumentParser:
     serve = sub.add_parser("serve", help="Run LeStudio web server")
     serve.add_argument("--port", type=int, default=7860, help="Server port (default: 7860)")
     serve.add_argument("--host", default="127.0.0.1", help="Server host (default: 127.0.0.1)")
-    serve.add_argument("--lerobot-path", type=Path, default=None, help="Path to lerobot source (auto-detected if installed)")
+    serve.add_argument(
+        "--lerobot-path", type=Path, default=None, help="Path to lerobot source (auto-detected if installed)"
+    )
     serve.add_argument("--config-dir", type=Path, default=None, help="Config directory (default: ~/.config/lestudio)")
     serve.add_argument("--rules-path", type=Path, default=DEFAULT_RULES_PATH, help="Path to udev rules file")
     serve.add_argument("--browser", action="store_true", help="Open a browser automatically on startup")
-    serve.add_argument("--no-browser", action="store_true", help="(deprecated, no-op) Browser is no longer opened automatically")
+    serve.add_argument(
+        "--no-browser", action="store_true", help="(deprecated, no-op) Browser is no longer opened automatically"
+    )
     serve.add_argument("--headless", action="store_true", help="Alias for --no-browser")
     serve.set_defaults(handler=command_serve)
 
     install = sub.add_parser("install-udev", help="Install udev rules with sudo (separate from web UI)")
-    install.add_argument("--config-dir", type=Path, default=None, help="Config directory (default: ~/.config/lestudio)")
-    install.add_argument("--source-rules", type=Path, default=None, help="Source rules file (default: <config-dir>/99-lerobot.rules)")
-    install.add_argument("--rules-path", type=Path, default=DEFAULT_RULES_PATH, help="Target rules file (default: /etc/udev/rules.d/99-lerobot.rules)")
+    install.add_argument(
+        "--config-dir", type=Path, default=None, help="Config directory (default: ~/.config/lestudio)"
+    )
+    install.add_argument(
+        "--source-rules", type=Path, default=None, help="Source rules file (default: <config-dir>/99-lerobot.rules)"
+    )
+    install.add_argument(
+        "--rules-path",
+        type=Path,
+        default=DEFAULT_RULES_PATH,
+        help="Target rules file (default: /etc/udev/rules.d/99-lerobot.rules)",
+    )
     install.add_argument("--dry-run", action="store_true", help="Print commands only without applying")
     install.set_defaults(handler=command_install_udev)
 

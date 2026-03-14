@@ -21,6 +21,7 @@ from lestudio._logging import configure_logging
 from lestudio._auth import TokenAuthMiddleware, generate_token
 from lestudio._cors import _resolve_cors_settings
 from lestudio._streaming import unlock_cameras
+from lestudio._device_watcher import DeviceWatcher
 from lestudio.process_manager import ProcessManager
 from lestudio import device_registry
 
@@ -53,6 +54,8 @@ class SPAStaticFiles(StaticFiles):
             raise StarletteHTTPException(status_code=404)
 
         return await super().get_response("index.html", scope)
+
+
 # ─── nvidia pip 패키지의 .so를 LD_LIBRARY_PATH에 자동 추가 ─────────────────
 def _patch_nvidia_lib_path():
     existing = os.environ.get("LD_LIBRARY_PATH", "")
@@ -70,7 +73,15 @@ def _patch_nvidia_lib_path():
         seen.add(path)
         added.append(path)
 
-    for pkg in ["nvidia.npp", "nvidia.cudnn", "nvidia.cublas", "nvidia.cusparse", "nvidia.cufft", "nvidia.cusolver", "nvidia.nvjitlink"]:
+    for pkg in [
+        "nvidia.npp",
+        "nvidia.cudnn",
+        "nvidia.cublas",
+        "nvidia.cusparse",
+        "nvidia.cufft",
+        "nvidia.cusolver",
+        "nvidia.nvjitlink",
+    ]:
         try:
             spec = importlib.util.find_spec(pkg)
         except ModuleNotFoundError:
@@ -120,7 +131,17 @@ def create_app(
     session_token: str | None = None,
 ) -> FastAPI:
     from lestudio.routes._state import AppState
-    from lestudio.routes import devices, config, udev, process, training, eval as eval_routes, dataset, streaming, motor
+    from lestudio.routes import (
+        devices,
+        config,
+        udev,
+        process,
+        training,
+        eval as eval_routes,
+        dataset,
+        streaming,
+        motor,
+    )
 
     STATIC_DIR = Path(__file__).parent / "static"
     CONFIG_PATH = config_dir / "config.json"
@@ -128,6 +149,8 @@ def create_app(
     HISTORY_PATH = config_dir / "history.json"
     HISTORY_MAX = 200
     PYTHON = sys.executable
+
+    configure_logging(log_dir=config_dir / "logs")
 
     cors_origins, cors_origin_regex = _resolve_cors_settings()
     token = session_token if session_token is not None else generate_token()
@@ -160,7 +183,7 @@ def create_app(
 
     # Create shared state; proc_mgr assigned after _on_process_exit is defined
     state = AppState(
-        proc_mgr=None,  # type: ignore[arg-type]  # set below
+        proc_mgr=None,  # pyright: ignore[reportArgumentType]
         config_path=CONFIG_PATH,
         config_dir=config_dir,
         rules_path=rules_path,
@@ -177,6 +200,13 @@ def create_app(
 
     state.proc_mgr = ProcessManager(lerobot_src, on_process_exit=_on_process_exit, state_dir=config_dir)
     state.proc_mgr.recover_orphans()
+    state.device_watcher = DeviceWatcher()
+    state.device_watcher.start()
+
+    @app.on_event("shutdown")
+    def _shutdown() -> None:
+        if state.device_watcher:
+            state.device_watcher.stop()
 
     # ─── Include routers ───────────────────────────────────────────────────────
     app.include_router(devices.create_router(state))

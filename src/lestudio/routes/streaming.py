@@ -1,10 +1,10 @@
 """Camera streaming, system stats, and WebSocket routes."""
+
 from __future__ import annotations
 
 import asyncio
 import logging
 import os
-import queue
 import shutil
 import subprocess
 import time
@@ -16,9 +16,10 @@ from fastapi.responses import Response, StreamingResponse
 
 import psutil
 
-import lestudio._streaming as _str
-from lestudio._device_helpers import get_usb_bus_for_camera
-from lestudio._streaming import (
+from .. import _streaming as _str
+from .. import path_policy
+from .._device_helpers import get_usb_bus_for_camera
+from .._streaming import (
     _streamers,
     _streamers_lock,
     get_preview_streamer,
@@ -28,7 +29,7 @@ from lestudio._streaming import (
     snapshot_get_frame,
     unlock_cameras,
 )
-from lestudio.routes._state import AppState
+from ._state import AppState
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +93,7 @@ def _read_shm(path: str) -> bytes | None:
 _lerobot_cache_size: float | None = None
 _lerobot_cache_ts: float = 0.0
 _LEROBOT_CACHE_TTL = 60.0  # 레로보트 HF 캐시 크기: 60초마다 재계산
+
 
 def create_router(state: AppState) -> APIRouter:
     router = APIRouter()
@@ -162,16 +164,14 @@ def create_router(state: AppState) -> APIRouter:
         if process_running:
             frame = _find_shm_frame(video_name)
             if frame:
-                return Response(content=frame, media_type="image/jpeg",
-                                headers={"Cache-Control": "no-store"})
+                return Response(content=frame, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
 
             # SHM not yet available — wait up to 3s for camera_patch to write
             for _ in range(30):
                 await asyncio.sleep(0.1)
                 frame = _find_shm_frame(video_name)
                 if frame:
-                    return Response(content=frame, media_type="image/jpeg",
-                                    headers={"Cache-Control": "no-store"})
+                    return Response(content=frame, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
 
             return Response(
                 status_code=503,
@@ -181,16 +181,14 @@ def create_router(state: AppState) -> APIRouter:
         # Normal path (idle): use streamer pool
         frame = snapshot_get_frame(f"/dev/{video_name}", state.config_path)
         if frame:
-            return Response(content=frame, media_type="image/jpeg",
-                            headers={"Cache-Control": "no-store"})
+            return Response(content=frame, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
 
         # Streamer just opened -- wait up to 3s for first frame
         for _ in range(30):
             await asyncio.sleep(0.1)
             frame = snapshot_get_frame(f"/dev/{video_name}", state.config_path)
             if frame:
-                return Response(content=frame, media_type="image/jpeg",
-                                headers={"Cache-Control": "no-store"})
+                return Response(content=frame, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
 
         return Response(
             status_code=503,
@@ -199,6 +197,7 @@ def create_router(state: AppState) -> APIRouter:
                 "Retry-After": "1",
             },
         )
+
     # ─── Camera Stats ──────────────────────────────────────────────────────────
     @router.get("/api/camera/stats")
     def api_camera_stats():
@@ -215,18 +214,18 @@ def create_router(state: AppState) -> APIRouter:
                     cam_fps = _json.loads(stats_path.read_text(encoding="utf-8"))
             except (OSError, _json.JSONDecodeError):
                 pass
-            cameras: dict = {}
+            cameras: dict[str, dict[str, float | int]] = {}
             for name, fps in cam_fps.items():
                 cameras[name] = {"fps": fps, "mbps": 0}
             return {"cameras": cameras, "buses": {}}
 
         # Normal path: use streamer pool stats
-        cameras = {}
-        bus_data: dict = {}
+        cameras: dict[str, dict[str, object]] = {}
+        bus_data: dict[str, dict[str, float]] = {}
         with _streamers_lock:
             for real_path, streamer in _streamers.items():
                 video_name = Path(real_path).name
-                stats    = streamer.get_stats()
+                stats = streamer.get_stats()
                 bus_info = get_usb_bus_for_camera(video_name)
                 cameras[video_name] = {**stats, **bus_info}
                 bus = bus_info["bus"]
@@ -236,9 +235,9 @@ def create_router(state: AppState) -> APIRouter:
                 bus_data[bus]["used_mbps"] += stats["mbps"]
         for info in bus_data.values():
             info["used_mb_per_sec"] = round(info.pop("used_mbps"), 2)
-            info["pct"] = round(
-                info["used_mb_per_sec"] / info["max_mb_per_sec"] * 100, 1
-            ) if info["max_mb_per_sec"] > 0 else 0
+            info["pct"] = (
+                round(info["used_mb_per_sec"] / info["max_mb_per_sec"] * 100, 1) if info["max_mb_per_sec"] > 0 else 0
+            )
         return {"cameras": cameras, "buses": bus_data}
 
     # ─── GPU Stats ─────────────────────────────────────────────────────────────
@@ -246,8 +245,14 @@ def create_router(state: AppState) -> APIRouter:
     def api_gpu_status():
         try:
             r = subprocess.run(
-                ["nvidia-smi", "--query-gpu=utilization.gpu,memory.used,memory.total", "--format=csv,noheader,nounits"],
-                capture_output=True, text=True, timeout=2,
+                [
+                    "nvidia-smi",
+                    "--query-gpu=utilization.gpu,memory.used,memory.total",
+                    "--format=csv,noheader,nounits",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=2,
             )
             if r.returncode != 0:
                 return {"exists": False, "error": "nvidia-smi failed"}
@@ -260,7 +265,7 @@ def create_router(state: AppState) -> APIRouter:
                 "utilization": util,
                 "memory_used": mem_used,
                 "memory_total": mem_total,
-                "memory_percent": round(mem_used / mem_total * 100, 1) if mem_total > 0 else 0
+                "memory_percent": round(mem_used / mem_total * 100, 1) if mem_total > 0 else 0,
             }
         except (OSError, subprocess.SubprocessError, ValueError) as e:
             return {"exists": False, "error": str(e)}
@@ -275,12 +280,12 @@ def create_router(state: AppState) -> APIRouter:
             cpu_pct = psutil.cpu_percent(interval=None)
             vm = psutil.virtual_memory()
             du = shutil.disk_usage(Path.home())
-            hf_cache = Path.home() / ".cache" / "huggingface" / "lerobot"
+            hf_cache = path_policy.lerobot_cache_root()
             lerobot_du = _lerobot_cache_size
             now = time.monotonic()
             if hf_cache.exists() and (now - _lerobot_cache_ts > _LEROBOT_CACHE_TTL or _lerobot_cache_size is None):
                 try:
-                    lerobot_bytes = sum(f.stat().st_size for f in hf_cache.rglob('*') if f.is_file())
+                    lerobot_bytes = sum(f.stat().st_size for f in hf_cache.rglob("*") if f.is_file())
                     _lerobot_cache_size = round(lerobot_bytes / 1024 / 1024, 1)
                     _lerobot_cache_ts = now
                     lerobot_du = _lerobot_cache_size
@@ -296,8 +301,8 @@ def create_router(state: AppState) -> APIRouter:
                 "ram_used_mb": round(vm.used / 1024 / 1024),
                 "ram_total_mb": round(vm.total / 1024 / 1024),
                 "ram_percent": round(vm.percent, 1),
-                "disk_used_gb": round(du.used / 1024 ** 3, 1),
-                "disk_total_gb": round(du.total / 1024 ** 3, 1),
+                "disk_used_gb": round(du.used / 1024**3, 1),
+                "disk_total_gb": round(du.total / 1024**3, 1),
                 "disk_percent": round(du.used / du.total * 100, 1),
                 "lerobot_cache_mb": lerobot_du,
             }
@@ -308,28 +313,31 @@ def create_router(state: AppState) -> APIRouter:
     @router.websocket("/ws")
     async def ws_endpoint(websocket: WebSocket):
         await websocket.accept()
+        sub_id = state.proc_mgr.event_buffer.subscribe()
         try:
             while True:
-                items = []
-                while True:
-                    try:
-                        items.append(state.proc_mgr.out_q.get_nowait())
-                    except queue.Empty:
-                        break
+                items = state.proc_mgr.event_buffer.poll(sub_id)
                 for item in items:
                     if item.get("kind") == "metric":
-                        await websocket.send_json({
-                            "type": "metric",
-                            "process": item.get("process"),
-                            "metric": item.get("metric", {}),
-                        })
+                        await websocket.send_json(
+                            {
+                                "type": "metric",
+                                "process": item.get("process"),
+                                "metric": item.get("metric", {}),
+                            }
+                        )
                     else:
                         await websocket.send_json({"type": "output", **item})
-                await websocket.send_json({"type": "status", "processes": state.proc_mgr.status_all()})
+                dg = getattr(state.device_watcher, "generation", 0) if state.device_watcher else 0
+                await websocket.send_json(
+                    {"type": "status", "processes": state.proc_mgr.status_all(), "device_generation": dg}
+                )
                 await asyncio.sleep(0.2)
         except WebSocketDisconnect:
             pass
         except Exception:  # broad-except: websocket loop safety net for disconnect/race conditions
             pass
+        finally:
+            state.proc_mgr.event_buffer.unsubscribe(sub_id)
 
     return router

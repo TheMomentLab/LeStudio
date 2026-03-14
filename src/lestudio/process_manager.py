@@ -1,7 +1,7 @@
 import json
 import logging
 import os
-import queue
+from collections import deque
 import re
 import shlex
 import signal
@@ -36,6 +36,49 @@ class QueueItem(TypedDict, total=False):
     metric: TrainMetric
 
 
+class EventBuffer:
+    def __init__(self, maxlen: int = 2000):
+        self._buf: deque[tuple[int, QueueItem]] = deque(maxlen=maxlen)
+        self._seq: int = 0
+        self._lock = threading.Lock()
+        self._subscribers: dict[int, int] = {}
+        self._next_sub_id: int = 0
+
+    def push(self, item: QueueItem) -> None:
+        with self._lock:
+            self._seq += 1
+            self._buf.append((self._seq, item))
+
+    def subscribe(self) -> int:
+        with self._lock:
+            sub_id = self._next_sub_id
+            self._next_sub_id += 1
+            self._subscribers[sub_id] = self._seq
+            return sub_id
+
+    def unsubscribe(self, sub_id: int) -> None:
+        with self._lock:
+            self._subscribers.pop(sub_id, None)
+
+    def poll(self, sub_id: int) -> list[QueueItem]:
+        with self._lock:
+            last_seen = self._subscribers.get(sub_id)
+            if last_seen is None:
+                return []
+
+            items = [item for seq, item in self._buf if seq > last_seen]
+            if self._buf:
+                self._subscribers[sub_id] = self._buf[-1][0]
+            return items
+
+    def flush_process(self, name: str) -> None:
+        with self._lock:
+            self._buf = deque(
+                ((seq, item) for seq, item in self._buf if item.get("process") != name),
+                maxlen=self._buf.maxlen,
+            )
+
+
 PROCESS_NAMES = ["teleop", "record", "calibrate", "motor_setup", "train", "train_install", "eval"]
 
 # Hardware conflict groups: processes sharing the same physical resource
@@ -59,9 +102,13 @@ _TRAIN_LR_RE = re.compile(r"\blr\s*[:=]\s*([+-]?[0-9]*\.?[0-9]+(?:e[+-]?[0-9]+)?
 
 _ERR_PERMISSION_DEV_RE = re.compile(r"permission denied[^\n]*(/dev/[^\s:'\"]+)", re.IGNORECASE)
 _ERR_CALIB_RE = re.compile(r"could not find calibration file|calibration file.*not found", re.IGNORECASE)
-_ERR_CAMERA_OPEN_RE = re.compile(r"camera index\s*\d+\s*cannot be opened|cannot open camera|failed to open.*video", re.IGNORECASE)
+_ERR_CAMERA_OPEN_RE = re.compile(
+    r"camera index\s*\d+\s*cannot be opened|cannot open camera|failed to open.*video", re.IGNORECASE
+)
 _ERR_CUDA_OOM_RE = re.compile(r"cuda out of memory|outofmemoryerror|cublas_status_alloc_failed", re.IGNORECASE)
-_ERR_CUDA_UNAVAILABLE_RE = re.compile(r"cuda is not available|torch\.cuda\.is_available\(\).*false|no cuda", re.IGNORECASE)
+_ERR_CUDA_UNAVAILABLE_RE = re.compile(
+    r"cuda is not available|torch\.cuda\.is_available\(\).*false|no cuda", re.IGNORECASE
+)
 _ERR_MISSING_MODULE_RE = re.compile(r"ModuleNotFoundError:\s*No module named ['\"]([^'\"]+)['\"]", re.IGNORECASE)
 
 
@@ -110,7 +157,7 @@ def _parse_compact_int(token: str) -> int | None:
     base = float(m.group(1))
     suffix = m.group(2)
     scale = {"": 0, "K": 1, "M": 2, "B": 3, "T": 4, "Q": 5}.get(suffix, 0)
-    return int(base * (1000 ** scale))
+    return int(base * (1000**scale))
 
 
 def _extract_train_metric(line: str) -> TrainMetric | None:
@@ -156,7 +203,7 @@ class ProcessManager:
     ):
         self.lerobot_src: Path = lerobot_src
         self.procs: dict[str, subprocess.Popen[Any]] = {}
-        self.out_q: queue.Queue[QueueItem] = queue.Queue(maxsize=1000)
+        self.event_buffer = EventBuffer(maxlen=2000)
         self.on_process_exit: Callable[[str], None] | None = on_process_exit
         self.last_translation: dict[str, str] = {}
         self.seen_translations: dict[str, set[str]] = {}
@@ -409,19 +456,7 @@ class ProcessManager:
     # ── Core process lifecycle ───────────────────────────────────────────────
 
     def flush_queue(self, name: str):
-        items: list[QueueItem] = []
-        while True:
-            try:
-                item = self.out_q.get_nowait()
-                if item.get("process") != name:
-                    items.append(item)
-            except queue.Empty:
-                break
-        for item in items:
-            try:
-                self.out_q.put_nowait(item)
-            except queue.Full:
-                pass
+        self.event_buffer.flush_process(name)
 
     def start(self, name: str, args: list[str]) -> bool:
         self.stop(name)
@@ -434,6 +469,7 @@ class ProcessManager:
         self.seen_translations.pop(name, None)
         self._table_buf.pop(name, None)
         self._table_tag.pop(name, None)
+        logger.info("Starting process %s: %s", name, shlex.join(args))
         env = {
             **os.environ,
             "PYTHONPATH": str(self.lerobot_src) + os.pathsep + os.environ.get("PYTHONPATH", ""),
@@ -448,12 +484,13 @@ class ProcessManager:
                 stderr=subprocess.STDOUT,
                 bufsize=0,
             )
-            if sys.platform == 'win32':
-                popen_kwargs['creationflags'] = subprocess.CREATE_NEW_PROCESS_GROUP
+            if sys.platform == "win32":
+                popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
             else:
-                popen_kwargs['start_new_session'] = True
+                popen_kwargs["start_new_session"] = True
             proc = subprocess.Popen(**popen_kwargs)
             self.procs[name] = proc
+            logger.info("Process %s launched: PID=%d", name, proc.pid)
             session_log_path = self._open_session_log(name) if name == "teleop" else None
             threading.Thread(target=self._reader, args=(name, proc), daemon=True).start()
             if session_log_path is not None:
@@ -461,6 +498,7 @@ class ProcessManager:
             self._persist_state()
             return True
         except Exception as e:  # broad-except: preserve process start failure handling for any launcher error
+            logger.error("Process %s failed to launch: %s", name, e)
             self._close_session_log(name)
             self._push(name, f"[ERROR] {e}", "error")
             return False
@@ -468,6 +506,7 @@ class ProcessManager:
     def stop(self, name: str):
         proc = self.procs.get(name)
         if proc and proc.poll() is None:
+
             def _kill():
                 try:
                     self._kill_proc(proc)
@@ -484,6 +523,7 @@ class ProcessManager:
         with self._orphan_lock:
             info = self._orphan_pids.pop(name, None)
         if info:
+
             def _kill_orphan():
                 self._kill_orphan_process(info)
                 self._remove_from_state(name)
@@ -499,7 +539,7 @@ class ProcessManager:
     @staticmethod
     def _kill_proc(proc: subprocess.Popen[Any]):
         """Escalate signals: SIGINT → SIGTERM → SIGKILL."""
-        if sys.platform == 'win32':
+        if sys.platform == "win32":
             try:
                 proc.send_signal(signal.CTRL_BREAK_EVENT)
                 proc.wait(timeout=5)
@@ -574,10 +614,9 @@ class ProcessManager:
         conflicts: list[str] = []
         for group in HARDWARE_GROUPS.values():
             if name in group:
-                conflicts.extend(
-                    n for n in group if n != name and self.is_running(n)
-                )
+                conflicts.extend(n for n in group if n != name and self.is_running(n))
         return list(dict.fromkeys(conflicts))  # dedupe, preserve order
+
     _TABLE_SEP_RE = re.compile(r"^-{5,}$")
 
     def _flush_table(self, name: str):
@@ -709,8 +748,11 @@ class ProcessManager:
                     self._process_line(name, text)
         # Flush any remaining table buffer
         self._flush_table(name)
-        self._write_session_log(name, f"[{name} process ended]")
-        self._push(name, f"[{name} process ended]", "info")
+        exit_code = proc.poll()
+        logger.info("Process %s ended: exit_code=%s PID=%d", name, exit_code, proc.pid)
+        exit_msg = f"[{name} process ended (exit code: {exit_code})]"
+        self._write_session_log(name, exit_msg)
+        self._push(name, exit_msg, "info")
         self._remove_from_state(name)
         self._close_session_log(name)
         if self.on_process_exit is not None:
@@ -723,16 +765,10 @@ class ProcessManager:
         payload: QueueItem = {"process": name, "line": line, "kind": kind}
         if replace:
             payload["replace"] = replace
-        try:
-            self.out_q.put_nowait(payload)
-        except queue.Full:
-            pass
+        self.event_buffer.push(payload)
 
     def _push_metric(self, name: str, metric: TrainMetric):
-        try:
-            self.out_q.put_nowait({"process": name, "kind": "metric", "metric": metric})
-        except queue.Full:
-            pass
+        self.event_buffer.push({"process": name, "kind": "metric", "metric": metric})
 
     def _push_translation(self, name: str, message: str):
         seen = self.seen_translations.setdefault(name, set())
@@ -743,7 +779,4 @@ class ProcessManager:
             return
         seen.add(message)
         self.last_translation[name] = message
-        try:
-            self.out_q.put_nowait({"process": name, "line": f"[GUIDE] {message}", "kind": "translation"})
-        except queue.Full:
-            pass
+        self.event_buffer.push({"process": name, "line": f"[GUIDE] {message}", "kind": "translation"})

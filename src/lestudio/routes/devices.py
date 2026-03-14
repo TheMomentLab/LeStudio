@@ -1,4 +1,5 @@
 """Device, camera, and robot registry routes."""
+
 from __future__ import annotations
 
 import logging
@@ -6,12 +7,12 @@ import os
 
 from fastapi import APIRouter
 
-from lestudio import device_registry
-from lestudio._config_helpers import DEFAULT_CONFIG
-from lestudio._device_helpers import CAMERA_ROLES, get_arms, get_cameras
-from lestudio._streaming import _DEFAULT_CAM_SETTINGS, _get_cam_settings, restart_all_streamers
-from lestudio.routes._state import AppState
-from lestudio.routes.models import CameraPathsRequest, CameraSettingsRequest
+from .. import device_registry
+from .._config_helpers import DEFAULT_CONFIG
+from .._device_helpers import CAMERA_ROLES, get_arms, get_cameras
+from .._streaming import _DEFAULT_CAM_SETTINGS, _get_cam_settings, restart_all_streamers
+from ._state import AppState
+from .models import CameraPathsRequest, CameraSettingsRequest, DevicesResponse
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +20,7 @@ logger = logging.getLogger(__name__)
 def create_router(state: AppState) -> APIRouter:
     router = APIRouter()
 
-    @router.get("/api/devices")
+    @router.get("/api/devices", response_model=DevicesResponse)
     def api_devices():
         return {"cameras": get_cameras(), "arms": get_arms()}
 

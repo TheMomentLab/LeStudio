@@ -1,4 +1,5 @@
 """udev rules management routes."""
+
 from __future__ import annotations
 
 import logging
@@ -32,7 +33,11 @@ def create_router(state: AppState) -> APIRouter:
 
     @router.get("/api/udev/rules")
     def api_udev_rules():
-        return _current_rules_payload()
+        payload = _current_rules_payload()
+        cam = [r.get("symlink") for r in payload.get("camera_rules", []) if r.get("symlink")]
+        arm = {r.get("serial", "?"): r.get("symlink") for r in payload.get("arm_rules", []) if r.get("symlink")}
+        logger.info("GET /api/udev/rules → cameras=%s, arms=%s", cam, arm)
+        return payload
 
     @router.get("/api/rules/current")
     def api_rules_current():
@@ -48,8 +53,7 @@ def create_router(state: AppState) -> APIRouter:
             sudo_noninteractive = False
         pkexec_available = shutil.which("pkexec") is not None
         graphical_session = bool(
-            (os.environ.get("DISPLAY") or "").strip()
-            or (os.environ.get("WAYLAND_DISPLAY") or "").strip()
+            (os.environ.get("DISPLAY") or "").strip() or (os.environ.get("WAYLAND_DISPLAY") or "").strip()
         )
         gui_auth_available = pkexec_available and graphical_session
         rules_installed = state.rules_path.exists()
@@ -81,12 +85,23 @@ def create_router(state: AppState) -> APIRouter:
 
     @router.post("/api/rules/apply")
     async def api_rules_apply(data: dict):
+        assignments = data.get("assignments", {})
+        arm_assignments = data.get("arm_assignments", {})
+        logger.info(
+            "Applying udev rules — cameras: %s, arms: %s",
+            {k: v for k, v in assignments.items() if v != "(none)"},
+            {k: v for k, v in arm_assignments.items() if v != "(none)"},
+        )
         ok, err = _apply_rules_with_fallback(
-            data.get("assignments", {}),
-            data.get("arm_assignments", {}),
+            assignments,
+            arm_assignments,
             state.rules_path,
             state.fallback_rules_path,
         )
+        if ok:
+            logger.info("udev rules applied successfully")
+        else:
+            logger.warning("udev rules apply failed: %s", err)
         return {
             "ok": ok,
             "error": err,
@@ -117,14 +132,16 @@ def create_router(state: AppState) -> APIRouter:
                 except (OSError, RuntimeError):
                     resolved_target = "(unresolvable)"
                     status = "error"
-            results.append({
-                "role": symlink,
-                "subsystem": device.get("subsystem", ""),
-                "match_key": device.get("serial") or device.get("kernel") or "",
-                "exists": exists,
-                "resolved_target": resolved_target,
-                "status": status,
-            })
+            results.append(
+                {
+                    "role": symlink,
+                    "subsystem": device.get("subsystem", ""),
+                    "match_key": device.get("serial") or device.get("kernel") or "",
+                    "exists": exists,
+                    "resolved_target": resolved_target,
+                    "status": status,
+                }
+            )
         return {"ok": True, "results": results}
 
     return router

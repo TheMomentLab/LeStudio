@@ -1,4 +1,6 @@
 """Training, deps, and installer routes."""
+# pyright: reportMissingTypeArgument=false
+
 from __future__ import annotations
 
 import datetime
@@ -14,8 +16,9 @@ from urllib.parse import quote, urlparse
 
 from fastapi import APIRouter
 
-from lestudio.command_builders import build_train_args
-from lestudio._train_helpers import (
+from ..command_builders import build_train_args
+from ..teleop_bridge import antijitter_plugin_available
+from .._train_helpers import (
     _build_torch_install_args,
     _check_cuda_runtime_compat,
     _check_torchcodec_compat,
@@ -23,17 +26,20 @@ from lestudio._train_helpers import (
     _format_cmd,
     _parse_install_args,
 )
-from lestudio.routes._state import AppState
-from lestudio.routes.process import _guard_process_start
+from ._state import AppState
+from .models import DepsStatusResponse, TrainPreflightResponse
+from .process import _guard_process_start
 
 logger = logging.getLogger(__name__)
 
 # ─── Preflight 서버 캐시 ─────────────────────────────────────────────────────────
-_TTL_PREFLIGHT_OK = 120.0    # ok: True  → 2분 (CUDA 호환성은 설치 전후로만 바넨)
-_TTL_PREFLIGHT_FAIL = 20.0   # ok: False + action 있음 → 20초 (유저 조치 후 쳤캐리 재확인 가능)
+_TTL_PREFLIGHT_OK = 120.0  # ok: True  → 2분 (CUDA 호환성은 설치 전후로만 바넨)
+_TTL_PREFLIGHT_FAIL = 20.0  # ok: False + action 있음 → 20초 (유저 조치 후 쳤캐리 재확인 가능)
 # ok: False + action 없음(서브프로세스 타임아웃 등 일시적 오류) → 캐싱 안 함
 _preflight_cache: dict[str, tuple[dict, float]] = {}
-DEFAULT_COLAB_NOTEBOOK_URL = "https://colab.research.google.com/github/TheMomentLab/lerobot-studio/blob/dev/notebooks/lerobot_train.ipynb"
+DEFAULT_COLAB_NOTEBOOK_URL = (
+    "https://colab.research.google.com/github/TheMomentLab/lerobot-studio/blob/dev/notebooks/lerobot_train.ipynb"
+)
 
 
 def _preflight_cache_get(key: str) -> dict | None:
@@ -102,6 +108,7 @@ def _build_colab_link(base_url: str, repo_id: str, config_path: str) -> str:
         return ""
     return source
 
+
 def create_router(state: AppState) -> APIRouter:
     router = APIRouter()
     token_file = state.config_dir / "hf_token"
@@ -123,7 +130,7 @@ def create_router(state: AppState) -> APIRouter:
 
         return "", "none"
 
-    @router.get("/api/train/preflight")
+    @router.get("/api/train/preflight", response_model=TrainPreflightResponse)
     def api_train_preflight(device: str = "cuda"):
         dev = (device or "cuda").lower()
         cache_key = f"preflight:{dev}"
@@ -151,7 +158,11 @@ def create_router(state: AppState) -> APIRouter:
                 _preflight_cache_set(cache_key, result)
                 return result
             cause = tc.get("cause", "unknown")
-            action_map = {"missing_cuda_toolkit": "install_cuda_toolkit", "missing_ffmpeg": "install_ffmpeg", "version_mismatch": "install_torchcodec"}
+            action_map = {
+                "missing_cuda_toolkit": "install_cuda_toolkit",
+                "missing_ffmpeg": "install_ffmpeg",
+                "version_mismatch": "install_torchcodec",
+            }
             result = {
                 "ok": False,
                 "reason": tc.get("reason", "torchcodec check failed."),
@@ -180,7 +191,11 @@ def create_router(state: AppState) -> APIRouter:
             _preflight_cache_set(cache_key, result)
             return result
         cause = tc.get("cause", "unknown")
-        action_map = {"missing_cuda_toolkit": "install_cuda_toolkit", "missing_ffmpeg": "install_ffmpeg", "version_mismatch": "install_torchcodec"}
+        action_map = {
+            "missing_cuda_toolkit": "install_cuda_toolkit",
+            "missing_ffmpeg": "install_ffmpeg",
+            "version_mismatch": "install_torchcodec",
+        }
         result = {
             "ok": False,
             "reason": tc.get("reason", "torchcodec check failed."),
@@ -189,12 +204,16 @@ def create_router(state: AppState) -> APIRouter:
         }
         _preflight_cache_set(cache_key, result)
         return result
-    @router.get("/api/deps/status")
+
+    @router.get("/api/deps/status", response_model=DepsStatusResponse)
     def api_deps_status():
-        return {
-            "ok": True,
-            "huggingface_cli": bool(shutil.which("huggingface-cli")),
-        }
+        # TODO: rules_needs_root / rules_needs_install are currently sourced from /api/rules/status.
+        # Keep default False here to preserve existing bootstrap behavior.
+        return DepsStatusResponse(
+            ok=True,
+            huggingface_cli=bool(shutil.which("huggingface-cli")),
+            teleop_antijitter_plugin=antijitter_plugin_available(),
+        )
 
     @router.post("/api/train/install_pytorch")
     async def api_train_install_pytorch(data: dict | None = None):
@@ -291,18 +310,23 @@ def create_router(state: AppState) -> APIRouter:
         args = build_train_args(state.python_exe, data)
         ok = state.proc_mgr.start("train", args)
         if ok:
-            state.append_history("train_start", {
-                "policy": data.get("train_policy", ""),
-                "repo_id": data.get("train_repo_id", ""),
-                "steps": data.get("train_steps", ""),
-                "device": data.get("train_device", ""),
-            })
+            state.append_history(
+                "train_start",
+                {
+                    "policy": data.get("train_policy", ""),
+                    "repo_id": data.get("train_repo_id", ""),
+                    "steps": data.get("train_steps", ""),
+                    "device": data.get("train_device", ""),
+                },
+            )
         return {"ok": ok}
 
     @router.post("/api/train/colab/config")
     async def api_train_colab_config(data: dict | None = None):
         payload = data or {}
-        repo_id = str(payload.get("train_repo_id") or payload.get("dataset_repo") or payload.get("repo_id") or "").strip()
+        repo_id = str(
+            payload.get("train_repo_id") or payload.get("dataset_repo") or payload.get("repo_id") or ""
+        ).strip()
         if not repo_id or "/" not in repo_id:
             return {"ok": False, "error": "train_repo_id (user/repo) is required for Colab config upload."}
 
@@ -329,7 +353,9 @@ def create_router(state: AppState) -> APIRouter:
             "lr": str(payload.get("train_lr", "") or "") or None,
             "train_device": _normalize_colab_device(payload.get("train_device")),
             "output_repo": str(payload.get("train_output_repo") or payload.get("output_repo") or "").strip() or None,
-            "extra_overrides": payload.get("extra_overrides", []) if isinstance(payload.get("extra_overrides"), list) else [],
+            "extra_overrides": payload.get("extra_overrides", [])
+            if isinstance(payload.get("extra_overrides"), list)
+            else [],
             "generated_by": "LeStudio",
             "generated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         }

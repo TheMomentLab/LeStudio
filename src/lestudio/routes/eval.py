@@ -1,13 +1,16 @@
 """Evaluation, checkpoint scanning, and gym environment type routes."""
+
 from __future__ import annotations
 
 import datetime
 import importlib.util
 import json
 from pathlib import Path
+from typing import Any
 
 from fastapi import APIRouter
 
+from lestudio._device_helpers import ensure_bimanual_calibration_files, get_calibration_file_path
 from lestudio.command_builders import build_eval_args
 from lestudio._streaming import stop_all_streamers_for_process, unlock_cameras
 from lestudio._train_helpers import (
@@ -29,6 +32,69 @@ KNOWN_ENV_TYPES = [
 ]
 
 
+def _is_bimanual_mode(value: object) -> bool:
+    return str(value or "single").strip().lower() != "single"
+
+
+def _missing_eval_calibration(data: dict[str, Any]) -> str | None:
+    if str(data.get("eval_env_type", "")).strip() != "gym_manipulator":
+        return None
+
+    if _is_bimanual_mode(data.get("robot_mode")):
+        robot_type = str(data.get("eval_robot_type", "bi_so_follower") or "bi_so_follower")
+        teleop_type = str(data.get("eval_teleop_type", "bi_so_leader") or "bi_so_leader")
+        try:
+            robot_profile, _ = ensure_bimanual_calibration_files(
+                robot_type,
+                str(data.get("left_robot_id", "")),
+                str(data.get("right_robot_id", "")),
+                str(data.get("left_follower_port", "")),
+                str(data.get("right_follower_port", "")),
+                "robot",
+            )
+            teleop_profile, _ = ensure_bimanual_calibration_files(
+                teleop_type,
+                str(data.get("left_teleop_id", "")),
+                str(data.get("right_teleop_id", "")),
+                str(data.get("left_leader_port", "")),
+                str(data.get("right_leader_port", "")),
+                "teleop",
+            )
+        except ValueError as exc:
+            return str(exc)
+
+        required = [
+            (robot_type, f"{robot_profile}_left", "left follower"),
+            (robot_type, f"{robot_profile}_right", "right follower"),
+            (teleop_type, f"{teleop_profile}_left", "left leader"),
+            (teleop_type, f"{teleop_profile}_right", "right leader"),
+        ]
+    else:
+        required = [
+            (
+                str(data.get("eval_robot_type", "so101_follower") or "so101_follower"),
+                str(data.get("robot_id", "")).strip(),
+                "follower",
+            ),
+            (
+                str(data.get("eval_teleop_type", "so101_leader") or "so101_leader"),
+                str(data.get("teleop_id", "")).strip(),
+                "leader",
+            ),
+        ]
+
+    for device_type, device_id, label in required:
+        if not device_id:
+            return f"Eval requires a {label} calibration profile id before starting."
+        path = get_calibration_file_path(device_type, device_id)
+        if not path.exists():
+            return (
+                f"Missing {label} calibration file: `{path.name}`. "
+                "Run calibration in Motor Setup or pick the correct calibration profile before evaluation."
+            )
+    return None
+
+
 def create_router(state: AppState) -> APIRouter:
     router = APIRouter()
 
@@ -36,7 +102,7 @@ def create_router(state: AppState) -> APIRouter:
     @router.get("/api/checkpoints")
     def api_checkpoints():
         """Scan outputs/train/ for available checkpoints (flat & timestamped runs)."""
-        results: list[dict] = []
+        results: list[dict[str, Any]] = []
         seen_paths: set[str] = set()
 
         def _scan_checkpoints_dir(ckpts_dir: Path, run_name: str = ""):
@@ -56,7 +122,7 @@ def create_router(state: AppState) -> APIRouter:
                 seen_paths.add(real_path)
                 name = entry.name
                 display = f"{run_name}/{name}" if run_name else name
-                ckpt: dict = {
+                ckpt: dict[str, Any] = {
                     "name": name,
                     "display": display,
                     "path": str(entry / "pretrained_model"),
@@ -89,13 +155,20 @@ def create_router(state: AppState) -> APIRouter:
                         pass
 
                 # Read policy type and env metadata from pretrained_model/train_config.json
-                tc: dict | None = None
+                tc: dict[str, Any] | None = None
                 train_cfg = pretrained / "train_config.json"
                 if train_cfg.exists():
                     try:
-                        tc = json.loads(train_cfg.read_text())
-                        ckpt["policy"] = tc.get("policy", {}).get("type") or tc.get("policy_type")
-                        env_cfg = tc.get("env") if isinstance(tc, dict) else None
+                        parsed = json.loads(train_cfg.read_text())
+                        tc = parsed if isinstance(parsed, dict) else None
+                        if tc is None:
+                            raise TypeError("train_config.json must contain an object")
+                        policy_cfg = tc.get("policy")
+                        if isinstance(policy_cfg, dict):
+                            ckpt["policy"] = policy_cfg.get("type") or tc.get("policy_type")
+                        else:
+                            ckpt["policy"] = tc.get("policy_type")
+                        env_cfg = tc.get("env")
                         if isinstance(env_cfg, dict):
                             raw_type = (env_cfg.get("type") or "").strip()
                             ckpt["env_type"] = raw_type or None
@@ -107,7 +180,11 @@ def create_router(state: AppState) -> APIRouter:
                 if isinstance(tc, dict):
                     input_feats = (tc.get("policy") or {}).get("input_features", {})
                     if isinstance(input_feats, dict):
-                        img_keys = [k.replace("observation.images.", "") for k in input_feats if k.startswith("observation.images.")]
+                        img_keys = [
+                            k.replace("observation.images.", "")
+                            for k in input_feats
+                            if k.startswith("observation.images.")
+                        ]
                         if img_keys:
                             ckpt["image_keys"] = img_keys
 
@@ -144,19 +221,20 @@ def create_router(state: AppState) -> APIRouter:
                 _scan_checkpoints_dir(ckpts_dir, run_name)
 
         # Sort: 'last' first, then by step descending, then by modified
-        def sort_key(c: dict):
+        def sort_key(c: dict[str, Any]):
             if c["name"] == "last":
                 return (0, 0, "")
             if c["name"] == "best":
                 return (1, 0, "")
             return (2, -(c["step"] or 0), c["modified"] or "")
+
         results.sort(key=sort_key)
 
         return {"ok": True, "checkpoints": results}
 
     # ─── Eval Start ───────────────────────────────────────────────────────────
     @router.post("/api/eval/start")
-    async def api_eval_start(data: dict):
+    async def api_eval_start(data: dict[str, Any]):
         guard = _guard_process_start(state, "eval")
         if guard:
             return guard
@@ -204,14 +282,14 @@ def create_router(state: AppState) -> APIRouter:
                     "error": f"{reason} Switch Compute Device to CPU/MPS or install a CUDA-compatible PyTorch build.",
                 }
 
-        # Release camera preview streamers so eval can open cameras
-        stop_all_streamers_for_process()
-        unlock_cameras()
-
         try:
             args = build_eval_args(state.python_exe, data)
         except ValueError as e:
             return {"ok": False, "error": str(e)}
+
+        calib_error = _missing_eval_calibration(data)
+        if calib_error:
+            return {"ok": False, "error": calib_error}
 
         env_type = ""
         for arg in args:
@@ -239,12 +317,20 @@ def create_router(state: AppState) -> APIRouter:
                     "module_name": module_name,
                 }
 
+        # Release camera preview streamers only after validation succeeds so a
+        # failed start does not disrupt preview unnecessarily.
+        stop_all_streamers_for_process()
+        unlock_cameras()
+
         ok = state.proc_mgr.start("eval", args)
         if ok:
-            state.append_history("eval_start", {
-                "policy_path": data.get("eval_policy_path", ""),
-                "device": data.get("eval_device", ""),
-            })
+            state.append_history(
+                "eval_start",
+                {
+                    "policy_path": data.get("eval_policy_path", ""),
+                    "device": data.get("eval_device", ""),
+                },
+            )
         return {"ok": ok}
 
     # ─── Env Types ────────────────────────────────────────────────────────────
@@ -257,12 +343,14 @@ def create_router(state: AppState) -> APIRouter:
                 installed = importlib.util.find_spec(module_name) is not None
             except (ModuleNotFoundError, ValueError):
                 installed = False
-            results.append({
-                "type": entry["type"],
-                "label": entry["label"],
-                "module": module_name,
-                "installed": installed,
-            })
+            results.append(
+                {
+                    "type": entry["type"],
+                    "label": entry["label"],
+                    "module": module_name,
+                    "installed": installed,
+                }
+            )
         return {"ok": True, "env_types": results}
 
     return router
