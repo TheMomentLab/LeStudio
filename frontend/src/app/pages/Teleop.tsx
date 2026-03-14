@@ -17,12 +17,25 @@ import {
   notifyProcessEndedWithError,
 } from "../services/notifications";
 import {
-  PageHeader, StatusBadge, WireSelect,
+  PageHeader, StatusBadge, WireSelect, WireToggle,
   FieldRow, ProcessButtons, ModeToggle, StickyControlBar, SubTabs,
   WireBox, BlockerCard, RefreshButton, EmptyState,
 } from "../components/wireframe";
+import { ArmPairSelector } from "../components/wireframe/ArmPairSelector";
 import { buildPortOptionsFromPaths, type PortOption } from "../services/portLabels";
+import {
+  buildMappedArmLists,
+  defaultArmSelection,
+  resolveArmConfig,
+  type MappedArmLists,
+  type ArmSelection,
+  type ResolvedArmConfig,
+} from "../services/armSets";
 import { toVideoName, useCameraFeeds } from "../hooks/useCameraFeeds";
+import {
+  buildCalibrationProfileOptions,
+  deriveBiSharedSelection,
+} from "../services/calibrationProfiles";
 
 
 
@@ -42,7 +55,7 @@ type DevicesResponse = {
   arms: Array<{ device: string; path: string; symlink?: string | null }>;
 };
 
-type CalibFile = { id: string; guessed_type: string };
+type CalibFile = { id: string; guessed_type: string; rel_path?: string };
 
 type TeleopDebugMeta = {
   antijitter_alpha?: number;
@@ -147,12 +160,31 @@ function asNumberRecord(value: unknown): Record<string, number> {
   return Object.fromEntries(entries);
 }
 
+function pickSelectableValue(value: unknown, options: string[]): string {
+  return typeof value === "string" && options.includes(value) ? value : "";
+}
+
 const LOADING_STEPS = [
   { label: "Opening camera...", pattern: /OpenCVCamera.*connected\./i },
   { label: "Connecting arm...", pattern: /(?:SO\w*(?:Leader|Follower)|(?:Leader|Follower))\s+connected\./i },
   { label: "Calibrating arm...", pattern: /Running calibration of/i, waitPattern: /press ENTER/i },
   { label: "Starting teleop loop...", pattern: /Teleop loop time:/i },
 ];
+
+const TELEOP_ROBOT_TYPE_OPTIONS = [
+  "so101_follower",
+  "so100_follower",
+  { value: "aloha", label: "aloha (not supported in local teleop yet)", disabled: true },
+];
+
+const TELEOP_CONTROLLER_TYPE_OPTIONS = [
+  "so101_leader",
+  "so100_leader",
+  { value: "keyboard", label: "keyboard (not supported in this serial arm flow)", disabled: true },
+];
+
+const TELEOP_BI_ROBOT_TYPE_OPTIONS = ["bi_so_follower"];
+const TELEOP_BI_CONTROLLER_TYPE_OPTIONS = ["bi_so_leader"];
 
 export function Teleop() {
   const config = useLeStudioStore((s) => s.config);
@@ -175,15 +207,22 @@ export function Teleop() {
   const lastErrorAtRef = useRef(0);
   const prevRunningRef = useRef(false);
   const [camerasMapped, setCamerasMapped] = useState<{ role: string; path: string }[]>([]);
+  const [calibFiles, setCalibFiles] = useState<CalibFile[]>([]);
+  const [armLists, setArmLists] = useState<MappedArmLists>({ followers: [], leaders: [] });
+  const [armSelection, setArmSelection] = useState<ArmSelection>({ follower: "", leader: "" });
   const [armPortOptions, setArmPortOptions] = useState<PortOption[]>([]);
   const [followerIdOptions, setFollowerIdOptions] = useState<string[]>([]);
   const [leaderIdOptions, setLeaderIdOptions] = useState<string[]>([]);
-  const [bimanualIdOptions, setBimanualIdOptions] = useState<string[]>([]);
+  const [biFollowerIdOptions, setBiFollowerIdOptions] = useState<string[]>([]);
+  const [biLeaderIdOptions, setBiLeaderIdOptions] = useState<string[]>([]);
   const [selectedFollowerPort, setSelectedFollowerPort] = useState("");
   const [selectedLeaderPort, setSelectedLeaderPort] = useState("");
+  const [selectedLeftFollowerPort, setSelectedLeftFollowerPort] = useState("");
+  const [selectedRightFollowerPort, setSelectedRightFollowerPort] = useState("");
+  const [selectedLeftLeaderPort, setSelectedLeftLeaderPort] = useState("");
+  const [selectedRightLeaderPort, setSelectedRightLeaderPort] = useState("");
   const [selectedFollowerId, setSelectedFollowerId] = useState("");
   const [selectedLeaderId, setSelectedLeaderId] = useState("");
-  const [selectedBimanualId, setSelectedBimanualId] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
   const [antiJitterAvailable, setAntiJitterAvailable] = useState(true);
   const running = phase === "running";
@@ -193,6 +232,7 @@ export function Teleop() {
   const antiJitterDeadband = getConfigNumber(configRecord, "teleop_antijitter_deadband", 0.75);
   const antiJitterMaxStep = getOptionalNumberInput(configRecord, "teleop_antijitter_max_step");
   const debugEnabled = getConfigBoolean(configRecord, "teleop_debug_enabled", false);
+  const advancedEnabled = getConfigBoolean(configRecord, "teleop_advanced_enabled", false);
   const invertShoulderLift = getConfigBoolean(configRecord, "teleop_invert_shoulder_lift", false);
   const invertWristRoll = getConfigBoolean(configRecord, "teleop_invert_wrist_roll", false);
   const teleopLogs = teleopLogLines ?? EMPTY_TELEOP_LOGS;
@@ -200,9 +240,25 @@ export function Teleop() {
     ...config,
     follower_port: selectedFollowerPort || configRecord.follower_port,
     leader_port: selectedLeaderPort || configRecord.leader_port,
+    left_follower_port: selectedLeftFollowerPort || configRecord.left_follower_port,
+    right_follower_port: selectedRightFollowerPort || configRecord.right_follower_port,
+    left_leader_port: selectedLeftLeaderPort || configRecord.left_leader_port,
+    right_leader_port: selectedRightLeaderPort || configRecord.right_leader_port,
     robot_id: selectedFollowerId || configRecord.robot_id,
     teleop_id: selectedLeaderId || configRecord.teleop_id,
-  }), [config, configRecord.follower_port, configRecord.leader_port, configRecord.robot_id, configRecord.teleop_id, selectedFollowerId, selectedFollowerPort, selectedLeaderId, selectedLeaderPort]);
+    left_robot_id: configRecord.left_robot_id,
+    right_robot_id: configRecord.right_robot_id,
+    left_teleop_id: configRecord.left_teleop_id,
+    right_teleop_id: configRecord.right_teleop_id,
+  }), [config, configRecord.follower_port, configRecord.leader_port, configRecord.left_follower_port, configRecord.right_follower_port, configRecord.left_leader_port, configRecord.right_leader_port, configRecord.robot_id, configRecord.teleop_id, configRecord.left_robot_id, configRecord.right_robot_id, configRecord.left_teleop_id, configRecord.right_teleop_id, selectedFollowerId, selectedFollowerPort, selectedLeaderId, selectedLeaderPort, selectedLeftFollowerPort, selectedRightFollowerPort, selectedLeftLeaderPort, selectedRightLeaderPort]);
+  const selectedBiFollowerId = useMemo(
+    () => deriveBiSharedSelection(configRecord.left_robot_id, configRecord.right_robot_id),
+    [configRecord.left_robot_id, configRecord.right_robot_id],
+  );
+  const selectedBiLeaderId = useMemo(
+    () => deriveBiSharedSelection(configRecord.left_teleop_id, configRecord.right_teleop_id),
+    [configRecord.left_teleop_id, configRecord.right_teleop_id],
+  );
   const feedTargets = useMemo(
     () => camerasMapped.map((cam) => ({ id: cam.role, videoName: toVideoName(cam.path) })),
     [camerasMapped],
@@ -265,7 +321,7 @@ export function Teleop() {
       }));
   }, [debugSnapshot]);
   const debugAgeMs = debugSnapshot ? Math.max(0, Date.now() - debugSnapshot.emitted_at_ms) : null;
-  const debugTelemetryPanel = (
+  const debugTelemetryPanel = debugEnabled ? (
     <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden">
       <div className="flex items-center justify-between px-4 py-3 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800">
         <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Teleop Debug Telemetry</span>
@@ -382,9 +438,7 @@ export function Teleop() {
           </>
         ) : (
           <div className="rounded border border-dashed border-zinc-300 dark:border-zinc-700 px-4 py-6 text-sm text-zinc-500 dark:text-zinc-400">
-            {!debugEnabled
-              ? "Verbose debug overlay is currently off. Turn it on above to keep last snapshot data visible here and stream live Teleop telemetry."
-              : debugMeta?.debug_supported === false
+            {debugMeta?.debug_supported === false
               ? `Debug overlay is enabled, but this teleop runtime reported that structured snapshots are unsupported (${debugMeta.reason ?? "unknown reason"}).`
               : running
                 ? "Debug overlay is enabled, but Teleop has not emitted a snapshot yet. Start Teleop and move the leader slightly to populate runtime data."
@@ -393,7 +447,7 @@ export function Teleop() {
         )}
       </div>
     </div>
-  );
+  ) : null;
 
   const toggleFeed = (role: string) =>
     setPausedFeeds((prev) => ({ ...prev, [role]: !prev[role] }));
@@ -413,6 +467,26 @@ export function Teleop() {
     persistConfigPatch({ leader_port: value });
   };
 
+  const handleLeftFollowerPortChange = (value: string) => {
+    setSelectedLeftFollowerPort(value);
+    persistConfigPatch({ left_follower_port: value });
+  };
+
+  const handleRightFollowerPortChange = (value: string) => {
+    setSelectedRightFollowerPort(value);
+    persistConfigPatch({ right_follower_port: value });
+  };
+
+  const handleLeftLeaderPortChange = (value: string) => {
+    setSelectedLeftLeaderPort(value);
+    persistConfigPatch({ left_leader_port: value });
+  };
+
+  const handleRightLeaderPortChange = (value: string) => {
+    setSelectedRightLeaderPort(value);
+    persistConfigPatch({ right_leader_port: value });
+  };
+
   const handleFollowerIdChange = (value: string) => {
     setSelectedFollowerId(value);
     persistConfigPatch({ robot_id: value });
@@ -421,6 +495,56 @@ export function Teleop() {
   const handleLeaderIdChange = (value: string) => {
     setSelectedLeaderId(value);
     persistConfigPatch({ teleop_id: value });
+  };
+
+  const handleBiCalibrationIdChange = (kind: "robot" | "teleop", rawValue: string) => {
+    const base = rawValue.trim();
+    if (kind === "robot") {
+      persistConfigPatch({
+        left_robot_id: base ? `${base}_left` : "",
+        right_robot_id: base ? `${base}_right` : "",
+      });
+      return;
+    }
+    persistConfigPatch({
+      left_teleop_id: base ? `${base}_left` : "",
+      right_teleop_id: base ? `${base}_right` : "",
+    });
+  };
+
+  const handleRobotTypeChange = (value: string) => {
+    persistConfigPatch({ robot_type: value });
+  };
+
+  const handleTeleopTypeChange = (value: string) => {
+    persistConfigPatch({ teleop_type: value });
+  };
+
+  const handleArmSetConfigResolved = (resolved: ResolvedArmConfig) => {
+    setSelectedFollowerPort(resolved.followerPort);
+    setSelectedLeaderPort(resolved.leaderPort);
+    setSelectedLeftFollowerPort(resolved.leftFollowerPort);
+    setSelectedRightFollowerPort(resolved.rightFollowerPort);
+    setSelectedLeftLeaderPort(resolved.leftLeaderPort);
+    setSelectedRightLeaderPort(resolved.rightLeaderPort);
+    setSelectedFollowerId(resolved.followerId);
+    setSelectedLeaderId(resolved.leaderId);
+    persistConfigPatch({
+      robot_type: resolved.robotType,
+      teleop_type: resolved.teleopType,
+      follower_port: resolved.followerPort,
+      leader_port: resolved.leaderPort,
+      robot_id: resolved.followerId,
+      teleop_id: resolved.leaderId,
+      left_follower_port: resolved.leftFollowerPort,
+      right_follower_port: resolved.rightFollowerPort,
+      left_leader_port: resolved.leftLeaderPort,
+      right_leader_port: resolved.rightLeaderPort,
+      left_robot_id: resolved.leftRobotId,
+      right_robot_id: resolved.rightRobotId,
+      left_teleop_id: resolved.leftTeleopId,
+      right_teleop_id: resolved.rightTeleopId,
+    });
   };
 
   useEffect(() => {
@@ -607,24 +731,49 @@ export function Teleop() {
       setArmPortOptions(portOpts);
       const defaultFollower = rawPorts.find((p) => /follower/i.test(p)) ?? rawPorts[0] ?? "";
       const defaultLeader = rawPorts.find((p) => /leader/i.test(p)) ?? rawPorts[1] ?? rawPorts[0] ?? "";
+      const defaultLeftFollower = rawPorts.find((p) => /follower.*(?:1|left)/i.test(p)) ?? defaultFollower;
+      const defaultRightFollower = rawPorts.find((p) => /follower.*(?:2|right)/i.test(p)) ?? rawPorts[1] ?? defaultFollower;
+      const defaultLeftLeader = rawPorts.find((p) => /leader.*(?:1|left)/i.test(p)) ?? defaultLeader;
+      const defaultRightLeader = rawPorts.find((p) => /leader.*(?:2|right)/i.test(p)) ?? rawPorts[1] ?? defaultLeader;
       setSelectedFollowerPort((prev) => (prev && rawPorts.includes(prev) ? prev : defaultFollower));
       setSelectedLeaderPort((prev) => (prev && rawPorts.includes(prev) ? prev : defaultLeader));
+      setSelectedLeftFollowerPort((prev) => (prev && rawPorts.includes(prev) ? prev : defaultLeftFollower));
+      setSelectedRightFollowerPort((prev) => (prev && rawPorts.includes(prev) ? prev : defaultRightFollower));
+      setSelectedLeftLeaderPort((prev) => (prev && rawPorts.includes(prev) ? prev : defaultLeftLeader));
+      setSelectedRightLeaderPort((prev) => (prev && rawPorts.includes(prev) ? prev : defaultRightLeader));
 
       const calibResult = await apiGet<{ files?: CalibFile[] }>("/api/calibrate/list");
       const files = calibResult.files ?? [];
-      const followers = Array.from(new Set(files.filter((f) => f.guessed_type.includes("follower")).map((f) => f.id)));
-      const leaders = Array.from(new Set(files.filter((f) => f.guessed_type.includes("leader")).map((f) => f.id)));
-      const bimanual = Array.from(new Set(files.filter((f) => f.guessed_type.startsWith("bi_")).map((f) => f.id)));
-      setFollowerIdOptions(followers);
-      setLeaderIdOptions(leaders);
-      setBimanualIdOptions(bimanual);
-      setSelectedFollowerId((prev) => (prev && followers.includes(prev) ? prev : followers[0] ?? ""));
-      setSelectedLeaderId((prev) => (prev && leaders.includes(prev) ? prev : leaders[0] ?? ""));
-      setSelectedBimanualId((prev) => (prev && bimanual.includes(prev) ? prev : bimanual[0] ?? ""));
+      setCalibFiles(files);
+      const singleFollowers = buildCalibrationProfileOptions(files, "follower", false);
+      const singleLeaders = buildCalibrationProfileOptions(files, "leader", false);
+      const biFollowers = buildCalibrationProfileOptions(files, "follower", true);
+      const biLeaders = buildCalibrationProfileOptions(files, "leader", true);
+      setFollowerIdOptions(singleFollowers);
+      setLeaderIdOptions(singleLeaders);
+      setBiFollowerIdOptions(biFollowers);
+      setBiLeaderIdOptions(biLeaders);
+      setSelectedFollowerId((prev) => (prev && singleFollowers.includes(prev) ? prev : singleFollowers[0] ?? ""));
+      setSelectedLeaderId((prev) => (prev && singleLeaders.includes(prev) ? prev : singleLeaders[0] ?? ""));
+
+      const lists = buildMappedArmLists(devResult.arms ?? [], files);
+      setArmLists(lists);
+      const sel = defaultArmSelection(lists, mode as "Single Arm" | "Bi-Arm");
+      setArmSelection(sel);
+      const resolved = resolveArmConfig(mode as "Single Arm" | "Bi-Arm", sel, lists, files);
+      handleArmSetConfigResolved(resolved);
 
     };
     void run();
   }, [refreshKey]);
+
+  useEffect(() => {
+    if (armLists.followers.length === 0 && armLists.leaders.length === 0) return;
+    const sel = defaultArmSelection(armLists, mode as "Single Arm" | "Bi-Arm");
+    setArmSelection(sel);
+    const resolved = resolveArmConfig(mode as "Single Arm" | "Bi-Arm", sel, armLists, calibFiles);
+    handleArmSetConfigResolved(resolved);
+  }, [mode]);
 
   useEffect(() => {
     if (!flowError) return;
@@ -634,7 +783,7 @@ export function Teleop() {
   useEffect(() => {
     if (!flowError) return;
     setFlowError(null);
-  }, [selectedFollowerPort, selectedLeaderPort, selectedFollowerId, selectedLeaderId]);
+  }, [selectedFollowerPort, selectedLeaderPort, selectedLeftFollowerPort, selectedRightFollowerPort, selectedLeftLeaderPort, selectedRightLeaderPort, selectedFollowerId, selectedLeaderId, configRecord.left_robot_id, configRecord.right_robot_id, configRecord.left_teleop_id, configRecord.right_teleop_id]);
 
   useEffect(() => {
     const wasRunning = prevRunningRef.current;
@@ -666,6 +815,12 @@ export function Teleop() {
           />
 
           {flowError && <BlockerCard title="Execution Blocked" severity="error" reasons={[flowError]} />}
+          {!advancedEnabled && armLists.followers.length === 0 && armLists.leaders.length === 0 && phase === "idle" && (
+            <BlockerCard
+              title="Arm mapping required"
+              reasons={[{ text: "Go to Motor Setup", to: "/motor-setup" }]}
+            />
+          )}
 
           {/* ─── IDLE: Sub-tabs for settings ─── */}
           {phase === "idle" && (
@@ -685,105 +840,162 @@ export function Teleop() {
                 <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden">
                   <div className="flex items-center justify-between px-4 py-3 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800">
                     <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Motor Configuration</span>
+                    <div className="flex items-center gap-2">
+                      <WireToggle label="Advanced" checked={advancedEnabled} onChange={(v) => persistConfigPatch({ teleop_advanced_enabled: v })} />
+                      <WireToggle label="Debug" checked={debugEnabled} onChange={(v) => persistConfigPatch({ teleop_debug_enabled: v })} />
+                    </div>
                   </div>
                   <div className="px-4 py-4 flex flex-col gap-3">
-                  <p className="text-sm text-zinc-400">Select robot type and control method.</p>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3">
-                    <FieldRow label="Robot Type">
-                      <WireSelect value="so101_follower" options={["so101_follower", "so100_follower", "aloha"]} />
-                    </FieldRow>
-                    <FieldRow label="Teleop Type">
-                      <WireSelect value="so101_leader" options={["so101_leader", "so100_leader", "keyboard"]} />
-                    </FieldRow>
-                  </div>
+                    <ArmPairSelector
+                      mode={mode as "Single Arm" | "Bi-Arm"}
+                      armLists={armLists}
+                      calibFiles={calibFiles}
+                      selection={armSelection}
+                      onSelectionChange={setArmSelection}
+                      onConfigResolved={handleArmSetConfigResolved}
+                      disabled={phase !== "idle"}
+                    />
 
-                  <div className="border-t border-zinc-100 dark:border-zinc-800 pt-3 flex flex-col gap-2">
-                    <p className="text-sm text-zinc-400">Select device port to connect.</p>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3">
-                    {mode === "Single Arm" ? (
+                    {advancedEnabled && (
                       <>
-                        <FieldRow label="Follower Port">
-                          <WireSelect
-                            placeholder={armPortOptions.length === 0 ? "No ports detected" : undefined}
-                            value={selectedFollowerPort}
-                            options={armPortOptions}
-                            onChange={handleFollowerPortChange}
-                          />
-                        </FieldRow>
-                        <FieldRow label="Leader Port">
-                          <WireSelect
-                            placeholder={armPortOptions.length === 0 ? "No ports detected" : undefined}
-                            value={selectedLeaderPort}
-                            options={armPortOptions}
-                            onChange={handleLeaderPortChange}
-                          />
-                        </FieldRow>
-                      </>
-                    ) : (
-                      <>
-                        {["Left Follower", "Right Follower", "Left Leader", "Right Leader"].map((label) => (
-                          <FieldRow key={label} label={label}>
+                        <p className="text-sm text-zinc-400">Select robot type and control method.</p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3">
+                          <FieldRow label="Robot Type">
                             <WireSelect
-                              placeholder={armPortOptions.length === 0 ? "No ports detected" : `${label} Port`}
-                              options={armPortOptions}
+                              value={mode === "Single Arm"
+                                ? (typeof configRecord.robot_type === "string" && configRecord.robot_type ? configRecord.robot_type : "so101_follower")
+                                : "bi_so_follower"}
+                              options={mode === "Single Arm" ? TELEOP_ROBOT_TYPE_OPTIONS : TELEOP_BI_ROBOT_TYPE_OPTIONS}
+                              onChange={mode === "Single Arm" ? handleRobotTypeChange : undefined}
+                              disabled={mode !== "Single Arm"}
                             />
                           </FieldRow>
-                        ))}
+                          <FieldRow label="Teleop Type">
+                            <WireSelect
+                              value={mode === "Single Arm"
+                                ? (typeof configRecord.teleop_type === "string" && configRecord.teleop_type ? configRecord.teleop_type : "so101_leader")
+                                : "bi_so_leader"}
+                              options={mode === "Single Arm" ? TELEOP_CONTROLLER_TYPE_OPTIONS : TELEOP_BI_CONTROLLER_TYPE_OPTIONS}
+                              onChange={mode === "Single Arm" ? handleTeleopTypeChange : undefined}
+                              disabled={mode !== "Single Arm"}
+                            />
+                          </FieldRow>
+                        </div>
+
+                        <div className="border-t border-zinc-100 dark:border-zinc-800 pt-3 flex flex-col gap-2">
+                          <p className="text-sm text-zinc-400">Select device port to connect.</p>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3">
+                            {mode === "Single Arm" ? (
+                              <>
+                                <FieldRow label="Follower Port">
+                                  <WireSelect
+                                    placeholder={armPortOptions.length === 0 ? "No ports detected" : undefined}
+                                    value={selectedFollowerPort}
+                                    options={armPortOptions}
+                                    onChange={handleFollowerPortChange}
+                                  />
+                                </FieldRow>
+                                <FieldRow label="Leader Port">
+                                  <WireSelect
+                                    placeholder={armPortOptions.length === 0 ? "No ports detected" : undefined}
+                                    value={selectedLeaderPort}
+                                    options={armPortOptions}
+                                    onChange={handleLeaderPortChange}
+                                  />
+                                </FieldRow>
+                              </>
+                            ) : (
+                              <>
+                                <FieldRow label="Left Follower">
+                                  <WireSelect
+                                    placeholder={armPortOptions.length === 0 ? "No ports detected" : "Left Follower Port"}
+                                    value={selectedLeftFollowerPort}
+                                    options={armPortOptions}
+                                    onChange={handleLeftFollowerPortChange}
+                                  />
+                                </FieldRow>
+                                <FieldRow label="Right Follower">
+                                  <WireSelect
+                                    placeholder={armPortOptions.length === 0 ? "No ports detected" : "Right Follower Port"}
+                                    value={selectedRightFollowerPort}
+                                    options={armPortOptions}
+                                    onChange={handleRightFollowerPortChange}
+                                  />
+                                </FieldRow>
+                                <FieldRow label="Left Leader">
+                                  <WireSelect
+                                    placeholder={armPortOptions.length === 0 ? "No ports detected" : "Left Leader Port"}
+                                    value={selectedLeftLeaderPort}
+                                    options={armPortOptions}
+                                    onChange={handleLeftLeaderPortChange}
+                                  />
+                                </FieldRow>
+                                <FieldRow label="Right Leader">
+                                  <WireSelect
+                                    placeholder={armPortOptions.length === 0 ? "No ports detected" : "Right Leader Port"}
+                                    value={selectedRightLeaderPort}
+                                    options={armPortOptions}
+                                    onChange={handleRightLeaderPortChange}
+                                  />
+                                </FieldRow>
+                              </>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="border-t border-zinc-100 dark:border-zinc-800 pt-3 flex flex-col gap-2">
+                          <p className="text-sm text-zinc-400">Select calibration profile.</p>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3">
+                            {mode === "Single Arm" ? (
+                              <>
+                                <FieldRow label="Follower ID">
+                                  <WireSelect
+                                    placeholder={followerIdOptions.length === 0 ? "No calibration files" : undefined}
+                                    value={selectedFollowerId}
+                                    options={followerIdOptions}
+                                    onChange={handleFollowerIdChange}
+                                  />
+                                </FieldRow>
+                                <FieldRow label="Leader ID">
+                                  <WireSelect
+                                    placeholder={leaderIdOptions.length === 0 ? "No calibration files" : undefined}
+                                    value={selectedLeaderId}
+                                    options={leaderIdOptions}
+                                    onChange={handleLeaderIdChange}
+                                  />
+                                </FieldRow>
+                              </>
+                            ) : (
+                              <>
+                                <FieldRow label="Follower Shared Profile">
+                                  <WireSelect
+                                    placeholder={biFollowerIdOptions.length === 0 ? "No bi-arm follower profiles" : "- Select shared follower profile -"}
+                                    value={pickSelectableValue(selectedBiFollowerId, biFollowerIdOptions)}
+                                    options={biFollowerIdOptions}
+                                    onChange={(value) => handleBiCalibrationIdChange("robot", value)}
+                                  />
+                                </FieldRow>
+                                <FieldRow label="Leader Shared Profile">
+                                  <WireSelect
+                                    placeholder={biLeaderIdOptions.length === 0 ? "No bi-arm leader profiles" : "- Select shared leader profile -"}
+                                    value={pickSelectableValue(selectedBiLeaderId, biLeaderIdOptions)}
+                                    options={biLeaderIdOptions}
+                                    onChange={(value) => handleBiCalibrationIdChange("teleop", value)}
+                                  />
+                                </FieldRow>
+                              </>
+                            )}
+                          </div>
+                          {mode !== "Single Arm" && (
+                            <p className="text-xs text-zinc-400">
+                              Shared profiles automatically use the matching left/right calibration files.
+                            </p>
+                          )}
+                        </div>
                       </>
                     )}
-                    </div>
-                  </div>
 
-                  <div className="border-t border-zinc-100 dark:border-zinc-800 pt-3 flex flex-col gap-2">
-                    <p className="text-sm text-zinc-400">Select calibration profile.</p>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3">
-                    {mode === "Single Arm" ? (
-                      <>
-                        <FieldRow label="Follower ID">
-                          <WireSelect
-                            placeholder={followerIdOptions.length === 0 ? "No calibration files" : undefined}
-                            value={selectedFollowerId}
-                            options={followerIdOptions}
-                            onChange={handleFollowerIdChange}
-                          />
-                        </FieldRow>
-                        <FieldRow label="Leader ID">
-                          <WireSelect
-                            placeholder={leaderIdOptions.length === 0 ? "No calibration files" : undefined}
-                            value={selectedLeaderId}
-                            options={leaderIdOptions}
-                            onChange={handleLeaderIdChange}
-                          />
-                        </FieldRow>
-                      </>
-                    ) : (
-                      <FieldRow label="Robot ID">
-                        <WireSelect
-                          placeholder={bimanualIdOptions.length === 0 ? "No calibration files" : undefined}
-                          value={selectedBimanualId}
-                          options={bimanualIdOptions}
-                          onChange={setSelectedBimanualId}
-                        />
-                      </FieldRow>
-                    )}
-                    </div>
-                  </div>
-
-                  <div className="border-t border-zinc-100 dark:border-zinc-800 pt-3 flex flex-col gap-2">
-                    <p className="text-sm text-zinc-400">Verbose runtime telemetry overlays the latest leader/current/goal joint values while Teleop is running.</p>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3">
-                      <FieldRow label="Verbose Debug Overlay">
-                        <WireSelect
-                          value={debugEnabled ? "On" : "Off"}
-                          options={["Off", "On"]}
-                          onChange={(value) => {
-                            persistConfigPatch({ teleop_debug_enabled: value === "On" });
-                          }}
-                        />
-                      </FieldRow>
-                    </div>
-                  </div>
-
+                  {advancedEnabled && (
                   <div className="border-t border-zinc-100 dark:border-zinc-800 pt-3 flex flex-col gap-2">
                     <p className="text-sm text-zinc-400">Optional joint-direction overrides applied only in Teleop action mapping.</p>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3">
@@ -807,7 +1019,9 @@ export function Teleop() {
                       </FieldRow>
                     </div>
                   </div>
+                  )}
 
+                  {advancedEnabled && (
                   <div className="border-t border-zinc-100 dark:border-zinc-800 pt-3 flex flex-col gap-2">
                     <p className="text-sm text-zinc-400">
                       {antiJitterAvailable
@@ -885,11 +1099,11 @@ export function Teleop() {
                       </FieldRow>
                     </div>
                   </div>
-                </div>
+                  )}
+                  </div>
                 </div>
               )}
 
-              {teleopTab === "motor" && debugTelemetryPanel}
 
               {/* Camera Setting Tab — settings above, preview below */}
               {teleopTab === "camera" && (
@@ -931,17 +1145,18 @@ export function Teleop() {
                       {advStreamOpen && (
                         <div className="flex flex-col gap-2 pl-2 border-l-2 border-zinc-100 dark:border-zinc-800">
                           <FieldRow label="Codec">
-                            <WireSelect value="MJPG" options={["MJPG", "YUYV"]} />
+                            <WireSelect value="MJPG" options={["MJPG", "YUYV"]} disabled />
                           </FieldRow>
                           <FieldRow label="Resolution">
-                            <WireSelect value="640×480" options={["1280×720", "800×600", "640×480", "320×240"]} />
+                            <WireSelect value="640×480" options={["1280×720", "800×600", "640×480", "320×240"]} disabled />
                           </FieldRow>
                           <FieldRow label="FPS">
-                            <WireSelect value="30" options={["15", "30", "60"]} />
+                            <WireSelect value="30" options={["15", "30", "60"]} disabled />
                           </FieldRow>
                           <FieldRow label="JPEG Quality">
-                            <input type="range" min={30} max={95} defaultValue={75} className="w-full h-1.5 accent-zinc-500 cursor-pointer" />
+                            <input type="range" min={30} max={95} defaultValue={75} className="w-full h-1.5 accent-zinc-500 cursor-pointer" disabled />
                           </FieldRow>
+                          <p className="text-xs text-zinc-400">Camera stream settings are managed from Camera Setup.</p>
                         </div>
                       )}
                     </div>
@@ -1132,7 +1347,7 @@ export function Teleop() {
             onStart={() => { void handleStart(); }}
             onStop={() => { void handleStop(); }}
             startLabel={<><Play size={13} className="fill-current" /> Start Teleop</>}
-            disabled={actionPending}
+            disabled={actionPending || (!advancedEnabled && armLists.followers.length === 0 && armLists.leaders.length === 0)}
             compact
             buttonClassName="py-1"
           />
