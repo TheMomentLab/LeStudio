@@ -2,6 +2,8 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { Link } from "react-router";
 import { Play } from "lucide-react";
 import { apiGet, apiPost } from "../../services/apiClient";
+import { UdevInstallGate } from "../../components/UdevInstallGate";
+import { MotorMappingGate } from "../../components/MotorMappingGate";
 import { useLeStudioStore, getLeStudioState } from "../../store";
 import {
   extractPreflightReason,
@@ -453,6 +455,8 @@ export function Recording() {
 
   return (
     <div className="flex flex-col h-full">
+      <UdevInstallGate>
+      <MotorMappingGate>
       <div className="flex-1 overflow-y-auto">
         <div className="p-6 flex flex-col gap-4 max-w-[1600px] mx-auto w-full">
           {/* Header */}
@@ -470,13 +474,6 @@ export function Recording() {
           />
 
           {flowError && <BlockerCard title="Execution Blocked" severity="error" reasons={[flowError]} />}
-          {armLists.followers.length === 0 && armLists.leaders.length === 0 && phase === "idle" && (
-            <BlockerCard
-              title="Arm mapping required"
-              reasons={[{ text: "Go to Motor Setup", to: "/motor-setup" }]}
-            />
-          )}
-
           {/* ─── IDLE: Sub-tabs for settings ─── */}
           {phase === "idle" && (
             <div className="flex flex-col gap-4">
@@ -605,6 +602,8 @@ export function Recording() {
           />
         </div>
       </StickyControlBar>
+      </MotorMappingGate>
+      </UdevInstallGate>
     </div>
   );
 }

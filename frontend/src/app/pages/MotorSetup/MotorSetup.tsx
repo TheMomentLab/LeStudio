@@ -4,6 +4,7 @@ import {
   RefreshButton,
   SubTabs,
 } from "../../components/wireframe";
+import { UdevInstallGate } from "../../components/UdevInstallGate";
 import { apiDelete, apiGet, apiPost } from "../../services/apiClient";
 import { buildCalibrationListEntries } from "../../services/calibrationProfiles";
 import { symToDisplayLabel, buildPortOptions } from "../../services/portLabels";
@@ -922,6 +923,7 @@ export function MotorSetup() {
 
   return (
     <div className="flex flex-col h-full">
+      <UdevInstallGate>
       <div className="flex-1 overflow-y-auto">
         <div className="p-6 flex flex-col gap-4 max-w-[1600px] mx-auto w-full">
           <PageHeader
@@ -1088,6 +1090,7 @@ export function MotorSetup() {
           void loadDevices();
         }}
       />
+      </UdevInstallGate>
     </div>
   );
 }

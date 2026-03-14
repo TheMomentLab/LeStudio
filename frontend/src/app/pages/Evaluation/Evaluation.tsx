@@ -15,6 +15,8 @@ import {
   notifyError,
 } from "../../services/notifications";
 import { apiGet, apiPost } from "../../services/apiClient";
+import { UdevInstallGate } from "../../components/UdevInstallGate";
+import { MotorMappingGate } from "../../components/MotorMappingGate";
 import { useLeStudioStore } from "../../store";
 import {
   parseBackendError,
@@ -96,6 +98,7 @@ export function Evaluation() {
   const [gymInstallCommand, setGymInstallCommand] = useState("");
   const [gymModuleName, setGymModuleName] = useState("");
   const autoInstallCommandRef = useRef("");
+  const [simOnlyMode, setSimOnlyMode] = useState(false);
   const [gpuAvailable, setGpuAvailable] = useState(false);
 
   // ── Hooks ────────────────────────────────────────────────────────────────
@@ -604,6 +607,11 @@ export function Evaluation() {
   // ── Render ───────────────────────────────────────────────────────────────
   return (
     <div className="flex flex-col h-full">
+      <UdevInstallGate>
+      <MotorMappingGate
+        onSkip={() => { setSimOnlyMode(true); updateConfig({ eval_env_type: "gym" }); }}
+        skipLabel="Use Simulation"
+      >
       <div className="flex-1 overflow-y-auto">
         <div className="p-6 pb-8 flex flex-col gap-4 max-w-[1600px] mx-auto w-full">
 
@@ -648,11 +656,6 @@ export function Evaluation() {
             />
           ))}
 
-          {isRealRobot && armLists.followers.length === 0 && armLists.leaders.length === 0 && !isRunning && (
-            <BlockerCard title="Arm mapping required" reasons={[{ text: "Go to Motor Setup", to: "/motor-setup" }]} />
-          )}
-
-
           {/* Gym plugin install card */}
           {gymInstallCommand && !isRunning && (
             <GymInstallCard
@@ -680,7 +683,7 @@ export function Evaluation() {
               datasetRepo={datasetRepo}
               setDatasetRepo={setDatasetRepo}
               envType={envType}
-              envTypes={envTypes}
+              envTypes={simOnlyMode ? envTypes.filter((e) => e.type !== "gym_manipulator") : envTypes}
               envTypeFromCheckpoint={envTypeFromCheckpoint}
               envTypeMissing={envTypeMissing}
               envTaskFromCheckpoint={envTaskFromCheckpoint}
@@ -840,6 +843,8 @@ export function Evaluation() {
           />
         </div>
       </StickyControlBar>
+      </MotorMappingGate>
+      </UdevInstallGate>
     </div>
   );
 }

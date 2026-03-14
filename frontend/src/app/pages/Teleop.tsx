@@ -3,6 +3,8 @@ import { Link } from "react-router";
 import { ChevronDown, ChevronUp, Play, Pause, Loader2, CheckCircle2, Camera } from "lucide-react";
 import { cn } from "../components/ui/utils";
 import { apiGet, apiPost } from "../services/apiClient";
+import { UdevInstallGate } from "../components/UdevInstallGate";
+import { MotorMappingGate } from "../components/MotorMappingGate";
 import { useLeStudioStore, getLeStudioState } from "../store";
 import {
   extractPreflightReason,
@@ -698,6 +700,8 @@ export function Teleop() {
 
   return (
     <div className="flex flex-col h-full">
+      <UdevInstallGate>
+      <MotorMappingGate>
       <div className="flex-1 overflow-y-auto">
         <div className="p-6 flex flex-col gap-4 max-w-[1600px] mx-auto w-full">
           {/* Header */}
@@ -715,13 +719,6 @@ export function Teleop() {
           />
 
           {flowError && <BlockerCard title="Execution Blocked" severity="error" reasons={[flowError]} />}
-          {armLists.followers.length === 0 && armLists.leaders.length === 0 && phase === "idle" && (
-            <BlockerCard
-              title="Arm mapping required"
-              reasons={[{ text: "Go to Motor Setup", to: "/motor-setup" }]}
-            />
-          )}
-
           {/* ─── IDLE: Sub-tabs for settings ─── */}
           {phase === "idle" && (
             <div className="flex flex-col gap-4">
@@ -1109,6 +1106,8 @@ export function Teleop() {
           />
         </div>
       </StickyControlBar>
+      </MotorMappingGate>
+      </UdevInstallGate>
     </div>
   );
 }

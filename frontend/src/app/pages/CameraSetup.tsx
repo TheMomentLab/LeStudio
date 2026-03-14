@@ -5,6 +5,7 @@ import { useLeStudioStore } from "../store";
 import {
   PageHeader, WireSelect, EmptyState, RefreshButton,
 } from "../components/wireframe";
+import { UdevInstallGate } from "../components/UdevInstallGate";
 import { toVideoName, useCameraFeeds } from "../hooks/useCameraFeeds";
 
 type CameraDevice = {
@@ -200,6 +201,7 @@ export function CameraSetup() {
 
   return (
     <div className="flex flex-col h-full">
+      <UdevInstallGate>
       <div className="flex-1 overflow-y-auto">
         <div className="p-6 flex flex-col gap-4 max-w-[1600px] mx-auto w-full">
           <PageHeader
@@ -306,6 +308,7 @@ export function CameraSetup() {
           </div>
         </div>
       </div>
+      </UdevInstallGate>
     </div>
   );
 }

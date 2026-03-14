@@ -136,13 +136,15 @@ export function SystemStatus() {
                   <div className="flex-1 min-w-0">
                     <div className="text-sm text-zinc-700 dark:text-zinc-300">udev Rules</div>
                     <div className="text-xs text-zinc-400">
-                      {udevRules.length > 0
-                        ? `${udevRules.length} rule${udevRules.length !== 1 ? "s" : ""} — stable device symlinks`
+                      {udevStatus?.rules_installed
+                        ? udevRules.length > 0
+                          ? `${udevRules.length} rule${udevRules.length !== 1 ? "s" : ""} — stable device symlinks`
+                          : "Installed — no device mappings yet"
                         : "Ensures persistent camera/arm paths across reboots"
                       }
                     </div>
                   </div>
-                  {udevRules.length > 0 ? (
+                  {udevStatus?.rules_installed ? (
                     <CheckCircle2 size={18} className="text-emerald-500 dark:text-emerald-400 flex-none" />
                   ) : canOneClickInstall ? (
                     <button
@@ -157,7 +159,7 @@ export function SystemStatus() {
                     <AlertTriangle size={16} className="text-amber-500 dark:text-amber-400 flex-none" />
                   )}
                 </div>
-                {udevRules.length === 0 && !canOneClickInstall && udevStatus?.needs_root_for_install && (
+                {!udevStatus?.rules_installed && !canOneClickInstall && udevStatus?.needs_root_for_install && (
                   <div className="text-xs text-zinc-400">
                     Run: <code className="font-mono text-xs bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded px-1.5 py-0.5">lestudio install-udev</code>
                   </div>
