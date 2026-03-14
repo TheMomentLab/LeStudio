@@ -53,14 +53,15 @@ export function RecordingCameraTab({
           {advStreamOpen && (
             <div className="flex flex-col gap-2 pl-2 border-l-2 border-zinc-100 dark:border-zinc-800">
               <FieldRow label="Codec">
-                <WireSelect value="MJPG" options={["MJPG", "YUYV"]} />
+                <WireSelect value="MJPG" options={["MJPG", "YUYV"]} disabled />
               </FieldRow>
               <FieldRow label="Resolution">
-                <WireSelect value="640×480" options={["1280×720", "800×600", "640×480", "320×240"]} />
+                <WireSelect value="640×480" options={["1280×720", "800×600", "640×480", "320×240"]} disabled />
               </FieldRow>
               <FieldRow label="FPS">
-                <WireSelect value="30" options={["15", "30", "60"]} />
+                <WireSelect value="30" options={["15", "30", "60"]} disabled />
               </FieldRow>
+              <p className="text-xs text-zinc-400">Camera stream settings are managed from Camera Setup.</p>
             </div>
           )}
         </div>

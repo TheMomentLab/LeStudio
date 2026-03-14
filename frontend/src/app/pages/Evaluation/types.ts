@@ -10,6 +10,23 @@ export type EvalPreflightResponse = {
   command?: string;
 };
 
+export type CalibrationFileStatusResponse = {
+  exists: boolean;
+  path: string;
+  modified?: string;
+  size?: number;
+};
+
+export type EvalCalibrationProfile = {
+  configKey: string;
+  label: string;
+  deviceType: string;
+  deviceId: string;
+  exists: boolean | null;
+  path: string;
+  modified?: string;
+};
+
 export type RewardTooltipEntry = {
   payload?: EpisodeResult;
 };

@@ -14,11 +14,11 @@ type BootstrapErrorKey =
   | "trainPreflight";
 
 type DepsStatusResponse = {
+  ok?: boolean;
   huggingface_cli?: boolean;
   rules_needs_root?: boolean;
   rules_needs_install?: boolean;
-  rulesNeedsRoot?: boolean;
-  rulesNeedsInstall?: boolean;
+  teleop_antijitter_plugin?: boolean;
   [key: string]: unknown;
 };
 
@@ -142,24 +142,6 @@ function normalizeDevices(payload: unknown): DevicesResponse {
     return { cameras: [], arms: [] };
   }
 
-  const directDevices = isRecord(payload.devices) ? payload.devices : null;
-  const nestedDevices = isRecord(payload.data) && isRecord(payload.data.devices) ? payload.data.devices : null;
-  const devicesNode = directDevices ?? nestedDevices;
-
-  if (devicesNode) {
-    return {
-      cameras: normalizeCameras(devicesNode.cameras),
-      arms: normalizeArms(devicesNode.arms),
-    };
-  }
-
-  if (isRecord(payload.data)) {
-    return {
-      cameras: normalizeCameras(payload.data.cameras),
-      arms: normalizeArms(payload.data.arms),
-    };
-  }
-
   return {
     cameras: normalizeCameras(payload.cameras),
     arms: normalizeArms(payload.arms),
@@ -179,10 +161,8 @@ function deriveSidebarSignals(
 ): SidebarSignals {
   const huggingfaceCli = parseBoolean(depsStatus?.huggingface_cli);
   const huggingfaceCliOk = huggingfaceCli !== false;
-  const rulesNeedsRoot =
-    parseBoolean(depsStatus?.rules_needs_root) === true || parseBoolean(depsStatus?.rulesNeedsRoot) === true;
-  const rulesNeedsInstall =
-    parseBoolean(depsStatus?.rules_needs_install) === true || parseBoolean(depsStatus?.rulesNeedsInstall) === true;
+  const rulesNeedsRoot = parseBoolean(depsStatus?.rules_needs_root) === true;
+  const rulesNeedsInstall = parseBoolean(depsStatus?.rules_needs_install) === true;
 
   return {
     ...DEFAULT_SIDEBAR_SIGNALS,

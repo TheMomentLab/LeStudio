@@ -86,6 +86,7 @@ export function Training() {
 
   // Status
   const trainRunningOnBackend = useLeStudioStore((s) => !!s.procStatus.train);
+  const trainReconnected = useLeStudioStore((s) => !!s.procReconnected.train);
   const [trainStatus, setTrainStatus] = useState<TrainStatus>(() => trainRunningOnBackend ? "running" : "idle");
   const [cudaState, setCudaState] = useState<CudaState>("ok");
   const [cudaFixRunning, setCudaFixRunning] = useState(false);
@@ -108,6 +109,7 @@ export function Training() {
   const prevRunningRef = useRef(false);
   const [availableDatasets, setAvailableDatasets] = useState<string[]>(LOCAL_DATASETS);
   const [hfDatasets, setHfDatasets] = useState<string[]>([]);
+  const [gpuAvailable, setGpuAvailable] = useState(false);
 
   const totalSteps = customSteps;
   const running = trainStatus === "running";
@@ -115,6 +117,12 @@ export function Training() {
   const latestLoss = lossData[lossData.length - 1]?.loss;
   const eta = running ? `~${Math.round((totalSteps - currentStep) / 500 * 0.8 / 60)}h ${Math.round(((totalSteps - currentStep) / 500 * 0.8) % 60)}m` : "—";
   const completed = trainStatus === "idle" && showCheckpoints;
+  const supportsMps = typeof navigator !== "undefined" && /mac/i.test(navigator.platform);
+  const computeDeviceOptions = [
+    gpuAvailable ? "CUDA (GPU)" : { value: "CUDA (GPU)", label: "CUDA (GPU) (not available)", disabled: true },
+    "CPU",
+    supportsMps ? "MPS (Apple Silicon)" : { value: "MPS (Apple Silicon)", label: "MPS (Apple Silicon) (macOS only)", disabled: true },
+  ];
 
   const [gpuSnapshot, setGpuSnapshot] = useState({ util: 76, vramUsedGb: 12, vramTotalGb: 24 });
 
@@ -388,6 +396,26 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
     return () => clearInterval(timer);
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    void apiGet<GpuStatusResponse>("/api/gpu/status")
+      .then((response) => {
+        if (!cancelled) setGpuAvailable(Boolean(response.exists));
+      })
+      .catch(() => {
+        if (!cancelled) setGpuAvailable(false);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (device === "CUDA (GPU)" && !gpuAvailable) {
+      setDevice("CPU");
+    } else if (device === "MPS (Apple Silicon)" && !supportsMps) {
+      setDevice("CPU");
+    }
+  }, [device, gpuAvailable, supportsMps]);
+
   // Fetch user's HF Hub datasets when authenticated
   useEffect(() => {
     if (hfAuth !== "ready") {
@@ -634,6 +662,7 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
                 setBatchSize={setBatchSize}
                 modelOutputRepo={modelOutputRepo}
                 setModelOutputRepo={setModelOutputRepo}
+                computeDeviceOptions={computeDeviceOptions}
               />
 
               <ColabPanel
@@ -666,6 +695,12 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
           )}
 
           {/* ─── RUNNING: Monitoring ────────────────────────────────── */}
+          {trainReconnected && trainStatus === "running" && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-blue-500/30 bg-blue-500/5 text-sm text-blue-600 dark:text-blue-400">
+              <span className="flex-none">⚡</span>
+              <span>Reconnected — This training session was recovered from a previous server session. Progress metrics may be unavailable. You can still stop the process.</span>
+            </div>
+          )}
           {trainStatus === "running" && (
             <TrainProgressPanel
               currentStep={currentStep}

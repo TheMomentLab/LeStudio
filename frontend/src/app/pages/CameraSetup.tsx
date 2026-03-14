@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
-import { Camera, Eye, EyeOff, X, AlertCircle, Save } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { Camera, Eye, EyeOff, X, AlertCircle, Loader2 } from "lucide-react";
 import { apiGet, apiPost } from "../services/apiClient";
+import { useLeStudioStore } from "../store";
 import {
   PageHeader, WireSelect, EmptyState, RefreshButton,
 } from "../components/wireframe";
@@ -71,17 +72,21 @@ function friendlyError(raw: string): string {
 
 export function CameraSetup() {
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [autoApplying, setAutoApplying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activePreviews, setActivePreviews] = useState<Record<string, boolean>>({});
   const [cameras, setCameras] = useState<CameraDevice[]>([]);
-  const [persistedAssignments, setPersistedAssignments] = useState<Record<string, string>>({});
   const [cameraAssignments, setCameraAssignments] = useState<Record<string, string>>({});
+  const lastAppliedRef = useRef<Record<string, string>>({});
+  const autoApplyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const globalDevices = useLeStudioStore((s) => s.devices);
+  const addToast = useLeStudioStore((s) => s.addToast);
+  const prevDeviceCountRef = useRef({ cameras: -1, arms: -1 });
 
   const togglePreview = (id: string) =>
     setActivePreviews((prev) => ({ ...prev, [id]: !prev[id] }));
 
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -93,7 +98,7 @@ export function CameraSetup() {
       for (const cam of nextCameras) {
         nextAssignments[cam.device] = normalizeRole(cam.symlink);
       }
-      setPersistedAssignments(nextAssignments);
+      lastAppliedRef.current = nextAssignments;
       setCameraAssignments(nextAssignments);
     } catch (refreshError) {
       const message = refreshError instanceof Error ? refreshError.message : "failed to load camera data";
@@ -101,14 +106,26 @@ export function CameraSetup() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     void refresh();
   }, []);
 
-  const applyMapping = async (nextAssignments: Record<string, string>) => {
-    setSaving(true);
+  useEffect(() => {
+    const prev = prevDeviceCountRef.current;
+    const camCount = globalDevices.cameras.length;
+    const armCount = globalDevices.arms.length;
+    if (prev.cameras !== camCount || prev.arms !== armCount) {
+      prevDeviceCountRef.current = { cameras: camCount, arms: armCount };
+      if (prev.cameras >= 0) {
+        void refresh();
+      }
+    }
+  }, [globalDevices]);
+
+  const applyMapping = useCallback(async (nextAssignments: Record<string, string>) => {
+    setAutoApplying(true);
     setError(null);
     try {
       const assignments: Record<string, string> = {};
@@ -135,17 +152,43 @@ export function CameraSetup() {
       });
 
       if (!result.ok) {
-        setError(result.error ?? "failed to apply mapping");
+        addToast(result.error ?? "Failed to apply camera mapping.", "error");
+        setCameraAssignments({ ...lastAppliedRef.current });
       } else {
+        lastAppliedRef.current = { ...nextAssignments };
         await refresh();
+
+        setCameraAssignments((prev) => {
+          const merged = { ...prev };
+          for (const [device, role] of Object.entries(nextAssignments)) {
+            if (role !== "(none)" && (merged[device] === "(none)" || !merged[device])) {
+              merged[device] = role;
+            }
+          }
+          return merged;
+        });
       }
     } catch (saveError) {
       const message = saveError instanceof Error ? saveError.message : "failed to apply mapping";
-      setError(friendlyError(message));
+      addToast(friendlyError(message), "error");
+      setCameraAssignments({ ...lastAppliedRef.current });
     } finally {
-      setSaving(false);
+      setAutoApplying(false);
     }
-  };
+  }, [addToast, cameras, refresh]);
+
+  const scheduleAutoApply = useCallback((nextAssignments: Record<string, string>) => {
+    if (autoApplyTimerRef.current) clearTimeout(autoApplyTimerRef.current);
+    autoApplyTimerRef.current = setTimeout(() => {
+      void applyMapping(nextAssignments);
+    }, 400);
+  }, [applyMapping]);
+
+  useEffect(() => {
+    return () => {
+      if (autoApplyTimerRef.current) clearTimeout(autoApplyTimerRef.current);
+    };
+  }, []);
 
   const previewTargets = useMemo(
     () => cameras
@@ -154,10 +197,6 @@ export function CameraSetup() {
     [cameras, activePreviews],
   );
   const previewFrames = useCameraFeeds(previewTargets, previewTargets.length > 0, 10);
-  const hasPendingMappingChanges = useMemo(
-    () => cameras.some((cam) => (cameraAssignments[cam.device] ?? "(none)") !== (persistedAssignments[cam.device] ?? "(none)")),
-    [cameraAssignments, cameras, persistedAssignments],
-  );
 
   return (
     <div className="flex flex-col h-full">
@@ -166,7 +205,7 @@ export function CameraSetup() {
           <PageHeader
             title="Camera Setup"
             subtitle="Camera mapping and role assignment"
-            action={<div className="flex items-center gap-2"><button onClick={() => { void applyMapping(cameraAssignments); }} disabled={saving || !hasPendingMappingChanges} className={`flex items-center gap-1.5 px-3 py-1 rounded border text-sm transition-colors ${saving || !hasPendingMappingChanges ? "border-zinc-600 text-zinc-500 cursor-not-allowed" : "border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 cursor-pointer"}`}><Save size={12} />{saving ? "Applying..." : "Apply Mapping"}</button><RefreshButton onClick={() => { void refresh(); }} /></div>}
+            action={<RefreshButton onClick={() => { void refresh(); }} />}
           />
 
           {error && (
@@ -179,6 +218,11 @@ export function CameraSetup() {
           <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex flex-col">
             <div className="flex items-center justify-between px-4 py-3 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800">
               <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Cameras ({cameras.length})</span>
+              {autoApplying && (
+                <span className="flex items-center gap-1.5 text-xs text-zinc-400">
+                  <Loader2 size={12} className="animate-spin" /> Applying…
+                </span>
+              )}
             </div>
             <div className="px-4 flex-1">
               <div className="flex flex-col divide-y divide-zinc-100 dark:divide-zinc-800/50 border-b border-zinc-100 dark:border-zinc-800/50">
@@ -209,8 +253,15 @@ export function CameraSetup() {
                             options={CAMERA_ROLES.map(labelForRole)}
                             onChange={(nextLabel) => {
                               const nextRole = Object.entries(ROLE_LABELS).find(([, label]) => label === nextLabel)?.[0] ?? "(none)";
-                              const next = { ...cameraAssignments, [cam.device]: nextRole };
+                              const next = { ...cameraAssignments };
+                              if (nextRole !== "(none)") {
+                                for (const key of Object.keys(next)) {
+                                  if (next[key] === nextRole) next[key] = "(none)";
+                                }
+                              }
+                              next[cam.device] = nextRole;
                               setCameraAssignments(next);
+                              scheduleAutoApply(next);
                             }}
                           />
                         </div>

@@ -13,6 +13,7 @@ import type {
   TrainStreamChannel,
   TrainStreamEvent,
 } from "../../mock-api/handlers";
+import type { DevicesResponse } from "../store/types";
 import { getLeStudioState, setLeStudioState } from "../store";
 
 const NETWORK_DELAY_MS = 120;
@@ -55,6 +56,8 @@ let wsSocket: WebSocket | null = null;
 let wsOpen = false;
 let wsEventSeq = 0;
 let wsTrainRunning: boolean | null = null;
+let lastDeviceGeneration = -1;
+let deviceRefreshInFlight = false;
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => {
@@ -211,7 +214,7 @@ function handleGlobalWsEvents(data: unknown): void {
             }
           } else {
             const kind = level === "info" ? "stdout" : level;
-            getLeStudioState().appendLog(processName, line, kind);
+            getLeStudioState().appendLog(processName, line, kind, replace);
           }
         } else {
           const kind = level === "info" ? "stdout" : level;
@@ -224,6 +227,39 @@ function handleGlobalWsEvents(data: unknown): void {
   if (obj.type === "status" && obj.processes && typeof obj.processes === "object") {
     const processes = obj.processes as Record<string, boolean>;
     setLeStudioState({ procStatus: processes });
+    // Clear reconnected flag for processes that are no longer running
+    const prev = getLeStudioState().procReconnected;
+    if (Object.keys(prev).length > 0) {
+      const cleaned = { ...prev };
+      let changed = false;
+      for (const [name, isRunning] of Object.entries(processes)) {
+        if (!isRunning && name in cleaned) {
+          delete cleaned[name];
+          changed = true;
+        }
+      }
+      if (changed) setLeStudioState({ procReconnected: cleaned });
+    }
+
+    if (typeof obj.device_generation === "number" && obj.device_generation !== lastDeviceGeneration) {
+      lastDeviceGeneration = obj.device_generation;
+      if (!deviceRefreshInFlight) {
+        deviceRefreshInFlight = true;
+        apiGet<Partial<DevicesResponse>>("/api/devices")
+          .then((data) => {
+            setLeStudioState({
+              devices: {
+                cameras: Array.isArray(data.cameras) ? data.cameras : [],
+                arms: Array.isArray(data.arms) ? data.arms : [],
+              },
+            });
+          })
+          .catch(() => {})
+          .finally(() => {
+            deviceRefreshInFlight = false;
+          });
+      }
+    }
   }
 }
 

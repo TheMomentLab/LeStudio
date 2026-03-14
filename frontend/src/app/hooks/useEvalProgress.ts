@@ -50,9 +50,14 @@ interface UseEvalProgressArgs {
 // ─── Markers ─────────────────────────────────────────────────────────────────
 
 const COMPLETE_MARKER =
-  /evaluation complete|end of evaluation|eval complete|end of eval/i;
+  /evaluation complete|end of evaluation|eval complete|end of eval|end of eval/i;
 const END_MARKER = /\[eval process ended\]/i;
 const ERROR_MARKER = /\[ERROR\]|Traceback|RuntimeError|Exception|failed/i;
+const TQDM_PROGRESS_MARKER = /(?:^|\s)(\d+)%\|.*\|\s*(\d+)\/(\d+)(?:\s|$)/;
+// tqdm lines that track steps-per-episode (not episode count) — skip for episode counting
+const STEP_TQDM_MARKER = /running_success_rate|running rollout with at most|steps:/i;
+// running_success_rate value extraction from step tqdm postfix
+const RUNNING_SUCCESS_RATE_MARKER = /running_success_rate[=:]\s*([0-9]*\.?[0-9]+)\s*%/i;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -112,6 +117,11 @@ export function useEvalProgress({
     null,
   );
 
+  // ── Step-level progress (from inner tqdm per rollout) ────────────────────
+  const [stepDone, setStepDone] = useState(0);
+  const [stepTotal, setStepTotal] = useState<number | null>(null);
+  const [runningSuccessRate, setRunningSuccessRate] = useState<number | null>(null);
+
   // ── Per-episode results (for chart) ──────────────────────────────────────
   const [episodeResults, setEpisodeResults] = useState<EpisodeResult[]>([]);
 
@@ -123,6 +133,10 @@ export function useEvalProgress({
   // When remounting while process is running, skip existing logs to avoid
   // old end-markers triggering false idle/stopped state.
   const processedLogsRef = useRef(running ? evalLogLines.length : 0);
+  const processedTailRef = useRef<{ id: string | null; ts: number | null }>({
+    id: running && evalLogLines.length > 0 ? evalLogLines[evalLogLines.length - 1].id : null,
+    ts: running && evalLogLines.length > 0 ? evalLogLines[evalLogLines.length - 1].ts : null,
+  });
   const perEpisodeRewardRef = useRef<Record<number, number>>({});
   const perEpisodeDataRef = useRef<
     Record<number, { reward: number; success: boolean; frames: number }>
@@ -213,12 +227,16 @@ export function useEvalProgress({
     setElapsedTick(0);
     setLastMetricUpdateMs(null);
     setEpisodeResults([]);
+    setStepDone(0);
+    setStepTotal(null);
+    setRunningSuccessRate(null);
     doneEpisodesRef.current = 0;
     targetEpisodesRef.current = null;
     meanRewardRef.current = null;
     successRateRef.current = null;
     hadErrorRef.current = false;
     processedLogsRef.current = 0;
+    processedTailRef.current = { id: null, ts: null };
     perEpisodeRewardRef.current = {};
     perEpisodeDataRef.current = {};
     startingStepRef.current = 0;
@@ -232,8 +250,13 @@ export function useEvalProgress({
       setTargetEpisodes(episodes);
       targetEpisodesRef.current = episodes;
       processedLogsRef.current = currentLogCount;
+      const lastLine = currentLogCount > 0 ? evalLogLines[currentLogCount - 1] : null;
+      processedTailRef.current = {
+        id: lastLine?.id ?? null,
+        ts: lastLine?.ts ?? null,
+      };
     },
-    [resetEvalState],
+    [evalLogLines, resetEvalState],
   );
 
   const markError = useCallback(() => {
@@ -255,8 +278,18 @@ export function useEvalProgress({
   useEffect(() => {
     if (evalLogLines.length < processedLogsRef.current) {
       processedLogsRef.current = 0;
+      processedTailRef.current = { id: null, ts: null };
     }
-    const nextLines = evalLogLines.slice(processedLogsRef.current);
+    const lastLine = evalLogLines[evalLogLines.length - 1];
+    const tailWasReplaced =
+      evalLogLines.length > 0 &&
+      evalLogLines.length === processedLogsRef.current &&
+      processedTailRef.current.id === lastLine?.id &&
+      processedTailRef.current.ts !== (lastLine?.ts ?? null);
+    const startIndex = tailWasReplaced
+      ? Math.max(0, evalLogLines.length - 1)
+      : processedLogsRef.current;
+    const nextLines = evalLogLines.slice(startIndex);
     if (!nextLines.length) return;
 
     for (const lineItem of nextLines) {
@@ -282,10 +315,10 @@ export function useEvalProgress({
       }
 
       // ── tqdm progress bar ──
-      const tqdmMatch = line.match(
-        /Stepping through eval batches:\s*(\d+)%\|.*\|\s*(\d+)\/(\d+)/,
-      );
-      if (tqdmMatch) {
+      // Skip step-level tqdm (e.g. "Running rollout with at most N steps: X%|...|7/1000 [it/s, running_success_rate=...]")
+      // Those track steps within an episode, not episode count.
+      const tqdmMatch = line.match(TQDM_PROGRESS_MARKER);
+      if (tqdmMatch && !STEP_TQDM_MARKER.test(line)) {
         const pct = parseInt(tqdmMatch[1], 10);
         const done = parseInt(tqdmMatch[2], 10);
         const total = parseInt(tqdmMatch[3], 10);
@@ -296,32 +329,50 @@ export function useEvalProgress({
           startingStepRef.current = EVAL_STARTING_STEPS.length;
           setStartingStep(EVAL_STARTING_STEPS.length);
         }
-      }
-
-      // ── Episode total ──
-      const epTotalMatch =
-        line.match(/(?:^|\s)(?:n_episodes|episodes)\s*[:=]\s*([0-9]+)/i) ||
-        line.match(/episode\s*\d+\s*\/\s*([0-9]+)/i) ||
-        line.match(/completed\s*episodes\s*[:=]\s*\d+\s*\/\s*([0-9]+)/i);
-      if (epTotalMatch) {
-        const total = parseInt(epTotalMatch[1], 10);
-        if (Number.isFinite(total) && total > 0) updateTargetEpisodes(total);
-      }
-
-      // ── Done episodes ──
-      const doneMatch =
-        line.match(/episode\s*([0-9]+)\s*\/\s*([0-9]+)/i) ||
-        line.match(/completed\s*episodes\s*[:=]\s*([0-9]+)\s*\/\s*([0-9]+)/i) ||
-        line.match(/\bepisode\s*[:#]\s*([0-9]+)\b/i);
-      if (doneMatch) {
-        const done = parseInt(doneMatch[1], 10);
-        if (Number.isFinite(done) && done >= 0) {
-          updateDoneEpisodes(done);
-          if (!hadErrorRef.current) setProgressStatus("running");
+      } else if (tqdmMatch && STEP_TQDM_MARKER.test(line)) {
+        // step-level tqdm: parse step progress and running_success_rate
+        const stepD = parseInt(tqdmMatch[2], 10);
+        const stepT = parseInt(tqdmMatch[3], 10);
+        if (Number.isFinite(stepD)) setStepDone(stepD);
+        if (Number.isFinite(stepT) && stepT > 0) setStepTotal(stepT);
+        const rsr = line.match(RUNNING_SUCCESS_RATE_MARKER);
+        if (rsr) {
+          const val = parseFloat(rsr[1]);
+          if (Number.isFinite(val)) setRunningSuccessRate(val);
         }
-        if (doneMatch[2]) {
-          const total = parseInt(doneMatch[2], 10);
+        // Transition to running on first step-tqdm line
+        if (!hadErrorRef.current) {
+          setProgressStatus((prev) => prev === "starting" ? "running" : prev);
+          startingStepRef.current = EVAL_STARTING_STEPS.length;
+          setStartingStep(EVAL_STARTING_STEPS.length);
+        }
+      }
+
+      // ── Episode total / done — skip step-tqdm lines ──
+      if (!STEP_TQDM_MARKER.test(line)) {
+        const epTotalMatch =
+          line.match(/(?:^|\s)(?:n_episodes|episodes)\s*[:=]\s*([0-9]+)/i) ||
+          line.match(/episode\s*\d+\s*\/\s*([0-9]+)/i) ||
+          line.match(/completed\s*episodes\s*[:=]\s*\d+\s*\/\s*([0-9]+)/i);
+        if (epTotalMatch) {
+          const total = parseInt(epTotalMatch[1], 10);
           if (Number.isFinite(total) && total > 0) updateTargetEpisodes(total);
+        }
+
+        const doneMatch =
+          line.match(/episode\s*([0-9]+)\s*\/\s*([0-9]+)/i) ||
+          line.match(/completed\s*episodes\s*[:=]\s*([0-9]+)\s*\/\s*([0-9]+)/i) ||
+          line.match(/\bepisode\s*[:#]\s*([0-9]+)\b/i);
+        if (doneMatch) {
+          const done = parseInt(doneMatch[1], 10);
+          if (Number.isFinite(done) && done >= 0) {
+            updateDoneEpisodes(done);
+            if (!hadErrorRef.current) setProgressStatus("running");
+          }
+          if (doneMatch[2]) {
+            const total = parseInt(doneMatch[2], 10);
+            if (Number.isFinite(total) && total > 0) updateTargetEpisodes(total);
+          }
         }
       }
 
@@ -454,6 +505,10 @@ export function useEvalProgress({
     }
 
     processedLogsRef.current = evalLogLines.length;
+    processedTailRef.current = {
+      id: lastLine?.id ?? null,
+      ts: lastLine?.ts ?? null,
+    };
   }, [
     evalLogLines,
     markError,
@@ -561,6 +616,9 @@ export function useEvalProgress({
     showProgressDetails,
     progressStatusStyle,
     episodeResults,
+    stepDone,
+    stepTotal,
+    runningSuccessRate,
     resetEvalState,
     beginEval,
     markError,

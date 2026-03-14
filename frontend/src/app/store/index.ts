@@ -85,6 +85,9 @@ const actions: LeStudioStoreActions = {
   setProcStatus: (status) => {
     setState({ procStatus: status });
   },
+  setProcReconnected: (status) => {
+    setState({ procReconnected: status });
+  },
   setDevices: (devices) => {
     setState({
       devices: {
@@ -173,6 +176,7 @@ let storeState: LeStudioStoreState = {
   activeTab: loadInitialActiveTab(),
   config: {},
   procStatus: {},
+  procReconnected: {},
   devices: { cameras: [], arms: [] },
   wsReady: false,
   apiHealth: { resources: true, history: true },
@@ -205,6 +209,7 @@ export function resetLeStudioState(overrides?: Partial<LeStudioConfig>): void {
     activeTab: loadInitialActiveTab(),
     config: overrides ?? {},
     procStatus: {},
+    procReconnected: {},
     devices: { cameras: [], arms: [] },
     wsReady: false,
     apiHealth: { resources: true, history: true },

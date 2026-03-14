@@ -20,7 +20,10 @@ import {
   parseBackendError,
   toBackendEvalPayload,
   normalizeDeviceKey,
+  extractPreflightReason,
+  type PreflightResult,
 } from "../../services/contracts";
+import { deriveBiSharedSelection } from "../../services/calibrationProfiles";
 import {
   useEvalProgress,
   EVAL_STARTING_STEPS,
@@ -31,12 +34,21 @@ import {
 import { useMappedCameras } from "../../hooks/useMappedCameras";
 
 import { EMPTY_LOG } from "./types";
-import type { EvalPreflightResponse } from "./types";
+import type {
+  CalibrationFileStatusResponse,
+  EvalCalibrationProfile,
+  EvalPreflightResponse,
+} from "./types";
 import { EvalPreflightBanner } from "./components/EvalPreflightBanner";
 import { EvalSettingsPanel } from "./components/EvalSettingsPanel";
 import { EvalProgressPanel } from "./components/EvalProgressPanel";
 import { EvalResultsPanel } from "./components/EvalResultsPanel";
 import { GymInstallCard } from "./components/GymInstallCard";
+
+function getConfigString(config: Record<string, unknown>, key: string, fallback: string): string {
+  const value = config[key];
+  return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 export function Evaluation() {
@@ -45,6 +57,7 @@ export function Evaluation() {
   const updateConfig = useLeStudioStore((s) => s.updateConfig);
   const procStatus = useLeStudioStore((s) => s.procStatus);
   const running = useLeStudioStore((s) => !!s.procStatus.eval);
+  const evalReconnected = useLeStudioStore((s) => !!s.procReconnected.eval);
   const installing = useLeStudioStore((s) => !!s.procStatus.train_install);
   const evalLogLines = useLeStudioStore((s) => s.logLines.eval ?? EMPTY_LOG);
   const appendLog = useLeStudioStore((s) => s.appendLog);
@@ -61,6 +74,7 @@ export function Evaluation() {
   const [cameraConfigOpen, setCameraConfigOpen] = useState(true);
   const [showBlockers, setShowBlockers] = useState(false);
   const [cameraMapping, setCameraMapping] = useState<Record<string, string>>({});
+  const [calibrationStatus, setCalibrationStatus] = useState<Record<string, CalibrationFileStatusResponse>>({});
 
   // ── Preflight ────────────────────────────────────────────────────────────
   const [preflightOk, setPreflightOk] = useState(true);
@@ -70,6 +84,7 @@ export function Evaluation() {
   const [gymInstallCommand, setGymInstallCommand] = useState("");
   const [gymModuleName, setGymModuleName] = useState("");
   const autoInstallCommandRef = useRef("");
+  const [gpuAvailable, setGpuAvailable] = useState(false);
 
   // ── Hooks ────────────────────────────────────────────────────────────────
   const {
@@ -83,6 +98,7 @@ export function Evaluation() {
     setEndedAtMs, elapsedTick,
     progressTotal, progressPct,
     episodeResults, beginEval, markError,
+    stepDone, stepTotal, runningSuccessRate,
   } = useEvalProgress({ evalLogLines, running });
 
   const { mappedCamEntries } = useMappedCameras();
@@ -92,8 +108,68 @@ export function Evaluation() {
   const envType = ((config.eval_env_type as string) ?? "").trim() || envTypeFromCheckpoint || "";
   const task = ((config.eval_task as string) ?? "").trim() || envTaskFromCheckpoint || "";
   const isRealRobot = envType === "gym_manipulator";
+  const robotMode = getConfigString(config, "robot_mode", "single").toLowerCase().includes("bi") ? "bi" : "single";
+  const evalRobotType = getConfigString(
+    config,
+    "eval_robot_type",
+    getConfigString(config, "robot_type", "so101_follower"),
+  );
+  const evalTeleopType = getConfigString(
+    config,
+    "eval_teleop_type",
+    getConfigString(config, "teleop_type", "so101_leader"),
+  );
   const isRunning = running || progressStatus === "starting";
   void elapsedTick; // used for timer re-renders
+
+  const calibrationTargets = useMemo<Omit<EvalCalibrationProfile, "exists" | "path" | "modified">[]>(() => {
+    if (!isRealRobot) return [];
+    if (robotMode === "bi") {
+      return [
+        {
+          configKey: "left_robot_id",
+          label: "Follower Profile",
+          deviceType: evalRobotType,
+          deviceId: deriveBiSharedSelection(
+            getConfigString(config, "left_robot_id", ""),
+            getConfigString(config, "right_robot_id", ""),
+          ),
+        },
+        {
+          configKey: "left_teleop_id",
+          label: "Leader Profile",
+          deviceType: evalTeleopType,
+          deviceId: deriveBiSharedSelection(
+            getConfigString(config, "left_teleop_id", ""),
+            getConfigString(config, "right_teleop_id", ""),
+          ),
+        },
+      ];
+    }
+    return [
+      {
+        configKey: "robot_id",
+        label: "Follower Profile",
+        deviceType: evalRobotType,
+        deviceId: getConfigString(config, "robot_id", "follower_arm_1"),
+      },
+      {
+        configKey: "teleop_id",
+        label: "Leader Profile",
+        deviceType: evalTeleopType,
+        deviceId: getConfigString(config, "teleop_id", "leader_arm_1"),
+      },
+    ];
+  }, [config, evalRobotType, evalTeleopType, isRealRobot, robotMode]);
+
+  const calibrationProfiles = useMemo<EvalCalibrationProfile[]>(() => (
+    calibrationTargets.map((target) => ({
+      ...target,
+      exists: calibrationStatus[target.configKey]?.exists ?? null,
+      path: calibrationStatus[target.configKey]?.path ?? "",
+      modified: calibrationStatus[target.configKey]?.modified,
+    }))
+  ), [calibrationStatus, calibrationTargets]);
 
   const conflictProcess = useMemo(() => {
     for (const [name, status] of Object.entries(procStatus)) {
@@ -110,6 +186,17 @@ export function Evaluation() {
   const envTypeMissing = !envType && !envTypeFromCheckpoint;
   const envTaskMissing = !task && !envTaskFromCheckpoint;
   const noLocalCheckpoint = policySource === "local" && !policyPath;
+  const calibrationBlockers = useMemo(() => {
+    const blockers: string[] = [];
+    for (const profile of calibrationProfiles) {
+      if (!profile.deviceId.trim()) {
+        blockers.push(`${profile.label} ID is required`);
+      } else if (profile.exists === false) {
+        blockers.push(`${profile.label} '${profile.deviceId}' not found`);
+      }
+    }
+    return blockers;
+  }, [calibrationProfiles]);
 
   const configBlockers = useMemo(() => {
     const blockers: string[] = [];
@@ -118,8 +205,9 @@ export function Evaluation() {
     if (envTaskMissing) blockers.push("Task is required");
     if (envType && !installedEnvSet.has(envType)) blockers.push(`${envType} environment not installed`);
     if (conflictProcess) blockers.push(`${conflictProcess} process running`);
+    blockers.push(...calibrationBlockers);
     return blockers;
-  }, [noLocalCheckpoint, envTypeMissing, envTaskMissing, envType, installedEnvSet, conflictProcess]);
+  }, [noLocalCheckpoint, envTypeMissing, envTaskMissing, envType, installedEnvSet, conflictProcess, calibrationBlockers]);
 
   const preflightFixLabel = preflightAction === "install_python_dep" ? "Install Missing Packages" : "Run Fix";
   const selectedEnv = envTypes.find((e) => e.type === envType);
@@ -139,6 +227,12 @@ export function Evaluation() {
   const showRunning = progressStatus === "running";
   const showStarting = progressStatus === "starting";
   const showResults = !isRunning && hasResults;
+  const supportsMps = typeof navigator !== "undefined" && /mac/i.test(navigator.platform);
+  const computeDeviceOptions = [
+    gpuAvailable ? "CUDA (GPU)" : { value: "CUDA (GPU)", label: "CUDA (GPU) (not available)", disabled: true },
+    "CPU",
+    supportsMps ? "MPS" : { value: "MPS", label: "MPS (Apple Silicon) (macOS only)", disabled: true },
+  ];
 
   // ── Preflight logic ──────────────────────────────────────────────────────
   const refreshPreflight = useCallback(async (): Promise<EvalPreflightResponse> => {
@@ -159,8 +253,64 @@ export function Evaluation() {
   }, [deviceLabel]);
 
   useEffect(() => {
+    let cancelled = false;
+    void apiGet<{ exists?: boolean }>("/api/gpu/status")
+      .then((response) => {
+        if (!cancelled) setGpuAvailable(Boolean(response.exists));
+      })
+      .catch(() => {
+        if (!cancelled) setGpuAvailable(false);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (deviceLabel === "CUDA (GPU)" && !gpuAvailable) {
+      setDeviceLabel("CPU");
+    } else if (deviceLabel === "MPS" && !supportsMps) {
+      setDeviceLabel("CPU");
+    }
+  }, [deviceLabel, gpuAvailable, supportsMps]);
+
+  const refreshCalibrationProfiles = useCallback(async (): Promise<string[]> => {
+    if (!isRealRobot || calibrationTargets.length === 0) {
+      setCalibrationStatus({});
+      return [];
+    }
+
+    const nextStatus: Record<string, CalibrationFileStatusResponse> = {};
+    const issues: string[] = [];
+
+    await Promise.all(calibrationTargets.map(async (profile) => {
+      const deviceId = profile.deviceId.trim();
+      if (!deviceId) {
+        issues.push(`${profile.label} ID is required`);
+        return;
+      }
+
+      try {
+        const status = await apiGet<CalibrationFileStatusResponse>(
+          `/api/calibrate/file?robot_type=${encodeURIComponent(profile.deviceType)}&robot_id=${encodeURIComponent(deviceId)}`,
+        );
+        nextStatus[profile.configKey] = status;
+        if (!status.exists) issues.push(`${profile.label} '${deviceId}' not found`);
+      } catch {
+        nextStatus[profile.configKey] = { exists: false, path: "" };
+        issues.push(`${profile.label} '${deviceId}' could not be verified`);
+      }
+    }));
+
+    setCalibrationStatus(nextStatus);
+    return issues;
+  }, [calibrationTargets, isRealRobot]);
+
+  useEffect(() => {
     void refreshPreflight();
   }, [refreshPreflight]);
+
+  useEffect(() => {
+    void refreshCalibrationProfiles();
+  }, [refreshCalibrationProfiles]);
 
   // Poll preflight while it's failing
   useEffect(() => {
@@ -199,7 +349,7 @@ export function Evaluation() {
         if (prev[key] && mappedCamEntries.some(([sym]) => sym === prev[key])) {
           next[key] = prev[key];
         } else {
-          next[key] = mappedCamEntries.find(([sym]) => sym === key)?.[0] ?? (mappedCamEntries[0]?.[0] ?? "");
+          next[key] = mappedCamEntries.find(([sym]) => sym === key)?.[0] ?? "";
         }
       }
       return next;
@@ -208,12 +358,6 @@ export function Evaluation() {
 
   // ── Start / Stop ─────────────────────────────────────────────────────────
   const startEval = useCallback(async (episodesOverride?: number) => {
-    // Show blockers if required fields are missing
-    if (configBlockers.length > 0) {
-      setShowBlockers(true);
-      return;
-    }
-    setShowBlockers(false);
     try {
       const episodes = episodesOverride ?? numEpisodes;
       const cameraCatalog = mappedCamEntries.map(([sym, path]) => ({ role: sym, path }));
@@ -230,12 +374,30 @@ export function Evaluation() {
         config,
       });
 
+      const calibrationIssues = await refreshCalibrationProfiles();
+      const blockers = Array.from(new Set([...configBlockers, ...calibrationIssues]));
+      if (blockers.length > 0) {
+        setShowBlockers(true);
+        return;
+      }
+      setShowBlockers(false);
+
       // Preflight check
       const preflight = await refreshPreflight();
       if (!preflight.ok) {
         appendLog("eval", `[ERROR] ${preflight.reason ?? "Device compatibility check failed."}`, "error");
         notifyError(preflight.reason ?? "Device preflight failed");
         return;
+      }
+
+      if (isRealRobot) {
+        const devicePreflight = await apiPost<PreflightResult>("/api/preflight", payload);
+        if (!devicePreflight.ok) {
+          const reason = extractPreflightReason(devicePreflight);
+          appendLog("eval", `[ERROR] ${reason}`, "error");
+          notifyError(reason);
+          return;
+        }
       }
 
       beginEval(episodes, evalLogLines.length);
@@ -286,7 +448,8 @@ export function Evaluation() {
     numEpisodes, mappedCamEntries, envType, policySource, policyPath,
     datasetRepo, datasetOverride, deviceLabel, task, cameraMapping, config,
     configBlockers, refreshPreflight, appendLog, beginEval, evalLogLines.length,
-    markError, setEndedAtMs, setProgressStatus, addToast,
+    markError, setEndedAtMs, setProgressStatus, addToast, isRealRobot,
+    refreshCalibrationProfiles,
   ]);
 
   const stopEval = useCallback(() => {
@@ -337,6 +500,33 @@ export function Evaluation() {
     }
   }, [addToast, appendLog, preflightCommand]);
 
+  const handleCalibrationIdChange = useCallback((configKey: string, rawValue: string) => {
+    const value = rawValue.trim();
+    if (robotMode !== "bi") {
+      updateConfig({ [configKey]: value });
+      return;
+    }
+
+    const pairedKeys: Record<string, { sibling: string; suffix: "_left" | "_right"; siblingSuffix: "_left" | "_right" }> = {
+      left_robot_id: { sibling: "right_robot_id", suffix: "_left", siblingSuffix: "_right" },
+      right_robot_id: { sibling: "left_robot_id", suffix: "_right", siblingSuffix: "_left" },
+      left_teleop_id: { sibling: "right_teleop_id", suffix: "_left", siblingSuffix: "_right" },
+      right_teleop_id: { sibling: "left_teleop_id", suffix: "_right", siblingSuffix: "_left" },
+    };
+
+    const pair = pairedKeys[configKey];
+    if (!pair) {
+      updateConfig({ [configKey]: value });
+      return;
+    }
+
+    const base = value.replace(/_(left|right)$/i, "");
+    updateConfig({
+      [configKey]: base ? `${base}${pair.suffix}` : "",
+      [pair.sibling]: base ? `${base}${pair.siblingSuffix}` : "",
+    });
+  }, [robotMode, updateConfig]);
+
   const stopInstallProcess = useCallback(() => {
     void apiPost("/api/process/train_install/stop");
     addToast("Install stop requested", "info");
@@ -358,7 +548,7 @@ export function Evaluation() {
           <PageHeader
             title="Policy Evaluation"
             subtitle="Evaluate trained AI policies on real robots or simulated environments"
-            action={<RefreshButton onClick={() => { void refreshPreflight(); }} />}
+            action={<RefreshButton onClick={() => { void refreshPreflight(); void refreshCalibrationProfiles(); }} />}
           />
 
           {/* System blocker — preflight / install issues */}
@@ -440,6 +630,9 @@ export function Evaluation() {
               cameraMapping={cameraMapping}
               setCameraMapping={setCameraMapping}
               mappedCamEntries={mappedCamEntries}
+              calibrationProfiles={calibrationProfiles}
+              onCalibrationIdChange={handleCalibrationIdChange}
+              computeDeviceOptions={computeDeviceOptions}
             />
           )}
 
@@ -473,6 +666,12 @@ export function Evaluation() {
           )}
 
           {/* ─── RUNNING: Monitoring ────────────────────────────────── */}
+          {evalReconnected && running && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-blue-500/30 bg-blue-500/5 text-sm text-blue-600 dark:text-blue-400">
+              <span className="flex-none">⚡</span>
+              <span>Reconnected — This evaluation was recovered from a previous server session. Progress metrics may be unavailable. You can still stop the process.</span>
+            </div>
+          )}
           {showRunning && (
             <EvalProgressPanel
               doneEpisodes={doneEpisodes}
@@ -483,6 +682,9 @@ export function Evaluation() {
               bestEp={bestEp}
               progressPct={progressPct}
               episodeResults={episodeResults}
+              stepDone={stepDone}
+              stepTotal={stepTotal}
+              runningSuccessRate={runningSuccessRate}
             />
           )}
 
@@ -542,6 +744,8 @@ export function Evaluation() {
                 Avg Reward: <span className={cn("font-mono", (avgReward ?? 0) >= 0.6 ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400")}>{avgReward.toFixed(3)}</span>
                 {" "}· Success: <span className={cn("font-mono", (computedSuccessRate ?? 0) >= 60 ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400")}>{computedSuccessRate ?? "—"}%</span>
               </>
+            ) : progressStatus === "error" ? (
+              <span className="text-red-500 dark:text-red-400">Evaluation failed — check logs</span>
             ) : !preflightOk ? (
               <span className="text-amber-600 dark:text-amber-400">{preflightReason || "Device preflight failed"}</span>
             ) : showBlockers && configBlockers.length > 0 ? (

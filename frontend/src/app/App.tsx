@@ -14,6 +14,7 @@ export default function App() {
   const setSidebarSignals = useLeStudioStore((s) => s.setSidebarSignals);
   const setHfUsername = useLeStudioStore((s) => s.setHfUsername);
   const setProcStatus = useLeStudioStore((s) => s.setProcStatus);
+  const setProcReconnected = useLeStudioStore((s) => s.setProcReconnected);
   const addToast = useLeStudioStore((s) => s.addToast);
 
   useEffect(() => {
@@ -36,14 +37,15 @@ export default function App() {
       const statuses = await Promise.all(
         processNames.map(async (name) => {
           try {
-            const res = await apiGet<{ running?: boolean }>(`/api/process/${name}/status`);
-            return [name, Boolean(res.running)] as const;
+            const res = await apiGet<{ running?: boolean; reconnected?: boolean }>(`/api/process/${name}/status`);
+            return [name, { running: Boolean(res.running), reconnected: Boolean(res.reconnected) }] as const;
           } catch {
-            return [name, false] as const;
+            return [name, { running: false, reconnected: false }] as const;
           }
         }),
       );
-      setProcStatus(Object.fromEntries(statuses));
+      setProcStatus(Object.fromEntries(statuses.map(([n, s]) => [n, s.running])));
+      setProcReconnected(Object.fromEntries(statuses.map(([n, s]) => [n, s.reconnected])));
 
       const errorKeys = Object.keys(result.errors);
       if (errorKeys.length > 0) {
@@ -56,7 +58,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [addToast, setConfig, setDevices, setHfUsername, setProcStatus, setSidebarSignals]);
+  }, [addToast, setConfig, setDevices, setHfUsername, setProcStatus, setProcReconnected, setSidebarSignals]);
 
   return (
     <ThemeProvider>

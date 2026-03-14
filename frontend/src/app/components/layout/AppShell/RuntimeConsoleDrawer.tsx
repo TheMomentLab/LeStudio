@@ -41,6 +41,7 @@ export function RuntimeConsoleDrawer() {
   const clearLog = useLeStudioStore((s) => s.clearLog);
   const addToast = useLeStudioStore((s) => s.addToast);
   const logLines = useLeStudioStore((s) => s.logLines);
+  const procReconnected = useLeStudioStore((s) => s.procReconnected);
 
   const [collapsed, setCollapsed] = useState(true);
   const [activeProcess, setActiveProcess] = useState<RuntimeProcessName>("teleop");
@@ -486,7 +487,13 @@ export function RuntimeConsoleDrawer() {
               {line.text}
             </div>
           ))}
-          {lines.length === 0 && (
+          {lines.length === 0 && procReconnected[activeProcess] && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-blue-500/30 bg-blue-500/5 text-sm text-blue-600 dark:text-blue-400 mb-2">
+              <span className="flex-none">⚡</span>
+              <span>Reconnected — This process was recovered from a previous server session. Live output is not available.</span>
+            </div>
+          )}
+          {lines.length === 0 && !procReconnected[activeProcess] && (
             <div className="text-zinc-400">No output yet. Start a process to stream logs.</div>
           )}
         </div>

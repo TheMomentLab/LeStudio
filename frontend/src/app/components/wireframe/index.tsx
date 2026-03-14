@@ -306,7 +306,9 @@ export function FieldRow({
 }
 
 // ─── WireSelect ───────────────────────────────────────────────────────────────
-export function WireSelect({ placeholder, value, options, onChange, disabled, className }: { placeholder?: string; value?: string; options?: (string | { value: string; label: string })[]; onChange?: (v: string) => void; disabled?: boolean; className?: string }) {
+type WireSelectOption = string | { value: string; label: string; disabled?: boolean };
+
+export function WireSelect({ placeholder, value, options, onChange, disabled, className }: { placeholder?: string; value?: string; options?: WireSelectOption[]; onChange?: (v: string) => void; disabled?: boolean; className?: string }) {
   return (
     <select
       aria-label={placeholder ?? "Select option"}
@@ -319,7 +321,8 @@ export function WireSelect({ placeholder, value, options, onChange, disabled, cl
       {options?.map((o) => {
         const val = typeof o === "string" ? o : o.value;
         const label = typeof o === "string" ? o : o.label;
-        return <option key={val} value={val}>{label}</option>;
+        const optionDisabled = typeof o === "string" ? false : Boolean(o.disabled);
+        return <option key={val} value={val} disabled={optionDisabled}>{label}</option>;
       })}
     </select>
   );
@@ -413,7 +416,10 @@ export function WireToggle({
   checked?: boolean;
   onChange?: (v: boolean) => void;
 }) {
-  const [on, setOn] = React.useState(checked ?? false);
+  const controlled = checked !== undefined;
+  const [internal, setInternal] = React.useState(checked ?? false);
+  const on = controlled ? checked : internal;
+  const toggle = () => { const next = !on; if (!controlled) setInternal(next); onChange?.(next); };
   return (
     <label className="flex items-center gap-2 cursor-pointer">
       <button
@@ -425,7 +431,7 @@ export function WireToggle({
           "w-8 h-4 rounded-full relative transition-colors",
           on ? "bg-emerald-500" : "bg-zinc-300 dark:bg-zinc-700"
         )}
-        onClick={() => { setOn(!on); onChange?.(!on); }}
+        onClick={toggle}
       >
         <div
           className={cn(

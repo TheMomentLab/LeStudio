@@ -59,13 +59,18 @@ export type ApiSupportState = {
 
 export type DeviceCamera = {
   device: string;
+  path?: string;
+  kernels?: string;
   symlink?: string;
   model?: string;
 };
 
 export type DeviceArm = {
   device: string;
+  path?: string;
   symlink?: string;
+  serial?: string;
+  kernels?: string;
 };
 
 export type DevicesResponse = {
@@ -92,6 +97,7 @@ export type LeStudioStoreData = {
   activeTab: AppTab;
   config: LeStudioConfig;
   procStatus: Record<string, boolean>;
+  procReconnected: Record<string, boolean>;
   devices: DevicesResponse;
   wsReady: boolean;
   apiHealth: ApiHealthState;
@@ -111,6 +117,7 @@ export type LeStudioStoreActions = {
   setConfig: (config: LeStudioConfig) => void;
   updateConfig: (partial: Partial<LeStudioConfig>) => void;
   setProcStatus: (status: Record<string, boolean>) => void;
+  setProcReconnected: (status: Record<string, boolean>) => void;
   setDevices: (devices: DevicesResponse) => void;
   setWsReady: (ready: boolean) => void;
   setApiHealth: (key: string, value: boolean) => void;

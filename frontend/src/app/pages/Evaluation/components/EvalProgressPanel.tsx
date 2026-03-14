@@ -23,6 +23,9 @@ export interface EvalProgressPanelProps {
   bestEp: EpisodeResult | null;
   progressPct: number;
   episodeResults: EpisodeResult[];
+  stepDone?: number;
+  stepTotal?: number | null;
+  runningSuccessRate?: number | null;
 }
 
 export function EvalProgressPanel({
@@ -34,7 +37,12 @@ export function EvalProgressPanel({
   bestEp,
   progressPct,
   episodeResults,
+  stepDone = 0,
+  stepTotal = null,
+  runningSuccessRate = null,
 }: EvalProgressPanelProps) {
+  const hasEpisodeProgress = doneEpisodes > 0 || progressTotal !== null;
+  const stepPct = stepTotal && stepTotal > 0 ? Math.min(100, (stepDone / stepTotal) * 100) : 0;
   return (
     <div className="flex flex-col gap-4">
       <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden">
@@ -46,15 +54,31 @@ export function EvalProgressPanel({
         </div>
         <div className="px-4 py-4 flex flex-col gap-4">
           <div className="flex items-center gap-6 flex-wrap">
-            <div className="flex flex-col gap-0.5">
-              <span className="text-sm text-zinc-400">Episode</span>
-              <span className="text-sm font-mono text-zinc-700 dark:text-zinc-200">
-                {doneEpisodes}
-                <span className="text-zinc-400 text-sm">
-                  {" "}/ {progressTotal ?? numEpisodes}
+            {/* Episode count — only show if we actually have episode-level tracking */}
+            {hasEpisodeProgress && (
+              <div className="flex flex-col gap-0.5">
+                <span className="text-sm text-zinc-400">Episode</span>
+                <span className="text-sm font-mono text-zinc-700 dark:text-zinc-200">
+                  {doneEpisodes}
+                  <span className="text-zinc-400 text-sm">
+                    {" "}/ {progressTotal ?? numEpisodes}
+                  </span>
                 </span>
-              </span>
-            </div>
+              </div>
+            )}
+            {/* Running success rate from step tqdm postfix */}
+            {runningSuccessRate !== null && (
+              <div className="flex flex-col gap-0.5">
+                <span className="text-sm text-zinc-400">Running Success</span>
+                <span className={cn("text-sm font-mono",
+                  runningSuccessRate >= 60 ? "text-emerald-600 dark:text-emerald-400"
+                  : runningSuccessRate >= 40 ? "text-amber-600 dark:text-amber-400"
+                  : "text-red-600 dark:text-red-400"
+                )}>
+                  {runningSuccessRate.toFixed(1)}%
+                </span>
+              </div>
+            )}
             {meanReward !== null && (
               <div className="flex flex-col gap-0.5">
                 <span className="text-sm text-zinc-400">Avg Reward</span>
@@ -99,20 +123,36 @@ export function EvalProgressPanel({
             )}
           </div>
 
-          <div>
-            <div className="flex justify-between text-sm text-zinc-500 mb-1">
-              <span>
-                {doneEpisodes} / {progressTotal ?? numEpisodes} episodes
-              </span>
-              <span>{Math.round(progressPct)}%</span>
+          {/* Step-level progress bar (inner rollout tqdm) */}
+          {stepTotal !== null && stepTotal > 0 && (
+            <div>
+              <div className="flex justify-between text-xs text-zinc-500 mb-1">
+                <span className="text-zinc-400">Rollout steps</span>
+                <span>{stepDone} / {stepTotal} ({Math.round(stepPct)}%)</span>
+              </div>
+              <div className="h-1.5 rounded-full bg-zinc-200 dark:bg-zinc-700 overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all duration-300 bg-zinc-500 dark:bg-zinc-400"
+                  style={{ width: `${stepPct}%` }}
+                />
+              </div>
             </div>
-            <div className="h-2.5 rounded-full bg-zinc-200 dark:bg-zinc-700 overflow-hidden">
-              <div
-                className="h-full rounded-full transition-all duration-500 bg-zinc-800 dark:bg-zinc-200"
-                style={{ width: `${progressPct}%` }}
-              />
+          )}
+
+          {/* Episode-level progress bar (only shown when episode tracking is available) */}
+          {hasEpisodeProgress && (
+            <div>
+              <div className="flex justify-end text-sm text-zinc-500 mb-1">
+                <span>{Math.round(progressPct)}%</span>
+              </div>
+              <div className="h-2.5 rounded-full bg-zinc-200 dark:bg-zinc-700 overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all duration-500 bg-zinc-800 dark:bg-zinc-200"
+                  style={{ width: `${progressPct}%` }}
+                />
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
 

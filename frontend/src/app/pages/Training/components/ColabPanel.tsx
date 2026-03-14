@@ -61,7 +61,7 @@ export function ColabPanel({
               disabled={hfAuth !== "ready" || pushState !== "idle"}
               onClick={onPushToHub}
               className={cn(
-                "flex items-center gap-1.5 px-4 py-2 rounded border text-sm font-medium transition-colors whitespace-nowrap",
+                "flex items-center gap-1.5 px-4 py-1 rounded border text-sm font-medium transition-colors whitespace-nowrap",
                 pushState === "done"
                   ? "border-emerald-500/40 text-emerald-600 dark:text-emerald-400 bg-emerald-500/15"
                   : "border-emerald-500/40 text-emerald-600 dark:text-emerald-400 bg-emerald-500/5",
@@ -112,7 +112,7 @@ export function ColabPanel({
               onClick={handleOpenColab}
               disabled={hfAuth !== "ready" || colabStarting}
               className={cn(
-                "flex items-center gap-1.5 px-4 py-2 rounded border text-sm transition-colors",
+                "flex items-center gap-1.5 px-4 py-1 rounded border text-sm transition-colors",
                 "border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300",
                 hfAuth !== "ready" ? "opacity-40 cursor-not-allowed"
                   : colabStarting ? "opacity-70 cursor-wait"

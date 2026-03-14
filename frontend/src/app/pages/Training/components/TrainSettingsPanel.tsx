@@ -31,6 +31,7 @@ interface TrainSettingsPanelProps {
   setBatchSize: (value: number) => void;
   modelOutputRepo: string;
   setModelOutputRepo: (value: string) => void;
+  computeDeviceOptions: Array<string | { value: string; label: string; disabled?: boolean }>;
 }
 
 export function TrainSettingsPanel({
@@ -60,6 +61,7 @@ export function TrainSettingsPanel({
   setBatchSize,
   modelOutputRepo,
   setModelOutputRepo,
+  computeDeviceOptions,
 }: TrainSettingsPanelProps) {
   return (
     <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden">
@@ -130,7 +132,7 @@ export function TrainSettingsPanel({
             <div className="text-sm text-zinc-500 mb-1.5">Compute Device</div>
             <WireSelect
               value={device}
-              options={["CUDA (GPU)", "CPU", "MPS (Apple Silicon)"]}
+              options={computeDeviceOptions}
               onChange={setDevice}
             />
             {device === "MPS (Apple Silicon)" && (
