@@ -6,6 +6,9 @@ type CameraMapping = { role: string; path: string };
 
 type RecordingCameraTabProps = {
   camerasMapped: CameraMapping[];
+  enabledCameras: Set<string>;
+  selectedCameras: CameraMapping[];
+  toggleCamera: (role: string) => void;
   cameraFrames: Record<string, string | null>;
   advStreamOpen: boolean;
   setAdvStreamOpen: (value: boolean) => void;
@@ -13,6 +16,9 @@ type RecordingCameraTabProps = {
 
 export function RecordingCameraTab({
   camerasMapped,
+  enabledCameras,
+  selectedCameras,
+  toggleCamera,
   cameraFrames,
   advStreamOpen,
   setAdvStreamOpen,
@@ -35,11 +41,16 @@ export function RecordingCameraTab({
               messageClassName="max-w-none"
             />
           ) : camerasMapped.map((cam) => (
-            <div key={cam.role} className="flex items-center gap-2 px-2 py-1.5 rounded border border-zinc-100 dark:border-zinc-800/50">
-              <span className="size-1.5 rounded-full bg-emerald-400 flex-none" />
+            <label key={cam.role} className="flex items-center gap-2 px-2 py-1.5 rounded border border-zinc-100 dark:border-zinc-800/50 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={enabledCameras.has(cam.role)}
+                onChange={() => toggleCamera(cam.role)}
+                className="accent-emerald-500"
+              />
               <span className="text-sm text-zinc-600 dark:text-zinc-300 font-mono">{cam.role}</span>
               <span className="text-sm text-zinc-400 ml-auto font-mono truncate">{cam.path}</span>
-            </div>
+            </label>
           ))}
 
           <button
@@ -69,15 +80,13 @@ export function RecordingCameraTab({
 
       <div className={cn(
         "grid gap-2",
-        camerasMapped.length === 1
-          ? "grid-cols-1"
-          : camerasMapped.length === 2
-            ? "grid-cols-2"
-            : camerasMapped.length === 3
-              ? "grid-cols-3"
-              : "grid-cols-4",
+        selectedCameras.length <= 2
+          ? "grid-cols-2"
+          : selectedCameras.length === 3
+            ? "grid-cols-3"
+            : "grid-cols-4",
       )}>
-        {camerasMapped.map((cam) => {
+        {selectedCameras.map((cam) => {
           const frameSrc = cameraFrames[cam.role];
           return (
             <div key={cam.role} className="relative rounded-lg overflow-hidden border border-zinc-200 dark:border-zinc-800">

@@ -15,7 +15,6 @@ import {
   PageHeader, StatusBadge, ModeToggle, StickyControlBar, ProcessButtons, SubTabs,
   BlockerCard, RefreshButton,
 } from "../../components/wireframe";
-import { buildPortOptionsFromPaths, type PortOption } from "../../services/portLabels";
 import {
   buildMappedArmLists,
   defaultArmSelection,
@@ -33,10 +32,6 @@ import {
   notifyProcessEndedWithError,
 } from "../../services/notifications";
 import { toVideoName, useCameraFeeds } from "../../hooks/useCameraFeeds";
-import {
-  buildCalibrationProfileOptions,
-  deriveBiSharedSelection,
-} from "../../services/calibrationProfiles";
 import { RecordingPlanTab } from "./components/RecordingPlanTab";
 import { RecordingDeviceTab } from "./components/RecordingDeviceTab";
 import { RecordingCameraTab } from "./components/RecordingCameraTab";
@@ -105,14 +100,10 @@ export function Recording() {
   }, []);
   const [resumeEnabled, setResumeEnabled] = useState(() => getConfigBool(config, "record_resume", false));
   const [camerasMapped, setCamerasMapped] = useState<{ role: string; path: string }[]>([]);
-  const [armPortOptions, setArmPortOptions] = useState<PortOption[]>([]);
+  const [enabledCameras, setEnabledCameras] = useState<Set<string>>(new Set());
   const [armLists, setArmLists] = useState<MappedArmLists>({ followers: [], leaders: [] });
   const [armSelection, setArmSelection] = useState<ArmSelection>({ follower: "", leader: "" });
   const [calibFilesRaw, setCalibFilesRaw] = useState<CalibFile[]>([]);
-  const [followerIdOptions, setFollowerIdOptions] = useState<string[]>([]);
-  const [leaderIdOptions, setLeaderIdOptions] = useState<string[]>([]);
-  const [biFollowerIdOptions, setBiFollowerIdOptions] = useState<string[]>([]);
-  const [biLeaderIdOptions, setBiLeaderIdOptions] = useState<string[]>([]);
   const [selectedFollowerPort, setSelectedFollowerPort] = useState("");
   const [selectedLeaderPort, setSelectedLeaderPort] = useState("");
   const [selectedLeftFollowerPort, setSelectedLeftFollowerPort] = useState("");
@@ -121,13 +112,16 @@ export function Recording() {
   const [selectedRightLeaderPort, setSelectedRightLeaderPort] = useState("");
   const [selectedFollowerId, setSelectedFollowerId] = useState("");
   const [selectedLeaderId, setSelectedLeaderId] = useState("");
-  const advancedEnabled = getConfigBool(config, "record_advanced_enabled", false);
 
   const progress = Math.round((currentEp / totalEps) * 100);
   const running = phase === "running";
+  const selectedCameras = useMemo(
+    () => camerasMapped.filter((cam: { role: string; path: string }) => enabledCameras.has(cam.role)),
+    [camerasMapped, enabledCameras],
+  );
   const feedTargets = useMemo(
-    () => camerasMapped.map((cam) => ({ id: cam.role, videoName: toVideoName(cam.path) })),
-    [camerasMapped],
+    () => selectedCameras.map((cam: { role: string; path: string }) => ({ id: cam.role, videoName: toVideoName(cam.path) })),
+    [selectedCameras],
   );
   const previewFeedsActive = phase === "idle" && recTab === "camera";
   const cameraFrames = useCameraFeeds(feedTargets, previewFeedsActive || running, 30, pausedFeeds);
@@ -151,15 +145,6 @@ export function Recording() {
     updateConfig(patch);
     void apiPost<Record<string, unknown>>("/api/config", patch).catch(() => undefined);
   }, [updateConfig]);
-  const selectedBiFollowerId = useMemo(
-    () => deriveBiSharedSelection(getConfigString(config, "left_robot_id", ""), getConfigString(config, "right_robot_id", "")),
-    [config],
-  );
-  const selectedBiLeaderId = useMemo(
-    () => deriveBiSharedSelection(getConfigString(config, "left_teleop_id", ""), getConfigString(config, "right_teleop_id", "")),
-    [config],
-  );
-
   const handleArmSetConfigResolved = (resolved: ResolvedArmConfig) => {
     setSelectedFollowerPort(resolved.followerPort);
     setSelectedLeaderPort(resolved.leaderPort);
@@ -205,7 +190,7 @@ export function Recording() {
         resume: resumeEnabled,
         pushToHub: datasetStorageMode === "hf" && hfAuth === "ready",
         datasetRoot: datasetStorageMode === "local" ? localDatasetRoot.trim() : undefined,
-        cameras: camerasMapped,
+        cameras: selectedCameras,
         config: effectiveConfig,
       });
 
@@ -285,6 +270,15 @@ export function Recording() {
 
   const toggleFeed = (role: string) =>
     setPausedFeeds((prev) => ({ ...prev, [role]: !prev[role] }));
+
+  const toggleCamera = (role: string) => {
+    setEnabledCameras((prev: Set<string>) => {
+      const next = new Set(prev);
+      if (next.has(role)) next.delete(role);
+      else next.add(role);
+      return next;
+    });
+  };
 
   // Real log-based loading sequence
   const recordLogs = useLeStudioStore((s) => s.logLines["record"]);
@@ -385,6 +379,7 @@ export function Recording() {
       .filter((cam) => cam.symlink)
       .map((cam) => ({ role: cam.symlink, path: `/dev/${cam.symlink}` }));
     setCamerasMapped(mapped);
+    setEnabledCameras(new Set(mapped.map((cam) => cam.role)));
 
     const rawPorts = Array.from(
       new Set(
@@ -393,8 +388,6 @@ export function Recording() {
           .filter((value): value is string => Boolean(value))
       )
     );
-    const portOpts = buildPortOptionsFromPaths(rawPorts);
-    setArmPortOptions(portOpts);
     const defaultFollower = rawPorts.find((p) => /follower/i.test(p)) ?? rawPorts[0] ?? "";
     const defaultLeader = rawPorts.find((p) => /leader/i.test(p)) ?? rawPorts[1] ?? rawPorts[0] ?? "";
     const defaultLeftFollower = rawPorts.find((p) => /follower.*(?:1|left)/i.test(p)) ?? defaultFollower;
@@ -411,16 +404,6 @@ export function Recording() {
     const calibResult = await apiGet<{ files?: CalibFile[] }>("/api/calibrate/list");
     const files = calibResult.files ?? [];
     setCalibFilesRaw(files);
-    const singleFollowers = buildCalibrationProfileOptions(files, "follower", false);
-    const singleLeaders = buildCalibrationProfileOptions(files, "leader", false);
-    const biFollowers = buildCalibrationProfileOptions(files, "follower", true);
-    const biLeaders = buildCalibrationProfileOptions(files, "leader", true);
-    setFollowerIdOptions(singleFollowers);
-    setLeaderIdOptions(singleLeaders);
-    setBiFollowerIdOptions(biFollowers);
-    setBiLeaderIdOptions(biLeaders);
-    setSelectedFollowerId((prev) => (prev && singleFollowers.includes(prev) ? prev : singleFollowers[0] ?? ""));
-    setSelectedLeaderId((prev) => (prev && singleLeaders.includes(prev) ? prev : singleLeaders[0] ?? ""));
 
     const lists = buildMappedArmLists(result.arms ?? [], files);
     setArmLists(lists);
@@ -487,7 +470,7 @@ export function Recording() {
           />
 
           {flowError && <BlockerCard title="Execution Blocked" severity="error" reasons={[flowError]} />}
-          {!advancedEnabled && armLists.followers.length === 0 && armLists.leaders.length === 0 && phase === "idle" && (
+          {armLists.followers.length === 0 && armLists.leaders.length === 0 && phase === "idle" && (
             <BlockerCard
               title="Arm mapping required"
               reasons={[{ text: "Go to Motor Setup", to: "/motor-setup" }]}
@@ -530,60 +513,20 @@ export function Recording() {
               {recTab === "device" && (
                 <RecordingDeviceTab
                   mode={mode}
-                  advancedEnabled={advancedEnabled}
-                  setAdvancedEnabled={(value) => persistConfigPatch({ record_advanced_enabled: value })}
                   armLists={armLists}
                   calibFiles={calibFilesRaw}
                   armSelection={armSelection}
                   onSelectionChange={setArmSelection}
                   onArmSetConfigResolved={handleArmSetConfigResolved}
-                  robotType={getConfigString(config, "robot_type", mode === "Single Arm" ? "so101_follower" : "bi_so_follower")}
-                  teleopType={getConfigString(config, "teleop_type", mode === "Single Arm" ? "so101_leader" : "bi_so_leader")}
-                  armPortOptions={armPortOptions}
-                  followerIdOptions={followerIdOptions}
-                  leaderIdOptions={leaderIdOptions}
-                  biFollowerIdOptions={biFollowerIdOptions}
-                  biLeaderIdOptions={biLeaderIdOptions}
-                  selectedBiFollowerId={selectedBiFollowerId}
-                  selectedBiLeaderId={selectedBiLeaderId}
-                  selectedFollowerPort={selectedFollowerPort}
-                  selectedLeaderPort={selectedLeaderPort}
-                  selectedLeftFollowerPort={selectedLeftFollowerPort}
-                  selectedRightFollowerPort={selectedRightFollowerPort}
-                  selectedLeftLeaderPort={selectedLeftLeaderPort}
-                  selectedRightLeaderPort={selectedRightLeaderPort}
-                  selectedFollowerId={selectedFollowerId}
-                  selectedLeaderId={selectedLeaderId}
-                  setRobotType={(value) => persistConfigPatch({ robot_type: value })}
-                  setTeleopType={(value) => persistConfigPatch({ teleop_type: value })}
-                  setSelectedFollowerPort={(value) => { setSelectedFollowerPort(value); persistConfigPatch({ follower_port: value }); }}
-                  setSelectedLeaderPort={(value) => { setSelectedLeaderPort(value); persistConfigPatch({ leader_port: value }); }}
-                  setSelectedLeftFollowerPort={(value) => { setSelectedLeftFollowerPort(value); persistConfigPatch({ left_follower_port: value }); }}
-                  setSelectedRightFollowerPort={(value) => { setSelectedRightFollowerPort(value); persistConfigPatch({ right_follower_port: value }); }}
-                  setSelectedLeftLeaderPort={(value) => { setSelectedLeftLeaderPort(value); persistConfigPatch({ left_leader_port: value }); }}
-                  setSelectedRightLeaderPort={(value) => { setSelectedRightLeaderPort(value); persistConfigPatch({ right_leader_port: value }); }}
-                  setSelectedFollowerId={(value) => { setSelectedFollowerId(value); persistConfigPatch({ robot_id: value }); }}
-                  setSelectedLeaderId={(value) => { setSelectedLeaderId(value); persistConfigPatch({ teleop_id: value }); }}
-                  setBiCalibrationId={(kind, value) => {
-                    const base = value.trim();
-                    if (kind === "robot") {
-                      persistConfigPatch({
-                        left_robot_id: base ? `${base}_left` : "",
-                        right_robot_id: base ? `${base}_right` : "",
-                      });
-                      return;
-                    }
-                    persistConfigPatch({
-                      left_teleop_id: base ? `${base}_left` : "",
-                      right_teleop_id: base ? `${base}_right` : "",
-                    });
-                  }}
                 />
               )}
 
               {recTab === "camera" && (
                 <RecordingCameraTab
                   camerasMapped={camerasMapped}
+                  enabledCameras={enabledCameras}
+                  selectedCameras={selectedCameras}
+                  toggleCamera={toggleCamera}
                   cameraFrames={cameraFrames}
                   advStreamOpen={advStreamOpen}
                   setAdvStreamOpen={setAdvStreamOpen}
@@ -602,7 +545,7 @@ export function Recording() {
           )}
           {phase === "running" && (
             <RecordingRunningView
-              camerasMapped={camerasMapped}
+              camerasMapped={selectedCameras}
               cameraFrames={cameraFrames}
               pausedFeeds={pausedFeeds}
               currentEp={currentEp}
@@ -655,7 +598,7 @@ export function Recording() {
             onStart={() => { void handleStart(); }}
             onStop={() => { void handleStop(); }}
             startLabel={<><Play size={13} className="fill-current" /> Start Recording</>}
-            disabled={actionPending || (!advancedEnabled && armLists.followers.length === 0 && armLists.leaders.length === 0)}
+            disabled={actionPending || (armLists.followers.length === 0 && armLists.leaders.length === 0)}
             compact
             fullWidth={false}
             buttonClassName="py-1"

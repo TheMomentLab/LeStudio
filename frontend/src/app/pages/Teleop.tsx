@@ -22,7 +22,6 @@ import {
   WireBox, BlockerCard, RefreshButton, EmptyState,
 } from "../components/wireframe";
 import { ArmPairSelector } from "../components/wireframe/ArmPairSelector";
-import { buildPortOptionsFromPaths, type PortOption } from "../services/portLabels";
 import {
   buildMappedArmLists,
   defaultArmSelection,
@@ -32,13 +31,6 @@ import {
   type ResolvedArmConfig,
 } from "../services/armSets";
 import { toVideoName, useCameraFeeds } from "../hooks/useCameraFeeds";
-import {
-  buildCalibrationProfileOptions,
-  deriveBiSharedSelection,
-} from "../services/calibrationProfiles";
-
-
-
 type TeleopPhase = "idle" | "loading" | "running";
 
 type ActionResponse = {
@@ -160,31 +152,12 @@ function asNumberRecord(value: unknown): Record<string, number> {
   return Object.fromEntries(entries);
 }
 
-function pickSelectableValue(value: unknown, options: string[]): string {
-  return typeof value === "string" && options.includes(value) ? value : "";
-}
-
 const LOADING_STEPS = [
   { label: "Opening camera...", pattern: /OpenCVCamera.*connected\./i },
   { label: "Connecting arm...", pattern: /(?:SO\w*(?:Leader|Follower)|(?:Leader|Follower))\s+connected\./i },
   { label: "Calibrating arm...", pattern: /Running calibration of/i, waitPattern: /press ENTER/i },
   { label: "Starting teleop loop...", pattern: /Teleop loop time:/i },
 ];
-
-const TELEOP_ROBOT_TYPE_OPTIONS = [
-  "so101_follower",
-  "so100_follower",
-  { value: "aloha", label: "aloha (not supported in local teleop yet)", disabled: true },
-];
-
-const TELEOP_CONTROLLER_TYPE_OPTIONS = [
-  "so101_leader",
-  "so100_leader",
-  { value: "keyboard", label: "keyboard (not supported in this serial arm flow)", disabled: true },
-];
-
-const TELEOP_BI_ROBOT_TYPE_OPTIONS = ["bi_so_follower"];
-const TELEOP_BI_CONTROLLER_TYPE_OPTIONS = ["bi_so_leader"];
 
 export function Teleop() {
   const config = useLeStudioStore((s) => s.config);
@@ -200,6 +173,7 @@ export function Teleop() {
   const [pausedFeeds, setPausedFeeds] = useState<Record<string, boolean>>({});
   const [speed, setSpeed] = useState("1.0x");
   const [advStreamOpen, setAdvStreamOpen] = useState(false);
+  const [motorTuningOpen, setMotorTuningOpen] = useState(false);
   const [teleopTab, setTeleopTab] = useState("motor");
   const [startAccepted, setStartAccepted] = useState(false);
   const [actionPending, setActionPending] = useState(false);
@@ -207,14 +181,10 @@ export function Teleop() {
   const lastErrorAtRef = useRef(0);
   const prevRunningRef = useRef(false);
   const [camerasMapped, setCamerasMapped] = useState<{ role: string; path: string }[]>([]);
+  const [enabledCameras, setEnabledCameras] = useState<Set<string>>(new Set());
   const [calibFiles, setCalibFiles] = useState<CalibFile[]>([]);
   const [armLists, setArmLists] = useState<MappedArmLists>({ followers: [], leaders: [] });
   const [armSelection, setArmSelection] = useState<ArmSelection>({ follower: "", leader: "" });
-  const [armPortOptions, setArmPortOptions] = useState<PortOption[]>([]);
-  const [followerIdOptions, setFollowerIdOptions] = useState<string[]>([]);
-  const [leaderIdOptions, setLeaderIdOptions] = useState<string[]>([]);
-  const [biFollowerIdOptions, setBiFollowerIdOptions] = useState<string[]>([]);
-  const [biLeaderIdOptions, setBiLeaderIdOptions] = useState<string[]>([]);
   const [selectedFollowerPort, setSelectedFollowerPort] = useState("");
   const [selectedLeaderPort, setSelectedLeaderPort] = useState("");
   const [selectedLeftFollowerPort, setSelectedLeftFollowerPort] = useState("");
@@ -232,7 +202,6 @@ export function Teleop() {
   const antiJitterDeadband = getConfigNumber(configRecord, "teleop_antijitter_deadband", 0.75);
   const antiJitterMaxStep = getOptionalNumberInput(configRecord, "teleop_antijitter_max_step");
   const debugEnabled = getConfigBoolean(configRecord, "teleop_debug_enabled", false);
-  const advancedEnabled = getConfigBoolean(configRecord, "teleop_advanced_enabled", false);
   const invertShoulderLift = getConfigBoolean(configRecord, "teleop_invert_shoulder_lift", false);
   const invertWristRoll = getConfigBoolean(configRecord, "teleop_invert_wrist_roll", false);
   const teleopLogs = teleopLogLines ?? EMPTY_TELEOP_LOGS;
@@ -251,17 +220,13 @@ export function Teleop() {
     left_teleop_id: configRecord.left_teleop_id,
     right_teleop_id: configRecord.right_teleop_id,
   }), [config, configRecord.follower_port, configRecord.leader_port, configRecord.left_follower_port, configRecord.right_follower_port, configRecord.left_leader_port, configRecord.right_leader_port, configRecord.robot_id, configRecord.teleop_id, configRecord.left_robot_id, configRecord.right_robot_id, configRecord.left_teleop_id, configRecord.right_teleop_id, selectedFollowerId, selectedFollowerPort, selectedLeaderId, selectedLeaderPort, selectedLeftFollowerPort, selectedRightFollowerPort, selectedLeftLeaderPort, selectedRightLeaderPort]);
-  const selectedBiFollowerId = useMemo(
-    () => deriveBiSharedSelection(configRecord.left_robot_id, configRecord.right_robot_id),
-    [configRecord.left_robot_id, configRecord.right_robot_id],
-  );
-  const selectedBiLeaderId = useMemo(
-    () => deriveBiSharedSelection(configRecord.left_teleop_id, configRecord.right_teleop_id),
-    [configRecord.left_teleop_id, configRecord.right_teleop_id],
+  const selectedCameras = useMemo(
+    () => camerasMapped.filter((cam: { role: string; path: string }) => enabledCameras.has(cam.role)),
+    [camerasMapped, enabledCameras],
   );
   const feedTargets = useMemo(
-    () => camerasMapped.map((cam) => ({ id: cam.role, videoName: toVideoName(cam.path) })),
-    [camerasMapped],
+    () => selectedCameras.map((cam: { role: string; path: string }) => ({ id: cam.role, videoName: toVideoName(cam.path) })),
+    [selectedCameras],
   );
   const previewFeedsActive = phase === "idle" && teleopTab === "camera";
   const cameraFrames = useCameraFeeds(feedTargets, previewFeedsActive || running, 30, pausedFeeds);
@@ -353,7 +318,7 @@ export function Teleop() {
               <span>Leader: {selectedLeaderPort || "-"}</span>
               <span>Robot ID: {selectedFollowerId || "-"}</span>
               <span>Teleop ID: {selectedLeaderId || "-"}</span>
-              <span>Cams: {camerasMapped.length}</span>
+              <span>Cams: {selectedCameras.length}/{camerasMapped.length}</span>
             </div>
           </div>
 
@@ -452,72 +417,18 @@ export function Teleop() {
   const toggleFeed = (role: string) =>
     setPausedFeeds((prev) => ({ ...prev, [role]: !prev[role] }));
 
-  const persistConfigPatch = (patch: Record<string, unknown>) => {
-    updateConfig(patch);
-    void apiPost<Record<string, unknown>>("/api/config", patch).catch(() => undefined);
-  };
-
-  const handleFollowerPortChange = (value: string) => {
-    setSelectedFollowerPort(value);
-    persistConfigPatch({ follower_port: value });
-  };
-
-  const handleLeaderPortChange = (value: string) => {
-    setSelectedLeaderPort(value);
-    persistConfigPatch({ leader_port: value });
-  };
-
-  const handleLeftFollowerPortChange = (value: string) => {
-    setSelectedLeftFollowerPort(value);
-    persistConfigPatch({ left_follower_port: value });
-  };
-
-  const handleRightFollowerPortChange = (value: string) => {
-    setSelectedRightFollowerPort(value);
-    persistConfigPatch({ right_follower_port: value });
-  };
-
-  const handleLeftLeaderPortChange = (value: string) => {
-    setSelectedLeftLeaderPort(value);
-    persistConfigPatch({ left_leader_port: value });
-  };
-
-  const handleRightLeaderPortChange = (value: string) => {
-    setSelectedRightLeaderPort(value);
-    persistConfigPatch({ right_leader_port: value });
-  };
-
-  const handleFollowerIdChange = (value: string) => {
-    setSelectedFollowerId(value);
-    persistConfigPatch({ robot_id: value });
-  };
-
-  const handleLeaderIdChange = (value: string) => {
-    setSelectedLeaderId(value);
-    persistConfigPatch({ teleop_id: value });
-  };
-
-  const handleBiCalibrationIdChange = (kind: "robot" | "teleop", rawValue: string) => {
-    const base = rawValue.trim();
-    if (kind === "robot") {
-      persistConfigPatch({
-        left_robot_id: base ? `${base}_left` : "",
-        right_robot_id: base ? `${base}_right` : "",
-      });
-      return;
-    }
-    persistConfigPatch({
-      left_teleop_id: base ? `${base}_left` : "",
-      right_teleop_id: base ? `${base}_right` : "",
+  const toggleCamera = (role: string) => {
+    setEnabledCameras((prev: Set<string>) => {
+      const next = new Set(prev);
+      if (next.has(role)) next.delete(role);
+      else next.add(role);
+      return next;
     });
   };
 
-  const handleRobotTypeChange = (value: string) => {
-    persistConfigPatch({ robot_type: value });
-  };
-
-  const handleTeleopTypeChange = (value: string) => {
-    persistConfigPatch({ teleop_type: value });
+  const persistConfigPatch = (patch: Record<string, unknown>) => {
+    updateConfig(patch);
+    void apiPost<Record<string, unknown>>("/api/config", patch).catch(() => undefined);
   };
 
   const handleArmSetConfigResolved = (resolved: ResolvedArmConfig) => {
@@ -577,7 +488,7 @@ export function Teleop() {
       const payload = toBackendTeleopPayload({
         modeLabel: mode,
         speedLabel: speed,
-        cameras: camerasMapped,
+        cameras: selectedCameras,
         config: antiJitterAvailable
           ? effectiveConfig
           : { ...effectiveConfig, teleop_antijitter_enabled: false },
@@ -719,6 +630,7 @@ export function Teleop() {
         .filter((cam) => cam.symlink)
         .map((cam) => ({ role: cam.symlink, path: `/dev/${cam.symlink}` }));
       setCamerasMapped(mapped);
+      setEnabledCameras(new Set(mapped.map((cam) => cam.role)));
 
       const rawPorts = Array.from(
         new Set(
@@ -727,8 +639,6 @@ export function Teleop() {
             .filter((value): value is string => Boolean(value))
         )
       );
-      const portOpts = buildPortOptionsFromPaths(rawPorts);
-      setArmPortOptions(portOpts);
       const defaultFollower = rawPorts.find((p) => /follower/i.test(p)) ?? rawPorts[0] ?? "";
       const defaultLeader = rawPorts.find((p) => /leader/i.test(p)) ?? rawPorts[1] ?? rawPorts[0] ?? "";
       const defaultLeftFollower = rawPorts.find((p) => /follower.*(?:1|left)/i.test(p)) ?? defaultFollower;
@@ -745,16 +655,6 @@ export function Teleop() {
       const calibResult = await apiGet<{ files?: CalibFile[] }>("/api/calibrate/list");
       const files = calibResult.files ?? [];
       setCalibFiles(files);
-      const singleFollowers = buildCalibrationProfileOptions(files, "follower", false);
-      const singleLeaders = buildCalibrationProfileOptions(files, "leader", false);
-      const biFollowers = buildCalibrationProfileOptions(files, "follower", true);
-      const biLeaders = buildCalibrationProfileOptions(files, "leader", true);
-      setFollowerIdOptions(singleFollowers);
-      setLeaderIdOptions(singleLeaders);
-      setBiFollowerIdOptions(biFollowers);
-      setBiLeaderIdOptions(biLeaders);
-      setSelectedFollowerId((prev) => (prev && singleFollowers.includes(prev) ? prev : singleFollowers[0] ?? ""));
-      setSelectedLeaderId((prev) => (prev && singleLeaders.includes(prev) ? prev : singleLeaders[0] ?? ""));
 
       const lists = buildMappedArmLists(devResult.arms ?? [], files);
       setArmLists(lists);
@@ -815,7 +715,7 @@ export function Teleop() {
           />
 
           {flowError && <BlockerCard title="Execution Blocked" severity="error" reasons={[flowError]} />}
-          {!advancedEnabled && armLists.followers.length === 0 && armLists.leaders.length === 0 && phase === "idle" && (
+          {armLists.followers.length === 0 && armLists.leaders.length === 0 && phase === "idle" && (
             <BlockerCard
               title="Arm mapping required"
               reasons={[{ text: "Go to Motor Setup", to: "/motor-setup" }]}
@@ -841,7 +741,6 @@ export function Teleop() {
                   <div className="flex items-center justify-between px-4 py-3 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800">
                     <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Motor Configuration</span>
                     <div className="flex items-center gap-2">
-                      <WireToggle label="Advanced" checked={advancedEnabled} onChange={(v) => persistConfigPatch({ teleop_advanced_enabled: v })} />
                       <WireToggle label="Debug" checked={debugEnabled} onChange={(v) => persistConfigPatch({ teleop_debug_enabled: v })} />
                     </div>
                   </div>
@@ -856,249 +755,105 @@ export function Teleop() {
                       disabled={phase !== "idle"}
                     />
 
-                    {advancedEnabled && (
-                      <>
-                        <p className="text-sm text-zinc-400">Select robot type and control method.</p>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3">
-                          <FieldRow label="Robot Type">
-                            <WireSelect
-                              value={mode === "Single Arm"
-                                ? (typeof configRecord.robot_type === "string" && configRecord.robot_type ? configRecord.robot_type : "so101_follower")
-                                : "bi_so_follower"}
-                              options={mode === "Single Arm" ? TELEOP_ROBOT_TYPE_OPTIONS : TELEOP_BI_ROBOT_TYPE_OPTIONS}
-                              onChange={mode === "Single Arm" ? handleRobotTypeChange : undefined}
-                              disabled={mode !== "Single Arm"}
-                            />
-                          </FieldRow>
-                          <FieldRow label="Teleop Type">
-                            <WireSelect
-                              value={mode === "Single Arm"
-                                ? (typeof configRecord.teleop_type === "string" && configRecord.teleop_type ? configRecord.teleop_type : "so101_leader")
-                                : "bi_so_leader"}
-                              options={mode === "Single Arm" ? TELEOP_CONTROLLER_TYPE_OPTIONS : TELEOP_BI_CONTROLLER_TYPE_OPTIONS}
-                              onChange={mode === "Single Arm" ? handleTeleopTypeChange : undefined}
-                              disabled={mode !== "Single Arm"}
-                            />
-                          </FieldRow>
-                        </div>
+                  <button
+                    onClick={() => setMotorTuningOpen(!motorTuningOpen)}
+                    className="flex items-center gap-1 text-sm text-zinc-400 hover:text-zinc-600 cursor-pointer"
+                  >
+                    Motor tuning
+                    {motorTuningOpen ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
+                  </button>
 
-                        <div className="border-t border-zinc-100 dark:border-zinc-800 pt-3 flex flex-col gap-2">
-                          <p className="text-sm text-zinc-400">Select device port to connect.</p>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3">
-                            {mode === "Single Arm" ? (
-                              <>
-                                <FieldRow label="Follower Port">
-                                  <WireSelect
-                                    placeholder={armPortOptions.length === 0 ? "No ports detected" : undefined}
-                                    value={selectedFollowerPort}
-                                    options={armPortOptions}
-                                    onChange={handleFollowerPortChange}
-                                  />
-                                </FieldRow>
-                                <FieldRow label="Leader Port">
-                                  <WireSelect
-                                    placeholder={armPortOptions.length === 0 ? "No ports detected" : undefined}
-                                    value={selectedLeaderPort}
-                                    options={armPortOptions}
-                                    onChange={handleLeaderPortChange}
-                                  />
-                                </FieldRow>
-                              </>
-                            ) : (
-                              <>
-                                <FieldRow label="Left Follower">
-                                  <WireSelect
-                                    placeholder={armPortOptions.length === 0 ? "No ports detected" : "Left Follower Port"}
-                                    value={selectedLeftFollowerPort}
-                                    options={armPortOptions}
-                                    onChange={handleLeftFollowerPortChange}
-                                  />
-                                </FieldRow>
-                                <FieldRow label="Right Follower">
-                                  <WireSelect
-                                    placeholder={armPortOptions.length === 0 ? "No ports detected" : "Right Follower Port"}
-                                    value={selectedRightFollowerPort}
-                                    options={armPortOptions}
-                                    onChange={handleRightFollowerPortChange}
-                                  />
-                                </FieldRow>
-                                <FieldRow label="Left Leader">
-                                  <WireSelect
-                                    placeholder={armPortOptions.length === 0 ? "No ports detected" : "Left Leader Port"}
-                                    value={selectedLeftLeaderPort}
-                                    options={armPortOptions}
-                                    onChange={handleLeftLeaderPortChange}
-                                  />
-                                </FieldRow>
-                                <FieldRow label="Right Leader">
-                                  <WireSelect
-                                    placeholder={armPortOptions.length === 0 ? "No ports detected" : "Right Leader Port"}
-                                    value={selectedRightLeaderPort}
-                                    options={armPortOptions}
-                                    onChange={handleRightLeaderPortChange}
-                                  />
-                                </FieldRow>
-                              </>
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="border-t border-zinc-100 dark:border-zinc-800 pt-3 flex flex-col gap-2">
-                          <p className="text-sm text-zinc-400">Select calibration profile.</p>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3">
-                            {mode === "Single Arm" ? (
-                              <>
-                                <FieldRow label="Follower ID">
-                                  <WireSelect
-                                    placeholder={followerIdOptions.length === 0 ? "No calibration files" : undefined}
-                                    value={selectedFollowerId}
-                                    options={followerIdOptions}
-                                    onChange={handleFollowerIdChange}
-                                  />
-                                </FieldRow>
-                                <FieldRow label="Leader ID">
-                                  <WireSelect
-                                    placeholder={leaderIdOptions.length === 0 ? "No calibration files" : undefined}
-                                    value={selectedLeaderId}
-                                    options={leaderIdOptions}
-                                    onChange={handleLeaderIdChange}
-                                  />
-                                </FieldRow>
-                              </>
-                            ) : (
-                              <>
-                                <FieldRow label="Follower Shared Profile">
-                                  <WireSelect
-                                    placeholder={biFollowerIdOptions.length === 0 ? "No bi-arm follower profiles" : "- Select shared follower profile -"}
-                                    value={pickSelectableValue(selectedBiFollowerId, biFollowerIdOptions)}
-                                    options={biFollowerIdOptions}
-                                    onChange={(value) => handleBiCalibrationIdChange("robot", value)}
-                                  />
-                                </FieldRow>
-                                <FieldRow label="Leader Shared Profile">
-                                  <WireSelect
-                                    placeholder={biLeaderIdOptions.length === 0 ? "No bi-arm leader profiles" : "- Select shared leader profile -"}
-                                    value={pickSelectableValue(selectedBiLeaderId, biLeaderIdOptions)}
-                                    options={biLeaderIdOptions}
-                                    onChange={(value) => handleBiCalibrationIdChange("teleop", value)}
-                                  />
-                                </FieldRow>
-                              </>
-                            )}
-                          </div>
-                          {mode !== "Single Arm" && (
-                            <p className="text-xs text-zinc-400">
-                              Shared profiles automatically use the matching left/right calibration files.
-                            </p>
-                          )}
-                        </div>
-                      </>
-                    )}
-
-                  {advancedEnabled && (
-                  <div className="border-t border-zinc-100 dark:border-zinc-800 pt-3 flex flex-col gap-2">
-                    <p className="text-sm text-zinc-400">Optional joint-direction overrides applied only in Teleop action mapping.</p>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3">
-                      <FieldRow label="Invert Shoulder Lift">
-                        <WireSelect
-                          value={invertShoulderLift ? "On" : "Off"}
-                          options={["Off", "On"]}
-                          onChange={(value) => {
-                            persistConfigPatch({ teleop_invert_shoulder_lift: value === "On" });
-                          }}
-                        />
-                      </FieldRow>
-                      <FieldRow label="Invert Wrist Roll">
-                        <WireSelect
-                          value={invertWristRoll ? "On" : "Off"}
-                          options={["Off", "On"]}
-                          onChange={(value) => {
-                            persistConfigPatch({ teleop_invert_wrist_roll: value === "On" });
-                          }}
-                        />
-                      </FieldRow>
+                  {motorTuningOpen && (
+                    <div className="flex flex-col gap-3 pl-2 border-l-2 border-zinc-100 dark:border-zinc-800">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3">
+                        <FieldRow label="Invert Shoulder Lift">
+                          <WireSelect
+                            value={invertShoulderLift ? "On" : "Off"}
+                            options={["Off", "On"]}
+                            onChange={(value) => {
+                              persistConfigPatch({ teleop_invert_shoulder_lift: value === "On" });
+                            }}
+                          />
+                        </FieldRow>
+                        <FieldRow label="Invert Wrist Roll">
+                          <WireSelect
+                            value={invertWristRoll ? "On" : "Off"}
+                            options={["Off", "On"]}
+                            onChange={(value) => {
+                              persistConfigPatch({ teleop_invert_wrist_roll: value === "On" });
+                            }}
+                          />
+                        </FieldRow>
+                        <FieldRow label="Anti-Jitter">
+                          <WireSelect
+                            value={antiJitterAvailable && antiJitterEnabled ? "On" : "Off"}
+                            options={["Off", "On"]}
+                            onChange={(value) => {
+                              if (!antiJitterAvailable) return;
+                              persistConfigPatch({ teleop_antijitter_enabled: value === "On" });
+                            }}
+                          />
+                        </FieldRow>
+                        <FieldRow label="EMA Alpha">
+                          <input
+                            type="number"
+                            min={0}
+                            max={1}
+                            step="0.05"
+                            value={antiJitterAlpha}
+                            disabled={!antiJitterAvailable}
+                            onChange={(event) => {
+                              if (!antiJitterAvailable) return;
+                              const next = Number(event.target.value);
+                              if (Number.isFinite(next)) {
+                                persistConfigPatch({ teleop_antijitter_alpha: next });
+                              }
+                            }}
+                            className="w-full h-9 px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-800 dark:text-zinc-200 text-sm outline-none hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all"
+                          />
+                        </FieldRow>
+                        <FieldRow label="Deadband (deg)">
+                          <input
+                            type="number"
+                            min={0}
+                            step="0.05"
+                            value={antiJitterDeadband}
+                            disabled={!antiJitterAvailable}
+                            onChange={(event) => {
+                              if (!antiJitterAvailable) return;
+                              const next = Number(event.target.value);
+                              if (Number.isFinite(next)) {
+                                persistConfigPatch({ teleop_antijitter_deadband: next });
+                              }
+                            }}
+                            className="w-full h-9 px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-800 dark:text-zinc-200 text-sm outline-none hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all"
+                          />
+                        </FieldRow>
+                        <FieldRow label="Max Step (opt)">
+                          <input
+                            type="number"
+                            min={0}
+                            step="0.1"
+                            value={antiJitterMaxStep}
+                            disabled={!antiJitterAvailable}
+                            placeholder="Disabled"
+                            onChange={(event) => {
+                              if (!antiJitterAvailable) return;
+                              const raw = event.target.value;
+                              if (!raw.trim()) {
+                                persistConfigPatch({ teleop_antijitter_max_step: "" });
+                                return;
+                              }
+                              const next = Number(raw);
+                              if (Number.isFinite(next)) {
+                                persistConfigPatch({ teleop_antijitter_max_step: next });
+                              }
+                            }}
+                            className="w-full h-9 px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-800 dark:text-zinc-200 text-sm outline-none placeholder:text-zinc-400 hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all"
+                          />
+                        </FieldRow>
+                      </div>
                     </div>
-                  </div>
-                  )}
-
-                  {advancedEnabled && (
-                  <div className="border-t border-zinc-100 dark:border-zinc-800 pt-3 flex flex-col gap-2">
-                    <p className="text-sm text-zinc-400">
-                      {antiJitterAvailable
-                        ? "Optional filtering inserted between leader reads and follower commands."
-                        : "Anti-jitter plugin is unavailable, so these controls are disabled."}
-                    </p>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3">
-                      <FieldRow label="Anti-Jitter">
-                        <WireSelect
-                          value={antiJitterAvailable && antiJitterEnabled ? "On" : "Off"}
-                          options={["Off", "On"]}
-                          onChange={(value) => {
-                            if (!antiJitterAvailable) return;
-                            persistConfigPatch({ teleop_antijitter_enabled: value === "On" });
-                          }}
-                        />
-                      </FieldRow>
-                      <FieldRow label="EMA Alpha">
-                        <input
-                          type="number"
-                          min={0}
-                          max={1}
-                          step="0.05"
-                          value={antiJitterAlpha}
-                          disabled={!antiJitterAvailable}
-                          onChange={(event) => {
-                            if (!antiJitterAvailable) return;
-                            const next = Number(event.target.value);
-                            if (Number.isFinite(next)) {
-                              persistConfigPatch({ teleop_antijitter_alpha: next });
-                            }
-                          }}
-                          className="w-full h-9 px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-800 dark:text-zinc-200 text-sm outline-none hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all"
-                        />
-                      </FieldRow>
-                      <FieldRow label="Deadband (deg)">
-                        <input
-                          type="number"
-                          min={0}
-                          step="0.05"
-                          value={antiJitterDeadband}
-                          disabled={!antiJitterAvailable}
-                          onChange={(event) => {
-                            if (!antiJitterAvailable) return;
-                            const next = Number(event.target.value);
-                            if (Number.isFinite(next)) {
-                              persistConfigPatch({ teleop_antijitter_deadband: next });
-                            }
-                          }}
-                          className="w-full h-9 px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-800 dark:text-zinc-200 text-sm outline-none hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all"
-                        />
-                      </FieldRow>
-                      <FieldRow label="Max Step (opt)">
-                        <input
-                          type="number"
-                          min={0}
-                          step="0.1"
-                          value={antiJitterMaxStep}
-                          disabled={!antiJitterAvailable}
-                          placeholder="Disabled"
-                          onChange={(event) => {
-                            if (!antiJitterAvailable) return;
-                            const raw = event.target.value;
-                            if (!raw.trim()) {
-                              persistConfigPatch({ teleop_antijitter_max_step: "" });
-                              return;
-                            }
-                            const next = Number(raw);
-                            if (Number.isFinite(next)) {
-                              persistConfigPatch({ teleop_antijitter_max_step: next });
-                            }
-                          }}
-                          className="w-full h-9 px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-800 dark:text-zinc-200 text-sm outline-none placeholder:text-zinc-400 hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all"
-                        />
-                      </FieldRow>
-                    </div>
-                  </div>
                   )}
                   </div>
                 </div>
@@ -1126,11 +881,16 @@ export function Teleop() {
                           messageClassName="max-w-none"
                         />
                       ) : camerasMapped.map((cam) => (
-                        <div key={cam.role} className="flex items-center gap-2 px-2 py-1.5 rounded border border-zinc-100 dark:border-zinc-800/50">
-                          <span className="size-1.5 rounded-full bg-emerald-400 flex-none" />
+                        <label key={cam.role} className="flex items-center gap-2 px-2 py-1.5 rounded border border-zinc-100 dark:border-zinc-800/50 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={enabledCameras.has(cam.role)}
+                            onChange={() => toggleCamera(cam.role)}
+                            className="accent-emerald-500"
+                          />
                           <span className="text-sm text-zinc-600 dark:text-zinc-300 font-mono">{cam.role}</span>
                           <span className="text-sm text-zinc-400 ml-auto font-mono truncate">{cam.path}</span>
-                        </div>
+                        </label>
                       ))}
 
                       {/* Advanced stream settings */}
@@ -1165,15 +925,13 @@ export function Teleop() {
                   {/* Camera feed previews — compact thumbnails */}
                   <div className={cn(
                     "grid gap-2",
-                    camerasMapped.length === 1
-                      ? "grid-cols-1"
-                      : camerasMapped.length === 2
-                        ? "grid-cols-2"
-                        : camerasMapped.length === 3
-                          ? "grid-cols-3"
-                          : "grid-cols-4",
+                    selectedCameras.length <= 2
+                      ? "grid-cols-2"
+                      : selectedCameras.length === 3
+                        ? "grid-cols-3"
+                        : "grid-cols-4",
                   )}>
-                    {camerasMapped.map((cam) => {
+                    {selectedCameras.map((cam) => {
                       const frameSrc = cameraFrames[cam.role];
                       return (
                         <div key={cam.role} className="relative rounded-lg overflow-hidden border border-zinc-200 dark:border-zinc-800">
@@ -1245,15 +1003,13 @@ export function Teleop() {
               {/* Camera feeds — full width */}
               <div className={[
                 "grid gap-3",
-                camerasMapped.length === 1
-                  ? "grid-cols-1"
-                  : camerasMapped.length === 2
-                    ? "grid-cols-2"
-                    : camerasMapped.length === 3
-                      ? "grid-cols-3"
-                      : "grid-cols-4",
+                selectedCameras.length <= 2
+                  ? "grid-cols-2"
+                  : selectedCameras.length === 3
+                    ? "grid-cols-3"
+                    : "grid-cols-4",
               ].join(" ")}>
-                {camerasMapped.map((cam) => {
+                {selectedCameras.map((cam) => {
                   const frameSrc = cameraFrames[cam.role];
                   return (
                     <div key={cam.role} className="relative rounded-lg overflow-hidden border border-zinc-200 dark:border-zinc-800">
@@ -1300,7 +1056,7 @@ export function Teleop() {
                 <span className="text-sm text-zinc-500">
                   {mode} · {speed} · {antiJitterAvailable
                     ? (antiJitterEnabled ? `anti-jitter a=${antiJitterAlpha} d=${antiJitterDeadband}` : "anti-jitter off")
-                    : "anti-jitter unavailable"} · {debugEnabled ? "debug on" : "debug off"} · {camerasMapped.length} cams
+                    : "anti-jitter unavailable"} · {debugEnabled ? "debug on" : "debug off"} · Cams: {selectedCameras.length}/{camerasMapped.length}
                 </span>
               </div>
 
@@ -1347,7 +1103,7 @@ export function Teleop() {
             onStart={() => { void handleStart(); }}
             onStop={() => { void handleStop(); }}
             startLabel={<><Play size={13} className="fill-current" /> Start Teleop</>}
-            disabled={actionPending || (!advancedEnabled && armLists.followers.length === 0 && armLists.leaders.length === 0)}
+            disabled={actionPending || (armLists.followers.length === 0 && armLists.leaders.length === 0)}
             compact
             buttonClassName="py-1"
           />

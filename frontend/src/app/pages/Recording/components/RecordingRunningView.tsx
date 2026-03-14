@@ -40,13 +40,11 @@ export function RecordingRunningView({
       {/* Camera feeds */}
       <div className={[
         "grid gap-3",
-        camerasMapped.length === 1
-          ? "grid-cols-1"
-          : camerasMapped.length === 2
-            ? "grid-cols-2"
-            : camerasMapped.length === 3
-              ? "grid-cols-3"
-              : "grid-cols-4",
+        camerasMapped.length <= 2
+          ? "grid-cols-2"
+          : camerasMapped.length === 3
+            ? "grid-cols-3"
+            : "grid-cols-4",
       ].join(" ")}>
         {camerasMapped.map((cam) => {
           const frameSrc = cameraFrames[cam.role];
