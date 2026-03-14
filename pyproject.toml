@@ -61,6 +61,7 @@ lestudio = ["static/**"]
 
 [tool.pytest.ini_options]
 addopts = "--ignore=src/lerobot"
+testpaths = ["tests"]
 markers = [
     "smoke_hw: hardware smoke tests that require physical devices (/dev/video*, /dev/tty*)",
 ]

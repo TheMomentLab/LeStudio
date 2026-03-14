@@ -36,6 +36,9 @@ nav:
   - Getting Started:
     - Installation: installation.md
     - Quick Start: getting-started.md
+  - Architecture:
+    - Current Architecture: architecture.md
+    - API and Streaming: api-and-streaming.md
   - Hardware Guide: hardware.md
   - Workflow: workflow.md
   - Troubleshooting: troubleshooting.md

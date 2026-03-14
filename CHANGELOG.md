@@ -47,5 +47,6 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ---
 
-For detailed release process and validation gates, see
-`docs/release-checklist.md` (local only, not tracked in git).
+For detailed release process and validation gates, see `docs/release-checklist.md`.
+
+When documenting user-visible changes for a release, keep `docs/feature-spec.md`, `README.md`, and `README.ko.md` synchronized with the shipped product scope.

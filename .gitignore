@@ -86,6 +86,9 @@ AGENTS.md
 nul
 rollback_help.txt
 
+# Nested local plugin repos
+plugins/lerobot-antijitter/
+
 # ============================================================
 # Screenshots & audit images (local reference only)
 # ============================================================

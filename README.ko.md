@@ -7,9 +7,13 @@
 
 [Hugging Face LeRobot](https://github.com/huggingface/lerobot)을 위한 웹 기반 GUI 워크벤치 — 하드웨어 설정부터 정책 평가까지 전체 파이프라인을 지원합니다. CLI 중심의 LeRobot 워크플로우를 브라우저 인터페이스로 대체합니다.
 
-**[문서](https://themomentlab.github.io/lestudio/)** · **[기여 가이드](CONTRIBUTING.md)** · **[변경 이력](CHANGELOG.md)**
+**[문서](https://themomentlab.github.io/lestudio/)** · **[기여 가이드](CONTRIBUTING.md)** · **[변경 이력](CHANGELOG.md)** · **[English](README.md)**
 
-> [English README](README.md)
+내부 구조 문서:
+
+- [내부 문서 맵](docs/README.md)
+- [현재 아키텍처](docs/current-architecture.md)
+- [API 및 스트리밍](docs/api-and-streaming.md)
 
 ## 스크린샷
 
@@ -23,34 +27,45 @@
 
 ## 기능
 
-### 하드웨어 설정 & 운영
-- **Status**: 실시간 CPU/RAM/Disk/GPU 모니터링과 함께 장치 및 프로세스 현황 표시.
-- **Mapping**: 카메라 및 팔 udev 규칙 관리 — 생성, 미리보기, 적용, 검증, 삭제. Arm Identify Wizard(분리/재연결 diff 기반 팔 식별) 및 USB 대역폭 모니터링(피드별 실시간 fps/MB·s, 버스 사용률 바) 포함.
-- **Motor Setup**: `lerobot_setup_motors`를 통한 모터 연결 및 설정.
-- **Calibration**: 캘리브레이션 실행, 파일 관리, 삭제.
+### 워크벤치 및 런타임 기반
+- **워크벤치 레이아웃**: 하드웨어 설정부터 학습/평가까지 이어지는 사이드바 중심 워크플로우.
+- **전역 콘솔 서랍**: stdout/stderr 통합 스트림, 프로세스 입력 라우팅, 로그 복사 액션 제공.
+- **반응형 내비게이션**: 데스크톱 사이드바, 태블릿 아이콘 레일, 모바일 서랍 레이아웃.
+- **설정 프로필**: 작업 설정 저장, 불러오기, 가져오기, 내보내기, 삭제.
+- **세션 히스토리**: 녹화, 학습, 평가 흐름의 실행 이벤트 추적.
 
-### 조작
-- **Teleop**: 멀티카메라 원격 조작, preflight 점검, 실시간 카메라 피드(공유 메모리(SHM) 방식 — 텔레옵 실행 중에도 피드 유지).
-- **Record**: 에피소드 녹화, 브라우저 키보드 브리지(next/abort), resume 지원, preflight 점검.
+### 하드웨어 설정 및 검증
+- **상태 대시보드**: CPU/RAM/Disk/GPU와 함께 장치 및 프로세스 상태를 실시간으로 표시.
+- **카메라 미리보기**: UI에서 MJPEG 및 snapshot 기반 카메라 미리보기 제공.
+- **장치 매핑**: 카메라/팔 udev 규칙 관리와 Arm Identify Wizard 제공.
+- **USB 대역폭 모니터링**: 카메라별 FPS, 대역폭, 버스 사용률 피드백 제공.
+- **모터 설정**: `lerobot_setup_motors` 기반 모터 연결 및 설정.
+- **캘리브레이션**: 캘리브레이션 실행, 파일 관리, 삭제.
+- **사전 점검**: 실행 전 장치, 캘리브레이션, 카메라, CUDA 상태 검증.
 
-### 데이터
-- **Dataset**: 로컬 데이터셋 조회, 에피소드 상세, 품질 검사, Hub push(진행률 추적).
-- **Episode Replayer**: 멀티카메라 동기화 재생, 타임라인 스크러빙.
-- **Episode Curation**: 에피소드별 삭제, 태그, 필터로 데이터 품질 관리.
-- **Hub Search**: Hugging Face Hub에서 데이터셋 검색 및 다운로드.
+### 조작: 텔레옵 및 녹화
+- **텔레옵**: 멀티카메라 원격 조작, 사전 점검, SHM 기반 실시간 카메라 피드 유지.
+- **녹화**: 브라우저 기반 에피소드 제어, resume 지원, 사전 점검을 포함한 녹화 흐름.
 
-### ML
-- **Train**: LeRobot 학습 오케스트레이션 — CUDA preflight(호환 불가 빌드 자동 감지 + PyTorch 원클릭 재설치), 실시간 loss/LR 차트, ETA 추적, 하이퍼파라미터 프리셋(Quick / Standard / Full).
-- **Checkpoint Browser**: 로컬 체크포인트 스캔 및 Eval 자동 연결.
-- **Eval**: 정책 평가 실행, 실시간 프로세스 출력, 에피소드별 결과 추적.
+### 데이터셋 및 Hub
+- **데이터셋**: 로컬 데이터셋 조회, 상세, 삭제, 품질 검사.
+- **에피소드 리플레이어**: 멀티카메라 동기화 재생, 타임라인 스크러빙.
+- **에피소드 큐레이션**: 에피소드별 삭제, 태그, 필터.
+- **Hub 검색 및 다운로드**: Hugging Face Hub에서 데이터셋 검색 및 다운로드.
+- **Hub 업로드**: 진행 상태 추적과 함께 로컬 데이터셋 업로드.
 
-### 일반
-- **Global Console Drawer**: 프로세스별 stdout/stderr 통합 스트림 및 stdin 라우팅.
-- **Error Translation**: CLI stderr 패턴 → 사용자 친화적 안내 메시지.
-- **Session History**: 녹화, 학습, 평가 이벤트 타임라인.
-- **Desktop Notifications**: 프로세스 완료 또는 오류 시 브라우저 알림.
+### 학습 및 평가
+- **학습**: CUDA 사전 점검, 실시간 loss/LR 차트, ETA 추적, 하이퍼파라미터 프리셋을 포함한 LeRobot 학습 실행.
+- **의존성 복구**: PyTorch 및 관련 학습 의존성에 대한 안내형 설치 흐름.
+- **체크포인트 브라우저**: 로컬 체크포인트 스캔 및 Eval 자동 연결.
+- **평가**: 정책 평가 실행, 실시간 프로세스 출력, 에피소드별 결과 추적.
+
+### 모니터링 및 운영자 피드백
+- **런타임 상태**: WebSocket 기반 상태 공유, 프로세스 중지 제어, orphan-process 복구 신호.
+- **시스템 모니터링**: UI에서 GPU 및 시스템 리소스 가시성 제공.
+- **오류 번역**: 일반적인 raw 프로세스 오류를 운영자 친화적 안내로 변환.
+- **데스크톱 알림**: 프로세스 완료 또는 오류 시 브라우저 알림.
 - **다크/라이트 테마**: CSS 변수 기반 테마 전환.
-- **반응형 레이아웃**: 데스크톱 사이드바, 태블릿 아이콘 레일, 모바일 서랍.
 
 ## 요구 사항
 
@@ -138,8 +153,10 @@ conda activate lerobot
 
 ```bash
 python -m compileall -q src/lestudio
-PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q -m "not smoke_hw" tests
+make test
 ```
+
+`make test`는 pytest 범위를 `tests/`로 고정하고 `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1`를 설정해, 주변 ROS/데스크톱 플러그인 영향으로 검증이 깨지는 상황을 피합니다.
 
 프론트엔드 검사:
 
@@ -159,8 +176,10 @@ CI는 모든 push 시 이 검사를 자동으로 실행합니다: `.github/workf
 하드웨어 스모크 테스트 (실제 장치 필요, 선택적):
 
 ```bash
-LESTUDIO_RUN_HW_SMOKE=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q -m "smoke_hw" tests/smoke_hw
+make test-hw
 ```
+
+PR에서 사용자에게 보이는 기능이나 상위 소개 문서를 바꾸면 `docs/feature-spec.md`, `README.md`, `README.ko.md`를 같은 변경에서 함께 갱신하세요.
 
 ## 워크플로우 가이드
 

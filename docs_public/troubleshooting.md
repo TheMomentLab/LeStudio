@@ -1,6 +1,6 @@
-# Troubleshooting Guide
+# Troubleshooting
 
-Robotics is hard. Dealing with hardware permissions and USB streams on Linux is often the trickiest part of setting up LeStudio. 
+Robotics is hard. Dealing with hardware permissions and USB streams on Linux is often the trickiest part of setting up LeStudio.
 This document covers the most common issues you might encounter and how to fix them.
 
 ## 1. udev Rules & Symlink Issues
@@ -106,18 +106,24 @@ By design, remote access requires a security token to prevent unauthorized execu
 
 ### Solutions
 
-1. **"env.type is required"**: Eval Tab에서 Env Type을 선택해야 합니다. 체크포인트의 `config.yaml`에 `env.type`이 없으면 LeStudio가 자동 추론을 시도하지만, 실패할 경우 수동 선택이 필요합니다.
+1. **"env.type is required"**: Select an Env Type in the Eval tab. If the checkpoint's `config.yaml` does not include `env.type`, LeStudio tries to infer it automatically, but you may still need to choose it manually.
    - `gym_manipulator` — 일반적인 로봇 팔 teleoperation 데이터셋
    - `aloha` — ALOHA bi-arm 데이터셋
 
-2. **Camera key mismatch**: Eval 환경이 기대하는 카메라 키(`observation.images.top`)와 실제 데이터셋의 카메라 키(`observation.images.follower_cam_1`)가 다른 경우 발생합니다.
-   - Eval Tab의 Camera Mapping 섹션에서 데이터셋 카메라 → 환경 카메라 매핑을 설정하세요.
-   - `gym_manipulator` 환경은 기본적으로 `top` 카메라를 기대합니다.
+2. **Camera key mismatch**: This happens when the Eval environment expects camera keys such as `observation.images.top`, but your dataset uses different names such as `observation.images.follower_cam_1`.
+   - Use the Camera Mapping section in the Eval tab to map dataset cameras to environment cameras.
+   - `gym_manipulator` expects a `top` camera by default.
 
-3. **"Environment plugin not installed"**: 사용하려는 gym 환경 패키지가 설치되지 않은 경우입니다.
+3. **"Environment plugin not installed"**: The gym environment package you want to use is not installed.
    ```bash
    # gym_manipulator의 경우 (lerobot 내장 — 별도 설치 불필요)
    # aloha의 경우
    pip install gym-aloha
    ```
-   설치 후 LeStudio를 재시작하세요.
+   Restart LeStudio after installation.
+
+## Related Guides
+
+- Read [Installation](installation.md) if the issue starts before the server launches.
+- Read [Hardware Guide](hardware.md) for cameras, arms, permissions, and udev rules.
+- Read [Workflow](workflow.md) to understand where a failure happens in the overall pipeline.

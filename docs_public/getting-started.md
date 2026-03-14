@@ -61,3 +61,9 @@ Switch to the **Record** tab:
 ## 7. Inspect & Push
 
 Use the **Dataset** tab to review episodes, curate data, and push to Hugging Face Hub.
+
+## Next Steps
+
+- Read [Workflow](workflow.md) for the full setup-to-eval pipeline.
+- Read [Hardware Guide](hardware.md) if you need more detail on cameras, arms, or udev rules.
+- Read [Troubleshooting](troubleshooting.md) if a process, device, or permission check fails.

@@ -2,6 +2,8 @@
 
 LeStudio is designed around a nine-step pipeline. Each step corresponds to a tab in the UI.
 
+Use this page as the end-to-end reference once installation and initial hardware setup are complete.
+
 ## Overview
 
 ```
@@ -134,3 +136,9 @@ Run policy evaluation to close the loop.
 2. Configure eval parameters
 3. Click **Start Eval**
 4. Review per-episode results in the output panel
+
+## Related Guides
+
+- [Quick Start](getting-started.md) for the shortest path to first use
+- [Hardware Guide](hardware.md) for cameras, arms, and udev details
+- [Troubleshooting](troubleshooting.md) for common runtime failures

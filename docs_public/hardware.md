@@ -1,5 +1,7 @@
 # Hardware Guide
 
+This guide explains how LeStudio expects cameras, arms, and stable device paths to be prepared on a Linux host.
+
 ## Supported Hardware
 
 LeStudio works with any hardware supported by [Hugging Face LeRobot](https://github.com/huggingface/lerobot), including:
@@ -64,3 +66,9 @@ Use the **Motor Setup** tab to:
 - Verify motor IDs and connectivity
 
 This step is typically only needed for new hardware or after replacing servos.
+
+## Related Guides
+
+- Use [Quick Start](getting-started.md) after your devices are visible.
+- Use [Workflow](workflow.md) for the full operational sequence.
+- Use [Troubleshooting](troubleshooting.md) if rules apply but devices still do not appear correctly.

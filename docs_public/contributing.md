@@ -2,6 +2,8 @@
 
 Thank you for contributing to LeStudio!
 
+This page is the public contributor entry point. For deeper internal design notes, see the repository docs under `docs/`.
+
 ## Development Setup
 
 ```bash
@@ -21,7 +23,7 @@ LeStudio/
 │       ├── app/
 │       │   ├── App.tsx     # Root app assembly
 │       │   ├── routes.ts   # React Router route definitions
-│       │   ├── store/      # Zustand global store
+│       │   ├── store/      # Global app store
 │       │   ├── components/ # Shared UI and layout components
 │       │   └── hooks/      # Custom hooks
 ├── src/lestudio/           # Python FastAPI backend
@@ -54,7 +56,7 @@ Do **not** add `from lerobot.*` anywhere else. These five files are the adapter 
 
 ### Frontend Rules
 
-- **State management**: Zustand single store (`frontend/src/app/store/index.ts`) — no local state sprawl
+- **State management**: shared app store in `frontend/src/app/store/index.ts` — avoid uncontrolled local-state sprawl
 - **Styling**: Match the existing utility-class and shared-component patterns in `frontend/src/app/components/`
 - **Types**: Minimize `any`; define proper interfaces/types close to the feature or in shared contracts
 - **Build output**: `frontend/` → `src/lestudio/static/` via `npm run build`
@@ -65,7 +67,7 @@ Do **not** add `from lerobot.*` anywhere else. These five files are the adapter 
 
 ```bash
 conda activate lerobot
-PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q -m "not smoke_hw" tests
+make test
 ```
 
 **Frontend:**
@@ -80,7 +82,7 @@ npm run build
 **Hardware smoke tests** (requires physical devices):
 
 ```bash
-LESTUDIO_RUN_HW_SMOKE=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q -m "smoke_hw" tests/smoke_hw
+make test-hw
 ```
 
 ## Adding a Feature
@@ -99,3 +101,9 @@ When wrapping a new `lerobot` capability:
 - No empty `catch` blocks
 - Run `lsp_diagnostics` (or `tsc --noEmit`) before submitting a PR
 - Match existing patterns — check nearby files before introducing a new paradigm
+
+## Related Docs
+
+- [Architecture](architecture.md) for the high-level system view
+- [API and Streaming](api-and-streaming.md) for transport behavior
+- Repository internal docs in `docs/` for deeper implementation notes

@@ -9,6 +9,12 @@ A web-based GUI workbench for [Hugging Face LeRobot](https://github.com/huggingf
 
 **[Documentation](https://themomentlab.github.io/lestudio/)** · **[Contributing](CONTRIBUTING.md)** · **[Changelog](CHANGELOG.md)** · **[한국어](README.ko.md)**
 
+Architecture docs:
+
+- [Internal Docs Map](docs/README.md)
+- [Current Architecture](docs/current-architecture.md)
+- [API and Streaming](docs/api-and-streaming.md)
+
 ## Screenshots
 
 | Status | Record |
@@ -21,34 +27,45 @@ A web-based GUI workbench for [Hugging Face LeRobot](https://github.com/huggingf
 
 ## Features
 
-### Hardware Setup & Ops
-- **Status**: Live device and process overview with real-time CPU/RAM/Disk/GPU monitoring.
-- **Mapping**: Camera and arm udev rule management — create, preview, apply, verify, and delete. Includes Arm Identify Wizard (disconnect/reconnect diff-based detection) and USB bandwidth monitoring (real-time fps/MB·s per feed with bus utilization bar).
+### Workbench & Runtime Foundation
+- **Workbench Layout**: Sidebar-driven workflow from hardware setup to training and evaluation.
+- **Global Console Drawer**: Unified stdout/stderr stream, process input routing, and log copy actions.
+- **Responsive Navigation**: Desktop sidebar, tablet icon rail, and mobile drawer layout.
+- **Config Profiles**: Save, load, import, export, and delete working configurations.
+- **Session History**: Track run-related events across recording, training, and evaluation flows.
+
+### Hardware Setup & Validation
+- **Status Dashboard**: Live device and process overview with CPU/RAM/Disk/GPU monitoring.
+- **Camera Preview**: MJPEG and snapshot-based camera visibility from the UI.
+- **Mapping**: Camera and arm udev rule management, including Arm Identify Wizard.
+- **USB Bandwidth Monitoring**: Per-camera FPS, bandwidth, and bus utilization feedback.
 - **Motor Setup**: Motor connectivity and setup via `lerobot_setup_motors`.
 - **Calibration**: Calibration execution, file management, and delete.
+- **Preflight Checks**: Validate devices, calibration, cameras, and CUDA before launch.
 
-### Operation
-- **Teleop**: Multi-camera teleoperation with preflight checks and live camera feeds (SHM-shared during process — feed stays visible while teleop runs).
-- **Record**: Episode recording with keyboard bridge (next/abort from browser UI), resume support, and preflight checks.
+### Operation: Teleop & Record
+- **Teleop**: Multi-camera teleoperation with preflight checks and live SHM-shared camera feeds.
+- **Record**: Episode recording with browser-side episode control, resume support, and preflight checks.
 
-### Data
-- **Dataset**: Local dataset listing, episode details, quality check, and Hub push with progress tracking.
+### Dataset & Hub
+- **Dataset**: Local dataset listing, detail, delete, and quality checks.
 - **Episode Replayer**: Multi-camera synchronized playback with timeline scrubbing.
-- **Episode Curation**: Per-episode delete, tag, and filter for data quality management.
-- **Hub Search**: Search and download datasets directly from Hugging Face Hub.
+- **Episode Curation**: Per-episode delete, tag, and filter.
+- **Hub Search & Download**: Search and download datasets directly from Hugging Face Hub.
+- **Hub Push**: Push local datasets with tracked job progress.
 
-### ML
-- **Train**: LeRobot training orchestration with CUDA preflight (auto-detects incompatible builds + one-click PyTorch reinstall), real-time loss/LR chart, ETA tracking, and hyperparameter presets (Quick / Standard / Full).
+### Training & Evaluation
+- **Train**: LeRobot training with CUDA preflight, real-time loss/LR chart, ETA tracking, and hyperparameter presets.
+- **Dependency Remediation**: Guided install flows for PyTorch and related training dependencies.
 - **Checkpoint Browser**: Scan local checkpoints and auto-link to Eval.
 - **Eval**: Policy evaluation with live process output and per-episode result tracking.
 
-### General
-- **Global Console Drawer**: Unified stdout/stderr stream and stdin routing per process.
-- **Error Translation**: CLI stderr patterns → user-friendly guidance messages.
-- **Session History**: Timeline of recording, training, and evaluation events.
+### Monitoring & Operator Feedback
+- **Runtime Status**: Shared WebSocket status, process stop controls, and orphan-process recovery signals.
+- **System Monitoring**: GPU and system resource visibility from the UI.
+- **Error Translation**: Common raw process failures converted into operator-readable guidance.
 - **Desktop Notifications**: Browser notifications on process completion or error.
 - **Dark/Light Theme**: CSS variable-based theme toggle.
-- **Responsive Layout**: Desktop sidebar, tablet icon rail, mobile drawer.
 
 ## Requirements
 
@@ -136,8 +153,10 @@ Backend checks:
 
 ```bash
 python -m compileall -q src/lestudio
-PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q -m "not smoke_hw" tests
+make test
 ```
+
+`make test` scopes pytest to `tests/` and sets `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1`, which avoids unrelated plugins from the ambient environment.
 
 Frontend checks:
 
@@ -157,8 +176,10 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for architecture overview, PR guidelines,
 Hardware smoke checks (real devices only, opt-in):
 
 ```bash
-LESTUDIO_RUN_HW_SMOKE=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q -m "smoke_hw" tests/smoke_hw
+make test-hw
 ```
+
+When a pull request changes user-visible capabilities or top-level product messaging, update `docs/feature-spec.md`, `README.md`, and `README.ko.md` as part of the same change.
 
 ## Workflow Guide
 

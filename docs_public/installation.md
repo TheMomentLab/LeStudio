@@ -1,5 +1,7 @@
 # Installation
 
+This guide covers the minimum environment and commands needed to get LeStudio running from source.
+
 ## Requirements
 
 - Python 3.10+
@@ -86,3 +88,9 @@ export LESTUDIO_CORS_ORIGIN_REGEX='^https://(localhost|127\.0\.0\.1)(:\d+)?$'
 
 !!! warning
     `LESTUDIO_CORS_ORIGINS="*"` is supported for development only — not recommended for shared networks.
+
+## Next Steps
+
+- Continue with [Quick Start](getting-started.md) to launch your first session.
+- Use [Hardware Guide](hardware.md) if you need help wiring cameras, arms, or udev rules.
+- Check [Troubleshooting](troubleshooting.md) if installation succeeds but runtime setup fails.
