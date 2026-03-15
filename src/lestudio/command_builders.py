@@ -6,28 +6,19 @@ import shutil
 from json import JSONDecodeError
 from pathlib import Path
 
-from lestudio import path_policy
+from lestudio import path_policy, type_policy
 
 from ._device_helpers import derive_bi_calibration_profile_id, get_calibration_dir
 
 logger = logging.getLogger(__name__)
 
-MOTOR_SETUP_COMPATIBLE_TYPES = {
-    "koch_follower",
-    "koch_leader",
-    "omx_follower",
-    "omx_leader",
-    "so100_follower",
-    "so100_leader",
-    "so101_follower",
-    "so101_leader",
-    "lekiwi",
-}
+MOTOR_SETUP_COMPATIBLE_TYPES = set(type_policy.MOTOR_SETUP_COMPATIBLE_TYPES)
 
 
 def _normalized_process_types(cfg: dict, *, is_bi: bool) -> tuple[str, str]:
-    default_robot = "bi_so_follower" if is_bi else "so101_follower"
-    default_teleop = "bi_so_leader" if is_bi else "so101_leader"
+    defaults = type_policy.get_defaults_for_mode("bi" if is_bi else "single")
+    default_robot = defaults.robot_type
+    default_teleop = defaults.teleop_type
     robot_type = str(cfg.get("robot_type", default_robot) or default_robot).strip()
     teleop_type = str(cfg.get("teleop_type", default_teleop) or default_teleop).strip()
 
@@ -378,7 +369,7 @@ def build_calibrate_args(python_exe: str, data: dict) -> list[str]:
 def build_motor_setup_args(python_exe: str, data: dict) -> list[str]:
     robot_type = data.get("robot_type", "so101_follower")
     port = data.get("port", "/dev/follower_arm_1")
-    if robot_type not in MOTOR_SETUP_COMPATIBLE_TYPES:
+    if not type_policy.supports_motor_setup(str(robot_type)):
         supported = ", ".join(sorted(MOTOR_SETUP_COMPATIBLE_TYPES))
         raise ValueError(f"Motor Setup does not support '{robot_type}'. Supported types: {supported}")
     return [

@@ -19,8 +19,9 @@ def test_server_route_inventory_contains_expected_contract(tmp_path: Path):
         if hasattr(route, "path") and (route.path.startswith("/api/") or route.path in {"/ws", "/stream/{video_name}"})
     }
 
-    assert len(paths) == 79
+    assert len(paths) == 80
     assert "/api/process/{name}/command" in paths
+    assert "/api/policy/type-catalog" in paths
     assert "/api/teleop/start" in paths
     assert "/api/record/start" in paths
     assert "/api/train/start" in paths
