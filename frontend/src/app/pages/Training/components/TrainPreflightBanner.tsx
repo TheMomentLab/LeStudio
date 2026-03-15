@@ -1,5 +1,6 @@
 import { AlertTriangle, Loader2 } from "lucide-react";
 
+import { buttonStyles } from "../../../components/ui/button";
 import type { CudaState } from "../types";
 
 interface TrainPreflightBannerProps {
@@ -37,7 +38,12 @@ export function TrainPreflightBanner({
             </span>
             <button
               onClick={onStopInstall}
-              className="px-2 py-1 rounded border border-zinc-600 text-zinc-400 text-xs cursor-pointer hover:bg-zinc-800 transition-colors"
+              className={buttonStyles({
+                variant: "secondary",
+                tone: "danger",
+                size: "sm",
+                className: "h-auto px-2.5 py-1 text-xs",
+              })}
             >Stop</button>
           </>
         ) : (
@@ -45,18 +51,30 @@ export function TrainPreflightBanner({
             {preflightAction === "install_torch_cuda" && (
               <button
                 onClick={onInstallCuda}
-                className="px-2.5 py-1 rounded border border-amber-500/50 bg-amber-500/10 text-amber-400 text-sm font-medium cursor-pointer hover:bg-amber-500/20 transition-all"
+                className={buttonStyles({
+                  variant: "primary",
+                  tone: "warning",
+                  className: "h-auto px-3 py-1.5",
+                })}
               >Install CUDA PyTorch</button>
             )}
             {preflightAction && preflightAction !== "install_torch_cuda" && (
               <button
                 onClick={onInstallTorchcodecFix}
-                className="px-2.5 py-1 rounded border border-amber-500/50 bg-amber-500/10 text-amber-400 text-sm font-medium cursor-pointer hover:bg-amber-500/20 transition-all"
+                className={buttonStyles({
+                  variant: "primary",
+                  tone: "warning",
+                  className: "h-auto px-3 py-1.5",
+                })}
               >Auto Fix</button>
             )}
             <button
               onClick={onUseCpu}
-              className="px-2.5 py-1 rounded border border-zinc-600 text-zinc-400 text-sm cursor-pointer hover:bg-zinc-800 transition-colors"
+              className={buttonStyles({
+                variant: "secondary",
+                tone: "neutral",
+                className: "h-auto px-3 py-1.5",
+              })}
             >Use CPU</button>
           </>
         )}

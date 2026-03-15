@@ -1,5 +1,6 @@
 import { CheckCircle2, ChevronDown, ChevronUp, Copy, ExternalLink, Loader2, Upload } from "lucide-react";
 
+import { buttonStyles } from "../../../components/ui/button";
 import { cn } from "../../../components/ui/utils";
 import { HfGateBanner } from "./HfGateBanner";
 
@@ -61,14 +62,15 @@ export function ColabPanel({
               disabled={hfAuth !== "ready" || pushState !== "idle"}
               onClick={onPushToHub}
               className={cn(
-                "flex items-center gap-1.5 px-4 py-1 rounded border text-sm font-medium transition-colors whitespace-nowrap",
-                pushState === "done"
-                  ? "border-emerald-500/40 text-emerald-600 dark:text-emerald-400 bg-emerald-500/15"
-                  : "border-emerald-500/40 text-emerald-600 dark:text-emerald-400 bg-emerald-500/5",
+                buttonStyles({
+                  variant: "primary",
+                  tone: "success",
+                  className: "h-auto px-4 py-1.5 gap-1.5 whitespace-nowrap",
+                }),
                 hfAuth !== "ready" ? "opacity-40 cursor-not-allowed"
                   : pushState === "pushing" ? "opacity-70 cursor-wait"
                   : pushState === "done" ? "cursor-default"
-                  : "hover:bg-emerald-500/10 cursor-pointer"
+                  : null
               )}
             >
               {pushState === "pushing" ? <Loader2 size={12} className="animate-spin" />
@@ -112,11 +114,14 @@ export function ColabPanel({
               onClick={handleOpenColab}
               disabled={hfAuth !== "ready" || colabStarting}
               className={cn(
-                "flex items-center gap-1.5 px-4 py-1 rounded border text-sm transition-colors",
-                "border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300",
+                buttonStyles({
+                  variant: "secondary",
+                  tone: "neutral",
+                  className: "h-auto px-4 py-1.5 gap-1.5 whitespace-nowrap",
+                }),
                 hfAuth !== "ready" ? "opacity-40 cursor-not-allowed"
                   : colabStarting ? "opacity-70 cursor-wait"
-                  : "hover:bg-zinc-50 dark:hover:bg-zinc-800 cursor-pointer"
+                  : null
               )}
             >
               {colabStarting ? <Loader2 size={12} className="animate-spin" /> : <ExternalLink size={12} />}

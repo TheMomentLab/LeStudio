@@ -1,5 +1,6 @@
 import type { ComponentType } from "react";
 import { AlertTriangle, Zap } from "lucide-react";
+import { buttonStyles } from "../../../components/ui/button";
 import { Card, WireSelect, WireToggle } from "../../../components/wireframe";
 import type { ArmDevice, MotorData } from "../types";
 
@@ -69,25 +70,37 @@ export function MonitorTabPanel({
             />
           </div>
           {!monConnected ? (
-            <button
-              onClick={onHandleMonConnect}
-              disabled={monConnecting || !monPort || setupRunning}
-              title={setupRunning ? "Motor Setup is running - stop it first" : ""}
-              className="px-4 py-2 rounded border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 text-sm cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
-            >
+             <button
+               onClick={onHandleMonConnect}
+               disabled={monConnecting || !monPort || setupRunning}
+               title={setupRunning ? "Motor Setup is running - stop it first" : ""}
+               className={buttonStyles({
+                 variant: "primary",
+                 tone: "neutral",
+                 className: "h-auto px-4 py-2 whitespace-nowrap",
+               })}
+             >
               {monConnecting ? "Connecting..." : <><Zap size={12} className="inline mr-1" />Connect</>}
             </button>
           ) : (
             <>
               <button
                 onClick={onHandleEmergencyStop}
-                className="px-3 py-2 rounded-lg border border-red-500/50 bg-red-500/10 text-red-400 text-sm cursor-pointer whitespace-nowrap"
+                className={buttonStyles({
+                  variant: "primary",
+                  tone: "danger",
+                  className: "h-auto px-3 py-2 whitespace-nowrap",
+                })}
               >
                 ⛔ E-Stop
               </button>
               <button
                 onClick={onHandleMonDisconnect}
-                className="px-4 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 text-zinc-500 text-sm cursor-pointer whitespace-nowrap"
+                className={buttonStyles({
+                  variant: "secondary",
+                  tone: "neutral",
+                  className: "h-auto px-4 py-2 whitespace-nowrap",
+                })}
               >
                 Disconnect
               </button>

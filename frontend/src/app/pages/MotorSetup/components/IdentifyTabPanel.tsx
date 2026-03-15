@@ -1,4 +1,5 @@
 import { Bot, Zap } from "lucide-react";
+import { buttonStyles } from "../../../components/ui/button";
 import { Card, EmptyState, StatusBadge, WireSelect } from "../../../components/wireframe";
 import { symToDisplayLabel } from "../../../services/portLabels";
 import type { ArmDevice } from "../types";
@@ -57,7 +58,11 @@ export function IdentifyTabPanel({
               <span className="text-sm text-zinc-500">Disconnect one arm from USB, then click Start.</span>
               <button
                 onClick={() => onSetIdentifyStep("waiting")}
-                className="ml-auto px-4 py-2 rounded border border-zinc-200 dark:border-zinc-700 text-sm text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 cursor-pointer whitespace-nowrap"
+                className={buttonStyles({
+                  variant: "primary",
+                  tone: "success",
+                  className: "ml-auto h-auto px-4 py-2 whitespace-nowrap",
+                })}
               >
                 <Zap size={12} className="inline mr-1.5" />
                 Start Identify
@@ -94,7 +99,11 @@ export function IdentifyTabPanel({
             <button
               onClick={() => { onSetIdentifyStep("idle"); onSetIdentifyRole("(none)"); }}
               disabled={identifyRole === "(none)"}
-              className="px-4 py-2 rounded-lg border border-emerald-500/50 bg-emerald-500/10 text-emerald-400 text-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              className={buttonStyles({
+                variant: "primary",
+                tone: "success",
+                className: "h-auto px-4 py-2",
+              })}
             >
               Assign
             </button>

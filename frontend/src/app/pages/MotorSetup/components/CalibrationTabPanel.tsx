@@ -7,6 +7,7 @@ import {
   WireInput,
   WireSelect,
 } from "../../../components/wireframe";
+import { buttonStyles } from "../../../components/ui/button";
 import type { ArmDevice, CalibrationFileItem, CalibrationValidation } from "../types";
 
 interface CalibrationTabPanelProps {
@@ -268,7 +269,11 @@ export function CalibrationTabPanel({
             type="button"
             onClick={onHandleCalibrationStart}
             disabled={calibTypeMismatch || arms.length === 0 || (calibMode === "Single Arm" && Boolean(calibFileNameError))}
-            className={`px-4 py-1 rounded border text-sm cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${calibTypeMismatch || arms.length === 0 || (calibMode === "Single Arm" && Boolean(calibFileNameError)) ? "border-zinc-600 text-zinc-500 cursor-not-allowed" : "border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800"}`}
+            className={buttonStyles({
+              variant: "primary",
+              tone: "neutral",
+              className: "h-auto px-4 py-1.5 whitespace-nowrap gap-1.5",
+            })}
           >
             <Play size={13} className="fill-current" /> Start Calibration
           </button>
@@ -276,7 +281,11 @@ export function CalibrationTabPanel({
           <button
             type="button"
             onClick={onHandleCalibrationStop}
-            className="px-4 py-1 rounded border border-red-500/30 text-sm text-red-500 hover:bg-red-500/10 cursor-pointer whitespace-nowrap flex items-center gap-1.5"
+            className={buttonStyles({
+              variant: "secondary",
+              tone: "danger",
+              className: "h-auto px-4 py-1.5 whitespace-nowrap gap-1.5",
+            })}
           >
             <Square size={11} className="fill-current" /> Stop
           </button>

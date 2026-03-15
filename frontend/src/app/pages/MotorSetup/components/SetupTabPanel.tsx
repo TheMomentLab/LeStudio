@@ -1,9 +1,10 @@
-import { AlertCircle, Check, Circle, CornerDownLeft, Loader2, Play, RotateCcw } from "lucide-react";
+import { AlertCircle, Check, CornerDownLeft, Loader2, Play, RotateCcw } from "lucide-react";
 import {
   BlockerCard,
   FieldRow,
   WireSelect,
 } from "../../../components/wireframe";
+import { buttonStyles } from "../../../components/ui/button";
 import { cn } from "../../../components/ui/utils";
 import { SETUP_MOTORS } from "../constants";
 import type { ArmDevice } from "../types";
@@ -103,7 +104,11 @@ export function SetupTabPanel({
           <button
             onClick={onHandleSetupStart}
             disabled={noPort || hasConflict || arms.length === 0}
-            className="px-4 py-1 rounded border border-zinc-200 dark:border-zinc-700 text-sm text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+            className={buttonStyles({
+              variant: "primary",
+              tone: "success",
+              className: "h-auto px-4 py-1.5 whitespace-nowrap",
+            })}
           >
             <Play size={12} className="inline mr-1.5 fill-current" />
             Start Motor Setup
@@ -165,7 +170,11 @@ export function SetupTabPanel({
               </div>
               <button
                 onClick={onWizardPressEnter}
-                className="w-full max-w-sm px-6 py-4 rounded-lg border border-emerald-500/50 bg-emerald-500/10 text-emerald-400 text-base font-semibold cursor-pointer hover:bg-emerald-500/20 active:bg-emerald-500/30 transition-colors flex items-center justify-center gap-2"
+                className={buttonStyles({
+                  variant: "primary",
+                  tone: "success",
+                  className: "w-full max-w-sm h-auto px-6 py-4 text-base font-semibold gap-2",
+                })}
               >
                 <CornerDownLeft size={18} /> Next Motor ↵
               </button>
@@ -201,15 +210,15 @@ export function SetupTabPanel({
               </div>
               <div className="flex flex-none items-center gap-2 self-center">
                 {wizardProcessActive ? (
-                  <button onClick={onWizardRetry} className="px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-700 text-xs text-zinc-500 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800 flex items-center gap-2">
+                  <button onClick={onWizardRetry} className={buttonStyles({ variant: "secondary", tone: "neutral", className: "h-auto px-3 py-1.5 text-xs gap-2" })}>
                     <RotateCcw size={12} /> Retry Step
                   </button>
                 ) : (
                   <>
-                    <button onClick={onExitWizard} className="px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-700 text-xs text-zinc-500 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800">
+                    <button onClick={onExitWizard} className={buttonStyles({ variant: "secondary", tone: "neutral", className: "h-auto px-3 py-1.5 text-xs" })}>
                       Back to Setup
                     </button>
-                    <button onClick={onWizardRestart} className="px-3 py-1.5 rounded-lg border border-red-500/40 bg-red-500/10 text-xs text-red-300 cursor-pointer hover:bg-red-500/15 flex items-center gap-2">
+                    <button onClick={onWizardRestart} className={buttonStyles({ variant: "secondary", tone: "danger", className: "h-auto px-3 py-1.5 text-xs gap-2" })}>
                       <RotateCcw size={12} /> Run Again
                     </button>
                   </>
@@ -235,7 +244,7 @@ export function SetupTabPanel({
             {wizardProcessActive && (
               <button
                 onClick={onStopWizard}
-                className="text-xs px-2 py-0.5 rounded border border-red-500/30 text-red-500 cursor-pointer"
+                className={buttonStyles({ variant: "secondary", tone: "danger", size: "sm", className: "h-auto px-2.5 py-0.5 text-xs" })}
               >
                 Stop Process
               </button>
@@ -264,13 +273,21 @@ export function SetupTabPanel({
           <div className="flex items-center gap-2 justify-end">
             <button
               onClick={onResetWizard}
-              className="px-4 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 text-sm text-zinc-500 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800"
+              className={buttonStyles({
+                variant: "secondary",
+                tone: "neutral",
+                className: "h-auto px-4 py-2",
+              })}
             >
               Run Again
             </button>
             <button
               onClick={() => onSetMotorTab("monitor")}
-              className="px-4 py-2 rounded-lg border border-emerald-500/50 bg-emerald-500/10 text-emerald-400 text-sm cursor-pointer"
+              className={buttonStyles({
+                variant: "primary",
+                tone: "success",
+                className: "h-auto px-4 py-2",
+              })}
             >
               Verify with Motor Monitor -&gt;
             </button>

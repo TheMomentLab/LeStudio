@@ -1,5 +1,6 @@
 import type { Dispatch, SetStateAction } from "react";
 import { Bot, Loader2, Trash2, Zap } from "lucide-react";
+import { buttonStyles } from "../../../components/ui/button";
 import { Card, EmptyState, WireSelect } from "../../../components/wireframe";
 import type { ArmDevice } from "../types";
 
@@ -88,7 +89,11 @@ export function MappingTabPanel({
             <button
               onClick={onClearAllMappings}
               disabled={autoApplying}
-              className="px-4 py-1 rounded border border-zinc-200 dark:border-zinc-700 text-sm text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 cursor-pointer whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
+              className={buttonStyles({
+                variant: "secondary",
+                tone: "neutral",
+                className: "h-auto px-4 py-1.5 whitespace-nowrap",
+              })}
             >
               <Trash2 size={12} className="inline mr-1.5" />
               Clear All
@@ -96,10 +101,14 @@ export function MappingTabPanel({
           )}
           <button
             onClick={onOpenIdentify}
-            className="px-4 py-1 rounded border border-zinc-200 dark:border-zinc-700 text-sm text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 cursor-pointer whitespace-nowrap"
+            className={buttonStyles({
+              variant: "primary",
+              tone: "success",
+              className: "h-auto px-4 py-1.5 whitespace-nowrap",
+            })}
           >
-            <Zap size={12} className="inline mr-1.5" />
-            Identify Arm
+              <Zap size={12} className="inline mr-1.5" />
+              Identify Arm
           </button>
         </div>
       )}

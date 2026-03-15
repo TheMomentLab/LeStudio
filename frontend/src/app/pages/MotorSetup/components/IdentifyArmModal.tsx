@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { X, Zap } from "lucide-react";
 import { createPortal } from "react-dom";
+import { buttonStyles } from "../../../components/ui/button";
 import { WireSelect } from "../../../components/wireframe";
 import { apiGet, apiPost } from "../../../services/apiClient";
 import { useLeStudioStore } from "../../../store";
@@ -135,7 +136,6 @@ export function IdentifyArmModal({ open, arms, onClose, onComplete }: IdentifyAr
     }, 1500);
 
     return () => stopPolling();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, resetState, stopPolling]);
 
   // ── ESC key handler ──────────────────────────────────────────────────────
@@ -292,7 +292,7 @@ export function IdentifyArmModal({ open, arms, onClose, onComplete }: IdentifyAr
       className="fixed inset-0 z-50 flex items-center justify-center"
       role="dialog"
       aria-modal="true"
-      aria-label="Identify Arm"
+      aria-labelledby="identify-arm-modal-title"
     >
       {/* Backdrop */}
       <div
@@ -306,7 +306,7 @@ export function IdentifyArmModal({ open, arms, onClose, onComplete }: IdentifyAr
         <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-200 dark:border-zinc-800">
           <div className="flex items-center gap-2">
             <Zap size={16} className="text-zinc-500" />
-            <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">Identify Arm</h2>
+            <h2 id="identify-arm-modal-title" className="text-base font-semibold text-zinc-900 dark:text-zinc-100">Identify Arm</h2>
           </div>
           <button
             onClick={onClose}
@@ -380,14 +380,22 @@ export function IdentifyArmModal({ open, arms, onClose, onComplete }: IdentifyAr
             {step === "conflict" && (
               <button
                 onClick={handleRetry}
-                className="px-4 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 text-sm text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 cursor-pointer"
+                className={buttonStyles({
+                  variant: "secondary",
+                  tone: "neutral",
+                  className: "h-auto px-4 py-2",
+                })}
               >
                 Retry
               </button>
             )}
             <button
               onClick={onClose}
-              className="px-4 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 text-sm text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 cursor-pointer"
+              className={buttonStyles({
+                variant: "secondary",
+                tone: "neutral",
+                className: "h-auto px-4 py-2",
+              })}
             >
               Cancel
             </button>
@@ -395,7 +403,11 @@ export function IdentifyArmModal({ open, arms, onClose, onComplete }: IdentifyAr
               <button
                 onClick={() => { void handleAssign(); }}
                 disabled={identifyRole === "(none)" || assigning}
-                className="px-4 py-2 rounded-lg border border-emerald-500/50 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed hover:bg-emerald-500/20 transition-colors"
+                className={buttonStyles({
+                  variant: "primary",
+                  tone: "success",
+                  className: "h-auto px-4 py-2",
+                })}
               >
                 {assigning ? "Assigning…" : "Assign"}
               </button>
