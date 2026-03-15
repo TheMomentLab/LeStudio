@@ -156,11 +156,11 @@ def antijitter_plugin_available() -> bool:
 def _load_antijitter_step_class() -> type[Any]:
     module = importlib.import_module("lerobot_teleoperator_antijitter")
     step_class = module.AntiJitterProcessorStep
-    return step_class
+    return cast(type[Any], step_class)
 
 
 def _patch_default_processors(
-    teleop_mod: object,
+    teleop_mod: Any,
     antijitter_settings: AntiJitterSettings,
     invert_settings: JointInvertSettings,
 ) -> None:
@@ -168,7 +168,7 @@ def _patch_default_processors(
         return
 
     step_class = _load_antijitter_step_class() if antijitter_settings.enabled else None
-    original_factory = teleop_mod.make_default_processors
+    original_factory = cast(Callable[[], tuple[Any, Any, Any]], teleop_mod.make_default_processors)
 
     def patched_make_default_processors():
         processors = original_factory()
@@ -291,7 +291,7 @@ def _emit_structured_debug_line(prefix: str, payload: dict[str, object]) -> None
 
 
 def _patch_teleop_loop(
-    teleop_mod: object,
+    teleop_mod: Any,
     debug_settings: TeleopDebugSettings,
     antijitter_settings: AntiJitterSettings,
     invert_settings: JointInvertSettings,
@@ -299,10 +299,10 @@ def _patch_teleop_loop(
     if not debug_settings.enabled:
         return
 
-    original_loop = teleop_mod.teleop_loop
-    move_cursor_up = teleop_mod.move_cursor_up
-    precise_sleep = teleop_mod.precise_sleep
-    log_rerun_data = teleop_mod.log_rerun_data
+    original_loop = cast(Callable[..., None], teleop_mod.teleop_loop)
+    move_cursor_up = cast(Callable[[int], None], teleop_mod.move_cursor_up)
+    precise_sleep = cast(Callable[[float], None], teleop_mod.precise_sleep)
+    log_rerun_data = cast(Callable[..., None], teleop_mod.log_rerun_data)
 
     def debug_teleop_loop(
         teleop: object,
@@ -331,7 +331,7 @@ def _patch_teleop_loop(
                     "schema_version": 1,
                 },
             )
-            return original_loop(
+            original_loop(
                 teleop=teleop,
                 robot=robot,
                 fps=fps,
@@ -342,6 +342,7 @@ def _patch_teleop_loop(
                 duration=duration,
                 display_compressed_images=display_compressed_images,
             )
+            return
 
         display_len = max(len(key) for key in cast(dict[str, object], robot_obj.action_features))
         start_time = time.perf_counter()

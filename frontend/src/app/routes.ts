@@ -1,38 +1,54 @@
+import { createElement } from "react";
 import { createBrowserRouter } from "react-router";
 import { AppShell } from "./components/layout/AppShell";
-import { SystemStatus } from "./pages/SystemStatus";
-import { CameraSetup } from "./pages/CameraSetup";
-import { MotorSetup } from "./pages/MotorSetup";
-import { Teleop } from "./pages/Teleop";
-import { Recording } from "./pages/Recording";
+import { RouteErrorBoundary } from "./components/layout/RouteErrorBoundary";
+
+function lazyRoute<TModule extends Record<string, unknown>, TKey extends keyof TModule & string>(
+  loader: () => Promise<TModule>,
+  exportName: TKey,
+) {
+  return async () => ({
+    Component: (await loader())[exportName] as React.ComponentType,
+  });
+}
 
 export const router = createBrowserRouter([
   {
     path: "/",
     Component: AppShell,
+    errorElement: createElement(RouteErrorBoundary),
     children: [
-      { index: true, Component: SystemStatus },
-      { path: "camera-setup", Component: CameraSetup },
-      { path: "motor-setup", Component: MotorSetup },
-      { path: "teleop", Component: Teleop },
-      { path: "record", Component: Recording },
+      {
+        index: true,
+        lazy: lazyRoute(() => import("./pages/SystemStatus"), "SystemStatus"),
+      },
+      {
+        path: "camera-setup",
+        lazy: lazyRoute(() => import("./pages/CameraSetup"), "CameraSetup"),
+      },
+      {
+        path: "motor-setup",
+        lazy: lazyRoute(() => import("./pages/MotorSetup"), "MotorSetup"),
+      },
+      {
+        path: "teleop",
+        lazy: lazyRoute(() => import("./pages/Teleop"), "Teleop"),
+      },
+      {
+        path: "record",
+        lazy: lazyRoute(() => import("./pages/Recording"), "Recording"),
+      },
       {
         path: "dataset",
-        lazy: async () => ({
-          Component: (await import("./pages/DatasetManagement")).DatasetManagement,
-        }),
+        lazy: lazyRoute(() => import("./pages/DatasetManagement"), "DatasetManagement"),
       },
       {
         path: "train",
-        lazy: async () => ({
-          Component: (await import("./pages/Training")).Training,
-        }),
+        lazy: lazyRoute(() => import("./pages/Training"), "Training"),
       },
       {
         path: "eval",
-        lazy: async () => ({
-          Component: (await import("./pages/Evaluation")).Evaluation,
-        }),
+        lazy: lazyRoute(() => import("./pages/Evaluation"), "Evaluation"),
       },
     ],
   },

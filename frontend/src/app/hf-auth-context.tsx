@@ -78,7 +78,10 @@ export function HfAuthProvider({ children }: { children: React.ReactNode }) {
   }, [setHfUsername]);
 
   useEffect(() => {
-    void refreshHfAuth();
+    const timer = window.setTimeout(() => {
+      void refreshHfAuth();
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [refreshHfAuth]);
 
   return <Ctx.Provider value={{ hfAuth, refreshHfAuth }}>{children}</Ctx.Provider>;

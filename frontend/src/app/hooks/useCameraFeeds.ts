@@ -36,8 +36,10 @@ export function useCameraFeeds(
 
   useEffect(() => {
     if (!active || targets.length === 0) {
-      setFrames({});
-      return;
+      const timer = window.setTimeout(() => {
+        setFrames({});
+      }, 0);
+      return () => window.clearTimeout(timer);
     }
 
     let cancelled = false;

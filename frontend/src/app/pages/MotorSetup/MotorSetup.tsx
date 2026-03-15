@@ -1,10 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
-  PageHeader,
-  RefreshButton,
   SubTabs,
 } from "../../components/wireframe";
-import { UdevInstallGate } from "../../components/UdevInstallGate";
 import { apiDelete, apiGet, apiPost } from "../../services/apiClient";
 import { buildCalibrationListEntries } from "../../services/calibrationProfiles";
 import { symToDisplayLabel, buildPortOptions } from "../../services/portLabels";
@@ -17,6 +14,8 @@ import { IdentifyArmModal } from "./components/IdentifyArmModal";
 import { SetupTabPanel } from "./components/SetupTabPanel";
 import { MonitorTabPanel } from "./components/MonitorTabPanel";
 import { CalibrationTabPanel } from "./components/CalibrationTabPanel";
+import { MotorSetupHeader } from "./components/MotorSetupHeader";
+import { MotorSetupReconnectedBanner } from "./components/MotorSetupReconnectedBanner";
 import type {
   ActionResponse,
   ArmDevice,
@@ -40,6 +39,7 @@ const MOTOR_FOUND_RE = /Found one motor on baudrate=(\d+) with id_?=(\d+)/i;
 const MOTOR_BAUD_RE = /Setting bus baud rate to (\d+)/i;
 const MOTOR_ERROR_RE = /(Traceback|ConnectionError:|RuntimeError:|NotImplementedError|Failed to write|Error:)/i;
 const MOTOR_EVENT_PREFIX = "[MOTOR_SETUP_EVENT] ";
+const ARM_SYMLINK_RE = /^(follower|leader)_arm_\d+$/i;
 
 type MotorSetupEvent = {
   event: string;
@@ -195,7 +195,6 @@ export function MotorSetup() {
   const [setupArmType, setSetupArmType] = useState("so101_follower");
   const [setupPort, setSetupPort] = useState("");
   const [armTypes, setArmTypes] = useState<string[]>(ARM_TYPES);
-  const [_hasRun, setHasRun] = useState(false);
 
   // ── Motor Monitor ─────────────────────────────────────────────────────────
   const [monConnected, setMonConnected] = useState(false);
@@ -270,11 +269,25 @@ export function MotorSetup() {
       for (const arm of nextArms) {
         initialMap[arm.device] = arm.symlink && symToLabel[arm.symlink] ? symToLabel[arm.symlink] : "(none)";
       }
+      const currentDevices = new Set(nextArms.map((a) => a.device));
       setArmRoleMap((prev) => {
-        const next = { ...prev };
+        const next: Record<string, string> = {};
+        // 1. Start from server truth (symlink-based)
         for (const [device, role] of Object.entries(initialMap)) {
-          if (!(device in next)) {
+          next[device] = role;
+        }
+        // 2. Keep local overrides ONLY for devices still physically connected
+        //    AND only when server has no mapping yet (user picked a role but
+        //    hasn't applied yet, or apply is in-flight).
+        for (const [device, role] of Object.entries(prev)) {
+          if (currentDevices.has(device) && !(device in next) && role !== "(none)") {
             next[device] = role;
+          }
+        }
+        if (import.meta.env.DEV) {
+          const stale = Object.keys(prev).filter((d) => !currentDevices.has(d));
+          if (stale.length > 0) {
+            console.debug("[ArmMapping] pruned stale devices:", stale, "prev:", prev, "next:", next);
           }
         }
         return next;
@@ -473,7 +486,6 @@ export function MotorSetup() {
     } else {
       setProcStatus({ ...procStatus, motor_setup: true });
       addToast("Motor setup started", "success");
-      setHasRun(true);
       startWizard();
     }
   }, [addToast, appendLog, clearLog, procStatus, setProcStatus, setupArmType, setupPort]);
@@ -584,7 +596,7 @@ export function MotorSetup() {
 
     addToast("Calibration started", "success");
     appendLog("calibrate", "[info] calibration started", "info");
-    setCalibrationAssistantStage(Boolean(calibSelectedFileStatus?.exists) ? "choose_file" : "center_arm");
+    setCalibrationAssistantStage(calibSelectedFileStatus?.exists ? "choose_file" : "center_arm");
   };
 
   const handleCalibrationStop = async () => {
@@ -629,12 +641,12 @@ export function MotorSetup() {
 
   const applyArmMapping = useCallback(async (roleMap: Record<string, string>) => {
     setAutoApplying(true);
+    console.info("[ArmMapping:apply] roleMap:", roleMap, "connected arms:", arms.map((a) => ({ dev: a.device, serial: a.serial, sym: a.symlink })));
 
     try {
       const currentRules = await apiGet<RulesResponse>("/api/udev/rules")
         .catch(() => apiGet<RulesResponse>("/api/rules/current"));
 
-      // Preserve existing arm rules (includes disconnected arms)
       const armAssignments: Record<string, string> = {};
       for (const rule of Array.isArray(currentRules.arm_rules) ? currentRules.arm_rules : []) {
         const serial = String(rule.serial ?? "").trim();
@@ -643,6 +655,7 @@ export function MotorSetup() {
           armAssignments[serial] = role;
         }
       }
+      const existingRules = { ...armAssignments };
 
       for (const arm of arms) {
         if (!arm.serial) continue;
@@ -650,17 +663,20 @@ export function MotorSetup() {
         armAssignments[arm.serial] = toArmSymlink(roleLabel);
       }
 
-      // Clear the target role from any other arm to prevent duplicate SYMLINK
+      const dedupLog: string[] = [];
       for (const arm of arms) {
         if (!arm.serial) continue;
         const symlink = toArmSymlink(roleMap[arm.device] ?? "(none)");
         if (symlink === "(none)") continue;
         for (const [serial, role] of Object.entries(armAssignments)) {
           if (role === symlink && serial !== arm.serial) {
+            dedupLog.push(`${serial}:${role} → (none) [conflict with ${arm.serial}]`);
             armAssignments[serial] = "(none)";
           }
         }
       }
+
+      console.info("[ArmMapping:apply] existing:", existingRules, "final:", armAssignments, dedupLog.length > 0 ? "dedup:" : "", dedupLog.length > 0 ? dedupLog : "");
 
       const cameraAssignments: Record<string, string> = {};
       for (const rule of Array.isArray(currentRules.camera_rules) ? currentRules.camera_rules : []) {
@@ -677,11 +693,13 @@ export function MotorSetup() {
       });
 
       if (!result.ok) {
+        console.warn("[ArmMapping:apply] FAILED:", result.error);
         addToast(result.error ?? "Failed to apply arm mapping.", "error");
         setArmRoleMap({ ...lastAppliedArmMapRef.current });
         return;
       }
 
+      console.info("[ArmMapping:apply] success");
       lastAppliedArmMapRef.current = { ...roleMap };
       await loadDevices();
 
@@ -695,6 +713,7 @@ export function MotorSetup() {
         return merged;
       });
     } catch {
+      console.warn("[ArmMapping:apply] exception");
       addToast("Failed to apply arm mapping.", "error");
       setArmRoleMap({ ...lastAppliedArmMapRef.current });
     } finally {
@@ -800,7 +819,6 @@ export function MotorSetup() {
     void applyArmMapping(cleared);
   }, [applyArmMapping, armRoleMap]);
 
-  const ARM_SYMLINK_RE = /^(follower|leader)_arm_\d+$/i;
   const mappedArms = useMemo(() => arms.filter((a) => a.symlink && ARM_SYMLINK_RE.test(a.symlink)), [arms]);
   const hasMappedArms = mappedArms.length > 0;
   const calibPortOptions = useMemo(() => buildPortOptions(mappedArms), [mappedArms]);
@@ -826,7 +844,7 @@ export function MotorSetup() {
       .replace(/[^A-Za-z0-9._-]+/g, "_")
       .replace(/^_+|_+$/g, "")
       .slice(0, 64) || leftRaw;
-  }, [arms, calibBiLeftPort, calibBiType]);
+  }, [arms, calibBiLeftPort]);
   const calibArmIdTrimmed = calibArmId.trim();
   const calibFileNameError = useMemo(() => {
     if (!calibArmIdTrimmed) return "Enter Calibration File Name.";
@@ -926,34 +944,22 @@ export function MotorSetup() {
 
   return (
     <div className="flex flex-col h-full">
-      <UdevInstallGate>
       <div className="flex-1 overflow-y-auto">
-        <div className="p-6 flex flex-col gap-4 max-w-[1600px] mx-auto w-full">
-          <PageHeader
-            title="Motor Setup"
-            subtitle="Arm mapping, motor ID setup and verification"
-            action={
-              <div className="flex items-center gap-2">
-                {import.meta.env.DEV && <div className="flex items-center gap-2 text-sm text-zinc-400">
-                  <span className="hidden sm:inline">Demo:</span>
-                  <button onClick={() => setNoPort((v) => !v)} className={`px-2 py-0.5 rounded border cursor-pointer text-sm ${noPort ? "border-amber-500/50 text-amber-400 bg-amber-500/10" : "border-zinc-200 dark:border-zinc-700 text-zinc-500"}`}>
-                    no port
-                  </button>
-                  <button onClick={() => setHasConflict((v) => !v)} className={`px-2 py-0.5 rounded border cursor-pointer text-sm ${hasConflict ? "border-red-500/50 text-red-400 bg-red-500/10" : "border-zinc-200 dark:border-zinc-700 text-zinc-500"}`}>
-                    conflict
-                  </button>
-                </div>}
-                <RefreshButton onClick={() => { void loadDevices(); void loadArmTypes(); }} />
-              </div>
-            }
+        <section aria-label="Motor setup" className="p-6 flex flex-col gap-4 max-w-[1600px] mx-auto w-full">
+          <MotorSetupHeader
+            noPort={noPort}
+            hasConflict={hasConflict}
+            onToggleNoPort={() => setNoPort((value) => !value)}
+            onToggleConflict={() => setHasConflict((value) => !value)}
+            onRefresh={() => { void loadDevices(); void loadArmTypes(); }}
           />
 
-          {((setupRunning && setupReconnected) || (calibrateRunning && calibrateReconnected)) && (
-            <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-blue-500/30 bg-blue-500/5 text-sm text-blue-600 dark:text-blue-400">
-              <span className="flex-none">⚡</span>
-              <span>Reconnected — This {setupRunning && setupReconnected ? "motor setup" : "calibration"} process was recovered from a previous server session. You can still stop it.</span>
-            </div>
-          )}
+          <MotorSetupReconnectedBanner
+            setupRunning={setupRunning}
+            setupReconnected={setupReconnected}
+            calibrateRunning={calibrateRunning}
+            calibrateReconnected={calibrateReconnected}
+          />
 
           <div className="flex flex-col gap-6">
             <SubTabs
@@ -1082,7 +1088,7 @@ export function MotorSetup() {
               />
             )}
           </div>
-        </div>
+        </section>
       </div>
 
       <IdentifyArmModal
@@ -1094,7 +1100,6 @@ export function MotorSetup() {
           void loadDevices();
         }}
       />
-      </UdevInstallGate>
     </div>
   );
 }

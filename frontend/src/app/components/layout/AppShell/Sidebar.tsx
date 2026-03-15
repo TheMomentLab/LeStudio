@@ -22,6 +22,7 @@ export function Sidebar({ collapsed, onClose }: { collapsed: boolean; onClose?: 
       {onClose && (
         <div className="flex justify-end p-2 md:hidden">
           <button onClick={onClose} className="p-1 text-zinc-400 hover:text-zinc-600">
+            <span className="sr-only">Close sidebar</span>
             <X size={16} />
           </button>
         </div>
@@ -34,6 +35,8 @@ export function Sidebar({ collapsed, onClose }: { collapsed: boolean; onClose?: 
               <button
                 onClick={() => toggle(group.id)}
                 className="w-full flex items-center justify-between px-2 py-1 text-sm text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 rounded cursor-pointer"
+                aria-expanded={openGroups[group.id]}
+                aria-label={`${group.label} navigation group`}
               >
                 <span className="uppercase tracking-wider" style={{ fontSize: "10px" }}>
                   {group.label}

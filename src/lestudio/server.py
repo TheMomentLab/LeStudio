@@ -6,6 +6,7 @@ import logging
 import os
 import shutil
 import sys
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -156,7 +157,41 @@ def create_app(
     cors_origins, cors_origin_regex = _resolve_cors_settings()
     token = session_token if session_token is not None else generate_token()
 
-    app = FastAPI(title="LeStudio")
+    state: AppState | None = None
+
+    def _on_process_exit(name: str):
+        if name in {"record", "teleop"}:
+            unlock_cameras()
+        if state is not None:
+            state.append_history(f"{name}_end")
+
+    proc_mgr = ProcessManager(lerobot_src, on_process_exit=_on_process_exit, state_dir=config_dir)
+
+    state = AppState(
+        proc_mgr=proc_mgr,
+        config_path=CONFIG_PATH,
+        config_dir=config_dir,
+        rules_path=rules_path,
+        fallback_rules_path=FALLBACK_RULES_PATH,
+        history_path=HISTORY_PATH,
+        history_max=HISTORY_MAX,
+        python_exe=PYTHON,
+    )
+
+    state.proc_mgr.recover_orphans()
+    state.device_watcher = DeviceWatcher()
+    state.device_watcher.start()
+
+    @asynccontextmanager
+    async def _lifespan(_: FastAPI):
+        try:
+            yield
+        finally:
+            watcher = state.device_watcher
+            if isinstance(watcher, DeviceWatcher):
+                watcher.stop()
+
+    app = FastAPI(title="LeStudio", lifespan=_lifespan)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=cors_origins,
@@ -182,33 +217,6 @@ def create_app(
 
     app.add_middleware(NoCacheStaticMiddleware)
 
-    # Create shared state; proc_mgr assigned after _on_process_exit is defined
-    state = AppState(
-        proc_mgr=None,  # pyright: ignore[reportArgumentType]
-        config_path=CONFIG_PATH,
-        config_dir=config_dir,
-        rules_path=rules_path,
-        fallback_rules_path=FALLBACK_RULES_PATH,
-        history_path=HISTORY_PATH,
-        history_max=HISTORY_MAX,
-        python_exe=PYTHON,
-    )
-
-    def _on_process_exit(name: str):
-        if name in {"record", "teleop"}:
-            unlock_cameras()
-        state.append_history(f"{name}_end")
-
-    state.proc_mgr = ProcessManager(lerobot_src, on_process_exit=_on_process_exit, state_dir=config_dir)
-    state.proc_mgr.recover_orphans()
-    state.device_watcher = DeviceWatcher()
-    state.device_watcher.start()
-
-    @app.on_event("shutdown")
-    def _shutdown() -> None:
-        if state.device_watcher:
-            state.device_watcher.stop()
-
     # ─── Include routers ───────────────────────────────────────────────────────
     app.include_router(devices.create_router(state))
     app.include_router(config.create_router(state))
@@ -224,3 +232,17 @@ def create_app(
     # Vite builds assets to STATIC_DIR with root-relative paths (/assets/...)
     app.mount("/", SPAStaticFiles(directory=str(STATIC_DIR), html=True), name="static")
     return app
+
+
+def create_app_from_env() -> FastAPI:
+    """App factory for ``uvicorn --reload`` mode.
+
+    Reads configuration from environment variables set by ``cli.py``
+    when ``--reload`` is passed.
+    """
+    return create_app(
+        lerobot_src=Path(os.environ["_LESTUDIO_LEROBOT_SRC"]),
+        config_dir=Path(os.environ["_LESTUDIO_CONFIG_DIR"]),
+        rules_path=Path(os.environ["_LESTUDIO_RULES_PATH"]),
+        session_token=os.environ.get("_LESTUDIO_TOKEN") or generate_token(),
+    )

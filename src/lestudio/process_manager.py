@@ -516,7 +516,7 @@ class ProcessManager:
                 self._push(name, f"[Saved live log to {session_log_path}]", "info")
             self._persist_state()
             return True
-        except Exception as e:  # broad-except: preserve process start failure handling for any launcher error
+        except Exception as e:  # broad-except: Popen can raise OSError, ValueError, RuntimeError, etc.
             logger.error("Process %s failed to launch: %s", name, e)
             self._close_session_log(name)
             self._push(name, f"[ERROR] {e}", "error")

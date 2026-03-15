@@ -115,6 +115,7 @@ export function EvalSettingsPanel({
               <div className="flex gap-1 bg-zinc-100 dark:bg-zinc-800/50 p-0.5 rounded-lg w-fit flex-none">
                 <button
                   onClick={() => setPolicySource("local")}
+                  aria-label="Use local policy source"
                   className={cn(
                     "flex items-center gap-1.5 px-3.5 py-1 rounded-md text-sm font-medium transition-all cursor-pointer",
                     policySource === "local"
@@ -127,6 +128,7 @@ export function EvalSettingsPanel({
                 <button
                   onClick={() => setPolicySource("hf")}
                   title="Hugging Face"
+                  aria-label="Use Hugging Face policy source"
                   className={cn(
                     "flex items-center gap-1.5 px-3.5 py-1 rounded-md text-sm font-medium transition-all cursor-pointer",
                     policySource === "hf"
@@ -147,6 +149,7 @@ export function EvalSettingsPanel({
                     <select
                       value={policyPath}
                       onChange={(e) => onCheckpointChange(e.target.value)}
+                      aria-label="Local checkpoint"
                       className="w-full h-9 px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-800 dark:text-zinc-200 text-sm outline-none cursor-pointer hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all"
                     >
                       {checkpoints.map((cp) => (
@@ -167,6 +170,7 @@ export function EvalSettingsPanel({
                     onChange={(e) =>
                       updateConfig({ eval_policy_path: e.target.value })
                     }
+                    aria-label="Hugging Face policy path"
                     className="w-full h-9 px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-800 dark:text-zinc-200 text-sm outline-none placeholder:text-zinc-400 hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all"
                   />
                 )}
@@ -180,6 +184,7 @@ export function EvalSettingsPanel({
               <select
                 value={deviceLabel}
                 onChange={(e) => setDeviceLabel(e.target.value)}
+                aria-label="Evaluation device"
                 className="w-full h-9 px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-800 dark:text-zinc-200 text-sm outline-none cursor-pointer hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all"
               >
                 {computeDeviceOptions.map((option) => {
@@ -198,6 +203,7 @@ export function EvalSettingsPanel({
                 onChange={(e) => setNumEpisodes(Number(e.target.value))}
                 min={1}
                 max={100}
+                aria-label="Number of episodes"
                 className="w-full h-9 px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-800 dark:text-zinc-200 text-sm outline-none hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all"
               />
             </div>
@@ -207,6 +213,7 @@ export function EvalSettingsPanel({
                 type="text"
                 value={datasetRepo}
                 onChange={(e) => setDatasetRepo(e.target.value)}
+                aria-label="Dataset repository ID"
                 className="w-full h-9 px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-800 dark:text-zinc-200 text-sm outline-none placeholder:text-zinc-400 hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all"
               />
             </div>
@@ -228,6 +235,7 @@ export function EvalSettingsPanel({
               <select
                 value={envType}
                 onChange={(e) => updateConfig({ eval_env_type: e.target.value })}
+                aria-label="Environment type"
                 className="w-full h-9 px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-800 dark:text-zinc-200 text-sm outline-none cursor-pointer hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all"
               >
                 <option value="">- Select env type -</option>
@@ -256,6 +264,7 @@ export function EvalSettingsPanel({
                 value={task}
                 placeholder="e.g. Pick up the block"
                 onChange={(e) => updateConfig({ eval_task: e.target.value })}
+                aria-label="Evaluation task"
                 className="w-full h-9 px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-800 dark:text-zinc-200 text-sm outline-none placeholder:text-zinc-400 hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all"
               />
             </div>
@@ -264,6 +273,8 @@ export function EvalSettingsPanel({
           <button
             onClick={() => setAdvOpen(!advOpen)}
             className="flex items-center gap-1.5 text-sm text-zinc-400 hover:text-zinc-500 dark:hover:text-zinc-300 transition-colors cursor-pointer w-fit"
+            aria-expanded={advOpen}
+            aria-label="Toggle advanced evaluation settings"
           >
             {advOpen ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
             Advanced Settings
@@ -278,6 +289,7 @@ export function EvalSettingsPanel({
                 value={datasetOverride}
                 onChange={(e) => setDatasetOverride(e.target.value)}
                 placeholder="Override with different dataset repo"
+                aria-label="Dataset override"
                 className="w-full h-9 px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-800 dark:text-zinc-200 text-sm outline-none placeholder:text-zinc-400 hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all"
               />
             </div>
@@ -299,9 +311,12 @@ export function EvalSettingsPanel({
 
           {isRealRobot && imageKeysFromCheckpoint.length > 0 && (
             <div className="border-t border-zinc-100 dark:border-zinc-800 pt-3 flex flex-col gap-2">
-              <div
-                className="flex items-center justify-between cursor-pointer"
+              <button
+                type="button"
+                className="flex w-full items-center justify-between cursor-pointer bg-transparent p-0 text-left"
                 onClick={() => setCameraConfigOpen(!cameraConfigOpen)}
+                aria-expanded={cameraConfigOpen}
+                aria-label="Toggle camera mapping"
               >
                 <div className="flex items-center gap-2">
                   <Video
@@ -321,7 +336,7 @@ export function EvalSettingsPanel({
                 ) : (
                   <ChevronDown size={10} className="text-zinc-500" />
                 )}
-              </div>
+              </button>
               {cameraConfigOpen && (
                 <div className="flex flex-col gap-2">
                   <p className="text-sm text-zinc-400">
@@ -345,6 +360,7 @@ export function EvalSettingsPanel({
                             [key]: e.target.value,
                           }))
                         }
+                        aria-label={`Camera mapping for ${key}`}
                         className="w-full h-9 px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-800 dark:text-zinc-200 text-sm outline-none cursor-pointer hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all"
                       >
                         <option value="">- Select -</option>

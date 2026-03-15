@@ -105,6 +105,7 @@ export function TrainSettingsPanel({
                       value={selectedLocalDataset}
                       onChange={(e) => setSelectedLocalDataset(e.target.value)}
                       placeholder="username/dataset-name"
+                      aria-label="Local dataset repository ID"
                       className="w-full h-9 px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-800 dark:text-zinc-200 text-sm outline-none hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all"
                     />
                   )
@@ -119,6 +120,7 @@ export function TrainSettingsPanel({
                     value={hfDatasetRepoId}
                     onChange={(e) => setHfDatasetRepoId(e.target.value)}
                     placeholder="username/dataset-name"
+                    aria-label="Hugging Face dataset repository ID"
                     className="w-full h-9 px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-800 dark:text-zinc-200 text-sm outline-none hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all"
                   />
                 )}
@@ -157,6 +159,7 @@ export function TrainSettingsPanel({
                 type="number"
                 value={customSteps}
                 onChange={(e) => { setCustomSteps(Number(e.target.value)); setPreset("standard"); }}
+                aria-label="Training steps"
                 className="w-24 h-9 px-3 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-800 dark:text-zinc-200 text-sm font-mono outline-none hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all"
               />
             </div>
@@ -167,6 +170,8 @@ export function TrainSettingsPanel({
           <button
             onClick={() => setAdvOpen(!advOpen)}
             className="flex items-center gap-1.5 text-sm text-zinc-400 hover:text-zinc-500 dark:hover:text-zinc-300 transition-colors cursor-pointer w-fit"
+            aria-expanded={advOpen}
+            aria-label="Toggle advanced training overrides"
           >
             {advOpen ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
             Advanced Overrides
@@ -179,6 +184,7 @@ export function TrainSettingsPanel({
                     type="text"
                     value={lrValue}
                     onChange={(e) => setLrValue(e.target.value)}
+                    aria-label="Learning rate"
                     className="w-full h-9 px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-800 dark:text-zinc-200 text-sm font-mono outline-none placeholder:text-zinc-400 hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all"
                   />
                 </FieldRow>
@@ -189,6 +195,7 @@ export function TrainSettingsPanel({
                     value={batchSize || ""}
                     onChange={(e) => setBatchSize(Number(e.target.value))}
                     placeholder="default (8)"
+                    aria-label="Batch size"
                     className="w-full h-9 px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-800 dark:text-zinc-200 text-sm font-mono outline-none placeholder:text-zinc-400 hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all"
                   />
                 </FieldRow>
@@ -203,6 +210,7 @@ export function TrainSettingsPanel({
                       onChange={(e) => setModelOutputRepo(e.target.value)}
                       placeholder="username/model-name (optional)"
                       disabled={hfAuth !== "ready"}
+                      aria-label="Output model repository"
                       className={cn(
                         "w-full h-9 px-3 py-2 rounded-lg border text-sm outline-none placeholder:text-zinc-400 hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all",
                         hfAuth !== "ready"

@@ -10,6 +10,7 @@ import threading
 import time
 import webbrowser
 from pathlib import Path
+from typing import cast
 
 from lestudio import path_policy
 
@@ -34,7 +35,7 @@ def find_lerobot_src() -> Path | None:
             return None
 
         if spec.submodule_search_locations:
-            pkg_dir = Path(next(iter(spec.submodule_search_locations)))
+            pkg_dir = Path(cast(str, next(iter(spec.submodule_search_locations))))
             return pkg_dir.parent
 
         if spec.origin:
@@ -51,7 +52,7 @@ def get_local_ip() -> str:
         s.connect(("8.8.8.8", 80))
         ip = s.getsockname()[0]
         s.close()
-        return ip
+        return str(ip)
     except OSError:
         return "127.0.0.1"
 
@@ -170,7 +171,22 @@ def command_serve(args):
         if not is_ssh and has_display:
             threading.Thread(target=open_browser, args=(args.port,), daemon=True).start()
 
-    uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
+    if getattr(args, "reload", False):
+        os.environ.setdefault("_LESTUDIO_LEROBOT_SRC", str(lerobot_src))
+        os.environ.setdefault("_LESTUDIO_CONFIG_DIR", str(config_dir))
+        os.environ.setdefault("_LESTUDIO_RULES_PATH", str(args.rules_path))
+        os.environ.setdefault("_LESTUDIO_TOKEN", token)
+        uvicorn.run(
+            "lestudio.server:create_app_from_env",
+            factory=True,
+            host=args.host,
+            port=args.port,
+            log_level="warning",
+            reload=True,
+            reload_dirs=["src/lestudio"],
+        )
+    else:
+        uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
 
 
 def command_install_udev(args):
@@ -246,6 +262,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-browser", action="store_true", help="(deprecated, no-op) Browser is no longer opened automatically"
     )
     serve.add_argument("--headless", action="store_true", help="Alias for --no-browser")
+    serve.add_argument("--reload", action="store_true", help="Enable auto-reload on Python file changes (dev mode)")
     serve.set_defaults(handler=command_serve)
 
     install = sub.add_parser("install-udev", help="Install udev rules with sudo (separate from web UI)")

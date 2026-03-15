@@ -1,12 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import {
-  Play,
-  AlertTriangle,
-  RotateCcw,
-} from "lucide-react";
-import {
-  PageHeader, StatusBadge,
-  ProcessButtons, StickyControlBar, BlockerCard, RefreshButton,
+  BlockerCard,
 } from "../../components/wireframe";
 import { useHfAuth } from "../../hf-auth-context";
 import {
@@ -17,7 +11,7 @@ import {
   type TrainOutputEvent,
   type TrainStatusEvent,
 } from "../../services/apiClient";
-import { useLeStudioStore, getLeStudioState } from "../../store";
+import { useLeStudioStore } from "../../store";
 import {
   normalizeCheckpointStep,
   normalizeDeviceKey,
@@ -58,6 +52,10 @@ import { TrainPreflightBanner } from "./components/TrainPreflightBanner";
 import { TrainProgressPanel } from "./components/TrainProgressPanel";
 import { TrainSettingsPanel } from "./components/TrainSettingsPanel";
 import { TrainStartingView } from "./components/TrainStartingView";
+import { TrainingHeader } from "./components/TrainingHeader";
+import { TrainOomBanner } from "./components/TrainOomBanner";
+import { TrainingReconnectedBanner } from "./components/TrainingReconnectedBanner";
+import { TrainingControlBar } from "./components/TrainingControlBar";
 
 void GpuBar;
 void CustomTooltip;
@@ -438,7 +436,7 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
         if (!cancelled) setHfDatasets([]);
       });
     return () => { cancelled = true; };
-  }, [hfAuth]);
+  }, [hfAuth, hfDatasetRepoId]);
 
   // Preflight check on mount and device change
   useEffect(() => {
@@ -516,7 +514,7 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
     } else if (trainStatus !== "idle" && !trainRunningOnBackend) {
       setTrainStatus("idle");
     }
-  }, [trainRunningOnBackend]);
+  }, [trainRunningOnBackend, trainStatus]);
 
   useEffect(() => {
     const unsubscribeStatus = subscribeTrainChannel("status", (event: TrainStatusEvent) => {
@@ -594,32 +592,17 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
   return (
     <div className="flex flex-col h-full">
       <div className="flex-1 overflow-y-auto">
-        <div className="p-6 flex flex-col gap-4 max-w-[1600px] mx-auto w-full">
+        <section aria-label="Training" className="p-6 flex flex-col gap-4 max-w-[1600px] mx-auto w-full">
 
           {/* Header */}
-          <PageHeader
-            title="AI Training"
-            subtitle="Train AI policies on recorded datasets and monitor progress in real-time"
-            action={<RefreshButton onClick={() => { void refreshCheckpoints(); }} />}
-          />
+          <TrainingHeader onRefreshCheckpoints={() => { void refreshCheckpoints(); }} />
 
           {flowError && cudaState === "ok" && <BlockerCard title="Execution Blocked" severity="error" reasons={[flowError]} />}
 
-          {oomDetected && trainStatus === "idle" && (
-            <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-3.5 flex items-start gap-2.5">
-              <AlertTriangle size={14} className="text-red-600 dark:text-red-400 flex-none mt-0.5" />
-              <div className="flex-1">
-                <p className="text-sm font-medium text-red-600 dark:text-red-400 mb-1">GPU Out of Memory (OOM)</p>
-                <p className="text-sm text-zinc-400">VRAM insufficient for current config. Try reducing Training Steps or switching device to CPU/MPS.</p>
-              </div>
-              <button
-                onClick={() => { setOomDetected(false); void startTraining(); }}
-                className="flex items-center gap-1 px-3 py-1.5 rounded border border-red-500/40 bg-red-500/10 text-red-600 dark:text-red-400 text-sm cursor-pointer hover:bg-red-500/20"
-              >
-                <RotateCcw size={12} /> Retry
-              </button>
-            </div>
-          )}
+          <TrainOomBanner
+            visible={oomDetected && trainStatus === "idle"}
+            onRetry={() => { setOomDetected(false); void startTraining(); }}
+          />
 
           {/* ─── IDLE: Settings ─────────────────────────────────────── */}
           {trainStatus === "idle" && !completed && (
@@ -695,12 +678,7 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
           )}
 
           {/* ─── RUNNING: Monitoring ────────────────────────────────── */}
-          {trainReconnected && trainStatus === "running" && (
-            <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-blue-500/30 bg-blue-500/5 text-sm text-blue-600 dark:text-blue-400">
-              <span className="flex-none">⚡</span>
-              <span>Reconnected — This training session was recovered from a previous server session. Progress metrics may be unavailable. You can still stop the process.</span>
-            </div>
-          )}
+          <TrainingReconnectedBanner visible={trainReconnected && trainStatus === "running"} />
           {trainStatus === "running" && (
             <TrainProgressPanel
               currentStep={currentStep}
@@ -729,55 +707,21 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
             />
           )}
 
-        </div>
+        </section>
       </div>
 
-      {/* ── Sticky Control Bar ─────────────────────────────────────────── */}
-      <StickyControlBar>
-        <div className="flex items-center gap-3 min-w-0">
-          <StatusBadge
-            status={
-              trainStatus === "running" ? "running" :
-              trainStatus === "starting" ? "loading" :
-              trainStatus === "blocked" ? "blocked" :
-              "ready"
-            }
-            label={
-              trainStatus === "running" ? "TRAINING" :
-              trainStatus === "starting" ? "STARTING" :
-              trainStatus === "blocked" ? "BLOCKED" :
-              completed ? "DONE" :
-              "READY"
-            }
-            pulse={trainStatus === "running"}
-          />
-          <span className="text-sm text-zinc-400 truncate min-w-0">
-            {trainStatus === "running" ? (
-              <span className="font-mono">Step {currentStep.toLocaleString()} · Loss {latestLoss?.toFixed(5) ?? "—"} · ETA {eta}</span>
-            ) : trainStatus === "starting" ? (
-              "Starting training…"
-            ) : completed ? (
-              <span className="text-emerald-600 dark:text-emerald-400">Training complete</span>
-            ) : trainStatus === "blocked" || cudaState === "fail" ? (
-              preflightReason || "Preflight failed"
-            ) : (
-              "Training ready"
-            )}
-          </span>
-        </div>
-        <div className="flex items-center gap-3">
-          <ProcessButtons
-            running={trainStatus === "running" || trainStatus === "starting"}
-            onStart={() => { void startTraining(); }}
-            onStop={() => { void stopTraining(); }}
-            disabled={cudaState === "fail"}
-            startLabel={<><Play size={13} className="fill-current" /> Start Training</>}
-            compact
-            fullWidth={false}
-            buttonClassName="py-1"
-          />
-        </div>
-      </StickyControlBar>
+      <TrainingControlBar
+        trainStatus={trainStatus}
+        running={trainStatus === "running" || trainStatus === "starting"}
+        completed={completed}
+        currentStep={currentStep}
+        latestLoss={latestLoss}
+        eta={eta}
+        cudaState={cudaState}
+        preflightReason={preflightReason}
+        onStart={() => { void startTraining(); }}
+        onStop={() => { void stopTraining(); }}
+      />
     </div>
   );
 }

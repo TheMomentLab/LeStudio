@@ -22,17 +22,13 @@ jobs:
       - name: Install backend deps
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e . pytest httpx pytest-cov
+          python -m pip install -e ".[dev]"
 
       - name: Lint with ruff
-        run: |
-          python -m pip install ruff
-          ruff check src/lestudio
+        run: python -m ruff check src/lestudio
 
       - name: Type check with mypy
-        run: |
-          python -m pip install mypy
-          mypy src/lestudio --ignore-missing-imports
+        run: python -m mypy src/lestudio --ignore-missing-imports
 
       - name: Compile backend
         run: python -m compileall -q src/lestudio
@@ -67,9 +63,21 @@ jobs:
         working-directory: frontend
         run: npm ci
 
-      - name: Type check frontend
+      - name: Lint frontend
         working-directory: frontend
-        run: npx tsc --noEmit
+        run: npm run lint
+
+      - name: Test frontend
+        working-directory: frontend
+        run: npm test -- --run
+
+      - name: Install Playwright browser
+        working-directory: frontend
+        run: npx playwright install chromium
+
+      - name: Run frontend E2E smoke tests
+        working-directory: frontend
+        run: npm run test:e2e
 
       - name: Build frontend
         working-directory: frontend

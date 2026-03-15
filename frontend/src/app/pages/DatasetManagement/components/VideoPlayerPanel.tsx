@@ -32,7 +32,13 @@ export function VideoPlayerPanel({
 }) {
   const addToast = useLeStudioStore((s) => s.addToast);
   const [selectedEpisode, setSelectedEpisode] = useState(detail.episodes[0]?.episode_index ?? 0);
-  useEffect(() => { if (initialEpisode !== undefined) setSelectedEpisode(initialEpisode); }, [initialEpisode]);
+  useEffect(() => {
+    if (initialEpisode === undefined) return;
+    const timer = window.setTimeout(() => {
+      setSelectedEpisode(initialEpisode);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [initialEpisode]);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [currentTime, setCurrentTime] = useState(0);
@@ -148,10 +154,12 @@ export function VideoPlayerPanel({
   useEffect(() => {
     const videos = getAllVideos();
     if (videos.length === 0) {
-      setIsPlaying(false);
-      setCurrentTime(0);
-      setDuration(0);
-      return;
+      const timer = window.setTimeout(() => {
+        setIsPlaying(false);
+        setCurrentTime(0);
+        setDuration(0);
+      }, 0);
+      return () => window.clearTimeout(timer);
     }
     const { from: epFrom, to: epTo } = episodeTimeBounds;
     videos.forEach((v) => { v.playbackRate = playbackSpeed; });
@@ -216,7 +224,6 @@ export function VideoPlayerPanel({
       primary.removeEventListener("pause", syncFromPrimary);
       primary.removeEventListener("ended", handleEnded);
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [datasetId, selectedEpisode, detail.cameras, playbackSpeed, episodeTimeBounds]);
 
   const formatTime = (seconds: number) => {
@@ -264,6 +271,7 @@ export function VideoPlayerPanel({
               value={episodeQuery}
               onChange={(e) => setEpisodeQuery(e.target.value)}
               placeholder="Find episode..."
+              aria-label="Find episode"
               className="pl-6 pr-2 py-1 h-7 w-36 text-sm rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-300 placeholder:text-zinc-400 outline-none hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
             />
           </div>
@@ -272,6 +280,7 @@ export function VideoPlayerPanel({
             <select
               value={tagFilter}
               onChange={(e) => setTagFilter(e.target.value)}
+              aria-label="Filter episodes by tag"
               className="pl-6 pr-2 py-1 h-7 text-sm rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-300 outline-none cursor-pointer hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
             >
               <option>All</option>
@@ -286,6 +295,7 @@ export function VideoPlayerPanel({
             onClick={() => { if (epIndex > 0) setSelectedEpisode(searchedEpisodes[epIndex - 1].episode_index); }}
             disabled={epIndex <= 0}
             className="p-1 text-zinc-400 hover:text-zinc-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            aria-label="Previous episode"
           >
             <SkipBack size={16} />
           </button>
@@ -293,6 +303,7 @@ export function VideoPlayerPanel({
             onClick={() => { if (epIndex < searchedEpisodes.length - 1) setSelectedEpisode(searchedEpisodes[epIndex + 1].episode_index); }}
             disabled={epIndex >= searchedEpisodes.length - 1}
             className="p-1 text-zinc-400 hover:text-zinc-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            aria-label="Next episode"
           >
             <SkipForward size={16} />
           </button>
@@ -363,6 +374,7 @@ export function VideoPlayerPanel({
                 value={Math.min(currentTime, Math.max(duration, 0))}
                 step={0.01}
                 onChange={(e) => handleScrub(Number(e.target.value))}
+                aria-label="Episode timeline"
                 className="absolute inset-0 w-full opacity-0 cursor-pointer"
               />
             </div>
@@ -375,6 +387,7 @@ export function VideoPlayerPanel({
               <button
                 onClick={togglePlay}
                 className="p-2 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 transition-colors"
+                aria-label={isPlaying ? "Pause playback" : "Play playback"}
               >
                 {isPlaying ? <Pause size={18} /> : <Play size={18} />}
               </button>
@@ -384,6 +397,7 @@ export function VideoPlayerPanel({
                   <button
                     key={speed}
                     onClick={() => handleSpeedChange(speed)}
+                    aria-label={`Set playback speed to ${speed}x`}
                     className={cn(
                       "px-2 py-0.5 text-sm font-medium rounded transition-all",
                       playbackSpeed === speed
@@ -402,6 +416,7 @@ export function VideoPlayerPanel({
                 onClick={() => { void tagEpisode("good"); }}
                 className={cn("p-1.5 rounded transition-colors", currentTag === "good" ? "text-emerald-500 dark:text-emerald-400" : "text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300")}
                 title="Good"
+                aria-label="Tag episode as good"
               >
                 <ThumbsUp size={14} />
               </button>
@@ -409,6 +424,7 @@ export function VideoPlayerPanel({
                 onClick={() => { void tagEpisode("bad"); }}
                 className={cn("p-1.5 rounded transition-colors", currentTag === "bad" ? "text-red-500 dark:text-red-400" : "text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300")}
                 title="Bad"
+                aria-label="Tag episode as bad"
               >
                 <ThumbsDown size={14} />
               </button>
@@ -416,11 +432,12 @@ export function VideoPlayerPanel({
                 onClick={() => { void tagEpisode("review"); }}
                 className={cn("p-1.5 rounded transition-colors", currentTag === "review" ? "text-amber-500 dark:text-amber-400" : "text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300")}
                 title="Review"
+                aria-label="Tag episode for review"
               >
                 <FileWarning size={14} />
               </button>
               {currentTag !== "untagged" && (
-                <button onClick={() => { void tagEpisode("untagged"); }} className="p-1.5 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors" title="Clear Tag">
+                <button onClick={() => { void tagEpisode("untagged"); }} className="p-1.5 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors" title="Clear Tag" aria-label="Clear episode tag">
                   <Eraser size={14} />
                 </button>
               )}

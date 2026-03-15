@@ -35,7 +35,7 @@ export function StatusBadge({
   };
   return (
     <span
-      className={cn("inline-flex items-center", colorMap[status])}
+      className={cn("inline-flex items-center", colorMap[status], pulse && "animate-pulse")}
       title={label ?? status.toUpperCase()}
     >
       {iconMap[status]}

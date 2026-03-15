@@ -129,6 +129,7 @@ lestudio serve:
 
 - 기본 바인딩은 로컬 전용: `127.0.0.1`.
 - LAN에 노출하려면: `lestudio serve --host 0.0.0.0`.
+- 다른 장치에서 UI에 접속하면, 헤더의 `Remote` 배지에서 LeStudio 세션 토큰을 저장할 수 있습니다. 저장된 토큰이 없으면 첫 상태 변경 작업 시 브라우저 prompt가 fallback으로 한 번 뜹니다.
 - 기본 CORS는 localhost 출처만 허용 (`localhost` / `127.0.0.1`).
 
 환경 변수로 CORS를 재정의할 수 있습니다:
@@ -149,21 +150,31 @@ export LESTUDIO_CORS_ORIGIN_REGEX='^https://(localhost|127\.0\.0\.1)(:\d+)?$'
 conda activate lerobot
 ```
 
+기여용 검증 명령(`ruff`, `mypy`, pytest coverage helper)을 쓰려면 dev extras를 한 번 설치하세요:
+
+```bash
+make dev
+```
+
 백엔드 검사:
 
 ```bash
+python -m ruff check src/lestudio
+python -m mypy src/lestudio --ignore-missing-imports
 python -m compileall -q src/lestudio
 make test
 ```
 
-`make test`는 pytest 범위를 `tests/`로 고정하고 `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1`를 설정해, 주변 ROS/데스크톱 플러그인 영향으로 검증이 깨지는 상황을 피합니다.
+`make test`는 pytest 범위를 `tests/`로 고정하고 `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1`를 설정해, 주변 ROS/데스크톱 플러그인 영향으로 검증이 깨지는 상황을 피합니다. 백엔드 CI도 merge 전에 같은 `ruff`/`mypy`/`compileall`/pytest 순서를 실행합니다.
 
 프론트엔드 검사:
 
 ```bash
 cd frontend
 npm ci
-npx tsc --noEmit
+npm run lint
+npm test -- --run
+npm run test:e2e
 npm run build
 ```
 

@@ -10,8 +10,10 @@ This page is the public contributor entry point. For deeper internal design note
 git clone --recursive https://github.com/TheMomentLab/lestudio.git
 cd lestudio
 conda activate lerobot
-make install
+make dev
 ```
+
+`make dev` installs the contributor toolchain used in CI (`ruff`, `mypy`, pytest helpers). Use `make install` only if you want the runtime package without dev tooling.
 
 ## Project Structure
 
@@ -67,6 +69,8 @@ Do **not** add `from lerobot.*` anywhere else. These five files are the adapter 
 
 ```bash
 conda activate lerobot
+python -m ruff check src/lestudio
+python -m mypy src/lestudio --ignore-missing-imports
 make test
 ```
 
@@ -75,7 +79,9 @@ make test
 ```bash
 cd frontend
 npm ci
-npx tsc --noEmit
+npm run lint
+npm test -- --run
+npm run test:e2e
 npm run build
 ```
 

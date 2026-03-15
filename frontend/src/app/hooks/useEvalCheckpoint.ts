@@ -100,8 +100,11 @@ export function useEvalCheckpoint({
 
   useEffect(() => {
     if (!active) return;
-    void loadCheckpoints();
-    void loadEnvTypes();
+    const timer = window.setTimeout(() => {
+      void loadCheckpoints();
+      void loadEnvTypes();
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [active, loadCheckpoints, loadEnvTypes]);
 
   return {

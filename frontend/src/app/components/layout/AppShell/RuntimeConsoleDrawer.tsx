@@ -47,6 +47,12 @@ export function RuntimeConsoleDrawer() {
   const [activeProcess, setActiveProcess] = useState<RuntimeProcessName>("teleop");
   const [stdinValue, setStdinValue] = useState("");
   const [elapsedByProcess, setElapsedByProcess] = useState<Record<string, number>>({});
+  const [trainProgressSnapshot, setTrainProgressSnapshot] = useState<{ firstTs: number | null; firstStep: number | null; lastTs: number | null; lastStep: number | null }>({
+    firstTs: null,
+    firstStep: null,
+    lastTs: null,
+    lastStep: null,
+  });
 
   const dragging = useRef(false);
   const startY = useRef(0);
@@ -63,7 +69,7 @@ export function RuntimeConsoleDrawer() {
     lastStep: null,
   });
 
-  const lines = logLines[activeProcess] ?? [];
+  const lines = useMemo(() => logLines[activeProcess] ?? [], [activeProcess, logLines]);
   const running = isRuntimeProcessRunning(procStatus, activeProcess);
 
   const onMouseDown = useCallback((e: React.MouseEvent) => {
@@ -97,7 +103,10 @@ export function RuntimeConsoleDrawer() {
   useEffect(() => {
     const mapped = TAB_TO_PROCESS[activeTab];
     if (!mapped) return;
-    setActiveProcess((prev) => (prev === mapped ? prev : mapped));
+    const timer = window.setTimeout(() => {
+      setActiveProcess((prev) => (prev === mapped ? prev : mapped));
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [activeTab]);
 
   useEffect(() => {
@@ -179,7 +188,7 @@ export function RuntimeConsoleDrawer() {
         if (step !== null && total) parts.push(`${step} / ${total}`);
         if (loss !== null) parts.push(`loss ${loss.toFixed(4)}`);
         if (step !== null && total) {
-          const { firstTs, firstStep, lastTs, lastStep } = trainProgressRef.current;
+          const { firstTs, firstStep, lastTs, lastStep } = trainProgressSnapshot;
           if (firstTs !== null && firstStep !== null && lastTs !== null && lastStep !== null) {
             const elapsedSec = (lastTs - firstTs) / 1000;
             const progressed = lastStep - firstStep;
@@ -246,7 +255,7 @@ export function RuntimeConsoleDrawer() {
     }
 
     return results.filter((info) => info.process !== TAB_TO_PROCESS[activeTab]);
-  }, [activeTab, elapsedByProcess, logLines, procStatus]);
+  }, [activeTab, elapsedByProcess, logLines, procStatus, trainProgressSnapshot]);
   void runningInfos;
 
   useEffect(() => {
@@ -260,10 +269,12 @@ export function RuntimeConsoleDrawer() {
       prevRunningByProcessRef.current[processName] = runningNow;
     }
 
-    if (started) {
+    if (!started) return;
+    const timer = window.setTimeout(() => {
       setActiveProcess(started);
       setCollapsed(false);
-    }
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [procStatus]);
 
   useEffect(() => {
@@ -302,12 +313,16 @@ export function RuntimeConsoleDrawer() {
       const next = { ...getLeStudioState().procStatus };
       if (event.payload.state === "starting") {
         next.train_install = true;
+        trainProgressRef.current = { firstTs: null, firstStep: null, lastTs: null, lastStep: null };
+        setTrainProgressSnapshot(trainProgressRef.current);
       } else if (event.payload.state === "running") {
         next.train_install = false;
         next.train = true;
       } else {
         next.train_install = false;
         next.train = false;
+        trainProgressRef.current = { firstTs: null, firstStep: null, lastTs: null, lastStep: null };
+        setTrainProgressSnapshot(trainProgressRef.current);
       }
       setProcStatus(next);
       appendLog("train", `[status] ${event.payload.state}${event.payload.reason ? ` (${event.payload.reason})` : ""}`, "info");
@@ -323,6 +338,7 @@ export function RuntimeConsoleDrawer() {
       }
       tracker.lastTs = now;
       tracker.lastStep = event.payload.step;
+      setTrainProgressSnapshot({ ...tracker });
     });
 
     const unsubscribeOutput = subscribeTrainChannel("output", (event: TrainOutputEvent) => {
@@ -380,7 +396,7 @@ export function RuntimeConsoleDrawer() {
     appendLog(activeProcess, `$ ${response.command ?? input}`, "info");
     addToast(`Command sent to ${activeProcess}`, "success");
     setStdinValue("");
-  }, [activeProcess, addToast, appendLog, running, stdinValue]);
+  }, [activeProcess, addToast, appendLog, clearLog, running, stdinValue]);
 
   const sendInterrupt = useCallback(async () => {
     if (!running) return;
@@ -438,6 +454,7 @@ export function RuntimeConsoleDrawer() {
             <button
               key={p}
               onClick={() => setActiveProcess(p)}
+              aria-label={`Show ${PROCESS_LABELS[p]} console`}
               className={cn(
                 "px-2 py-0.5 rounded text-sm font-mono transition-colors cursor-pointer",
                 activeProcess === p
@@ -460,6 +477,7 @@ export function RuntimeConsoleDrawer() {
           <button
             className="p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 cursor-pointer"
             title="Copy logs"
+            aria-label="Copy console logs"
             onClick={() => { void handleCopy(); }}
           >
             <Copy size={12} />
@@ -467,6 +485,7 @@ export function RuntimeConsoleDrawer() {
           <button
             className="p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 cursor-pointer"
             title="Clear"
+            aria-label="Clear console logs"
             onClick={() => clearLog(activeProcess)}
           >
             <Eraser size={12} />
@@ -474,6 +493,7 @@ export function RuntimeConsoleDrawer() {
           <button
             onClick={() => setCollapsed(!collapsed)}
             className="p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 cursor-pointer"
+            aria-label={collapsed ? "Expand console" : "Collapse console"}
           >
             {collapsed ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
           </button>
@@ -512,11 +532,13 @@ export function RuntimeConsoleDrawer() {
               ? "stdin — press Enter to send (empty = newline), Ctrl+C to stop"
               : "Enter command and press Enter to run"
             }
+            aria-label="Console command input"
             className="flex-1 bg-transparent text-sm font-mono text-zinc-700 dark:text-zinc-300 placeholder:text-zinc-500 outline-none"
           />
           <button
             className="px-2 py-1 rounded border border-zinc-300 dark:border-zinc-700 text-xs font-mono text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-900 cursor-pointer"
             onClick={() => { void sendStdin(); }}
+            aria-label="Send console input"
           >
             Send
           </button>
@@ -524,6 +546,7 @@ export function RuntimeConsoleDrawer() {
             className="px-2 py-1 rounded border border-zinc-300 dark:border-zinc-700 text-xs font-mono text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-900 cursor-pointer"
             onClick={() => setConsoleHeight(170)}
             title="Reset console height"
+            aria-label="Reset console height"
           >
             Reset
           </button>

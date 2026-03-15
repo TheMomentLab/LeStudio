@@ -5,7 +5,6 @@ import { useLeStudioStore } from "../store";
 import {
   PageHeader, WireSelect, EmptyState, RefreshButton,
 } from "../components/wireframe";
-import { UdevInstallGate } from "../components/UdevInstallGate";
 import { toVideoName, useCameraFeeds } from "../hooks/useCameraFeeds";
 
 type CameraDevice = {
@@ -111,7 +110,7 @@ export function CameraSetup() {
 
   useEffect(() => {
     void refresh();
-  }, []);
+  }, [refresh]);
 
   useEffect(() => {
     const prev = prevDeviceCountRef.current;
@@ -123,7 +122,7 @@ export function CameraSetup() {
         void refresh();
       }
     }
-  }, [globalDevices]);
+  }, [globalDevices, refresh]);
 
   const applyMapping = useCallback(async (nextAssignments: Record<string, string>) => {
     setAutoApplying(true);
@@ -201,9 +200,8 @@ export function CameraSetup() {
 
   return (
     <div className="flex flex-col h-full">
-      <UdevInstallGate>
       <div className="flex-1 overflow-y-auto">
-        <div className="p-6 flex flex-col gap-4 max-w-[1600px] mx-auto w-full">
+        <section aria-label="Camera setup" className="p-6 flex flex-col gap-4 max-w-[1600px] mx-auto w-full">
           <PageHeader
             title="Camera Setup"
             subtitle="Camera mapping and role assignment"
@@ -238,6 +236,7 @@ export function CameraSetup() {
                           onClick={() => togglePreview(cam.device)}
                           className="size-7 rounded bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors group"
                           title={activePreviews[cam.device] ? "Close preview" : "Preview camera"}
+                          aria-label={activePreviews[cam.device] ? `Close preview for ${cam.path}` : `Preview ${cam.path}`}
                         >
                           {activePreviews[cam.device] ? (
                             <EyeOff size={14} className="text-blue-500" />
@@ -287,6 +286,7 @@ export function CameraSetup() {
                             <button
                               onClick={() => togglePreview(cam.device)}
                               className="absolute top-2 right-2 size-6 rounded bg-black/50 flex items-center justify-center cursor-pointer hover:bg-black/70"
+                              aria-label={`Close preview for ${cam.path}`}
                             >
                               <X size={12} className="text-white" />
                             </button>
@@ -306,9 +306,8 @@ export function CameraSetup() {
               </div>
             </div>
           </div>
-        </div>
+        </section>
       </div>
-      </UdevInstallGate>
     </div>
   );
 }

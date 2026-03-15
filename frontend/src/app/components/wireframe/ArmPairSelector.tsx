@@ -66,7 +66,7 @@ export function ArmPairSelector({
 
   useEffect(() => {
     if (resolved) onConfigResolved(resolved);
-  }, [resolved]);
+  }, [onConfigResolved, resolved]);
 
   // Lookup helpers for details
   const findArm = (symlink: string) =>

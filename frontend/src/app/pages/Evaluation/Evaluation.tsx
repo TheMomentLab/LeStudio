@@ -1,23 +1,13 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
-  Loader2,
-  Play,
-  CheckCircle2,
-} from "lucide-react";
-import {
-  PageHeader, StatusBadge,
-  ProcessButtons, StickyControlBar, BlockerCard, RefreshButton
-} from "../../components/wireframe";
-import { cn } from "../../components/ui/utils";
-import {
   notifyProcessStarted,
   notifyProcessStopRequested,
   notifyError,
 } from "../../services/notifications";
 import { apiGet, apiPost } from "../../services/apiClient";
-import { UdevInstallGate } from "../../components/UdevInstallGate";
 import { MotorMappingGate } from "../../components/MotorMappingGate";
 import { useLeStudioStore } from "../../store";
+import type { DevicesResponse } from "../../store/types";
 import {
   parseBackendError,
   toBackendEvalPayload,
@@ -55,6 +45,11 @@ import { EvalSettingsPanel } from "./components/EvalSettingsPanel";
 import { EvalProgressPanel } from "./components/EvalProgressPanel";
 import { EvalResultsPanel } from "./components/EvalResultsPanel";
 import { GymInstallCard } from "./components/GymInstallCard";
+import { EvaluationHeader } from "./components/EvaluationHeader";
+import { EvaluationStartingView } from "./components/EvaluationStartingView";
+import { EvaluationReconnectedBanner } from "./components/EvaluationReconnectedBanner";
+import { EvaluationControlBar } from "./components/EvaluationControlBar";
+import { EvaluationConfigBlockers } from "./components/EvaluationConfigBlockers";
 
 function getConfigString(config: Record<string, unknown>, key: string, fallback: string): string {
   const value = config[key];
@@ -243,6 +238,15 @@ export function Evaluation() {
   const showStarting = progressStatus === "starting";
   const showResults = !isRunning && hasResults;
   const supportsMps = typeof navigator !== "undefined" && /mac/i.test(navigator.platform);
+  const effectiveDeviceLabel = useMemo(() => {
+    if (deviceLabel === "CUDA (GPU)" && !gpuAvailable) {
+      return "CPU";
+    }
+    if (deviceLabel === "MPS" && !supportsMps) {
+      return "CPU";
+    }
+    return deviceLabel;
+  }, [deviceLabel, gpuAvailable, supportsMps]);
   const computeDeviceOptions = [
     gpuAvailable ? "CUDA (GPU)" : { value: "CUDA (GPU)", label: "CUDA (GPU) (not available)", disabled: true },
     "CPU",
@@ -272,7 +276,7 @@ export function Evaluation() {
 
   // ── Preflight logic ──────────────────────────────────────────────────────
   const refreshPreflight = useCallback(async (): Promise<EvalPreflightResponse> => {
-    const device = normalizeDeviceKey(deviceLabel);
+    const device = normalizeDeviceKey(effectiveDeviceLabel);
     try {
       const res = await apiGet<EvalPreflightResponse>(
         `/api/train/preflight?device=${encodeURIComponent(device)}`,
@@ -286,7 +290,7 @@ export function Evaluation() {
       setPreflightOk(true); // don't block if API is unavailable
       return { ok: true };
     }
-  }, [deviceLabel]);
+  }, [effectiveDeviceLabel]);
 
   useEffect(() => {
     let cancelled = false;
@@ -301,19 +305,11 @@ export function Evaluation() {
   }, []);
 
   useEffect(() => {
-    if (deviceLabel === "CUDA (GPU)" && !gpuAvailable) {
-      setDeviceLabel("CPU");
-    } else if (deviceLabel === "MPS" && !supportsMps) {
-      setDeviceLabel("CPU");
-    }
-  }, [deviceLabel, gpuAvailable, supportsMps]);
-
-  useEffect(() => {
     const loadDevices = async () => {
       try {
         const [devResult, calibResult] = await Promise.all([
-          apiGet<{ cameras?: any[]; arms?: any[] }>("/api/devices"),
-          apiGet<{ files?: any[] }>("/api/calibrate/list"),
+          apiGet<DevicesResponse>("/api/devices"),
+          apiGet<{ files?: CalibrationListFile[] }>("/api/calibrate/list"),
         ]);
         const files = Array.isArray(calibResult.files) ? calibResult.files : [];
         setEvalCalibFiles(files);
@@ -324,19 +320,24 @@ export function Evaluation() {
         setArmSelection(sel);
         const resolved = resolveArmConfig(mode as "Single Arm" | "Bi-Arm", sel, lists, files);
         handleEvalArmConfigResolved(resolved);
-      } catch {}
+      } catch {
+        return;
+      }
     };
     void loadDevices();
-  }, []);
+  }, [handleEvalArmConfigResolved, robotMode]);
 
   useEffect(() => {
     if (armLists.followers.length === 0 && armLists.leaders.length === 0) return;
-    const mode = robotMode === "bi" ? "Bi-Arm" : "Single Arm";
-    const sel = defaultArmSelection(armLists, mode as "Single Arm" | "Bi-Arm");
-    setArmSelection(sel);
-    const resolved = resolveArmConfig(mode as "Single Arm" | "Bi-Arm", sel, armLists, evalCalibFiles);
-    handleEvalArmConfigResolved(resolved);
-  }, [robotMode]);
+    const timer = window.setTimeout(() => {
+      const mode = robotMode === "bi" ? "Bi-Arm" : "Single Arm";
+      const sel = defaultArmSelection(armLists, mode as "Single Arm" | "Bi-Arm");
+      setArmSelection(sel);
+      const resolved = resolveArmConfig(mode as "Single Arm" | "Bi-Arm", sel, armLists, evalCalibFiles);
+      handleEvalArmConfigResolved(resolved);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [armLists, evalCalibFiles, handleEvalArmConfigResolved, robotMode]);
 
   const refreshCalibrationProfiles = useCallback(async (): Promise<string[]> => {
     if (!isRealRobot || calibrationTargets.length === 0) {
@@ -371,11 +372,17 @@ export function Evaluation() {
   }, [calibrationTargets, isRealRobot]);
 
   useEffect(() => {
-    void refreshPreflight();
+    const timer = window.setTimeout(() => {
+      void refreshPreflight();
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [refreshPreflight]);
 
   useEffect(() => {
-    void refreshCalibrationProfiles();
+    const timer = window.setTimeout(() => {
+      void refreshCalibrationProfiles();
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [refreshCalibrationProfiles]);
 
   // Poll preflight while it's failing
@@ -405,21 +412,24 @@ export function Evaluation() {
 
   // ── Camera mapping sync ──────────────────────────────────────────────────
   useEffect(() => {
-    if (!imageKeysFromCheckpoint.length) {
-      setCameraMapping((prev) => (Object.keys(prev).length > 0 ? {} : prev));
-      return;
-    }
-    setCameraMapping((prev) => {
-      const next: Record<string, string> = {};
-      for (const key of imageKeysFromCheckpoint) {
-        if (prev[key] && mappedCamEntries.some(([sym]) => sym === prev[key])) {
-          next[key] = prev[key];
-        } else {
-          next[key] = mappedCamEntries.find(([sym]) => sym === key)?.[0] ?? "";
-        }
+    const timer = window.setTimeout(() => {
+      if (!imageKeysFromCheckpoint.length) {
+        setCameraMapping((prev) => (Object.keys(prev).length > 0 ? {} : prev));
+        return;
       }
-      return next;
-    });
+      setCameraMapping((prev) => {
+        const next: Record<string, string> = {};
+        for (const key of imageKeysFromCheckpoint) {
+          if (prev[key] && mappedCamEntries.some(([sym]) => sym === prev[key])) {
+            next[key] = prev[key];
+          } else {
+            next[key] = mappedCamEntries.find(([sym]) => sym === key)?.[0] ?? "";
+          }
+        }
+        return next;
+      });
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [imageKeysFromCheckpoint, mappedCamEntries]);
 
   // ── Start / Stop ─────────────────────────────────────────────────────────
@@ -433,7 +443,7 @@ export function Evaluation() {
         datasetRepo,
         datasetOverride,
         episodes,
-        deviceLabel,
+        deviceLabel: effectiveDeviceLabel,
         task,
         cameraMapping,
         cameraCatalog,
@@ -512,7 +522,7 @@ export function Evaluation() {
     }
   }, [
     numEpisodes, mappedCamEntries, envType, policySource, policyPath,
-    datasetRepo, datasetOverride, deviceLabel, task, cameraMapping, config,
+    datasetRepo, datasetOverride, effectiveDeviceLabel, task, cameraMapping, config,
     configBlockers, refreshPreflight, appendLog, beginEval, evalLogLines.length,
     markError, setEndedAtMs, setProgressStatus, addToast, isRealRobot,
     refreshCalibrationProfiles,
@@ -526,9 +536,6 @@ export function Evaluation() {
   }, [doneEpisodes, setEndedAtMs, setProgressStatus]);
 
   // Reset blocker cards when all blockers are resolved
-  useEffect(() => {
-    if (configBlockers.length === 0) setShowBlockers(false);
-  }, [configBlockers]);
   // ── Gym plugin install ───────────────────────────────────────────────────
   const installGymPlugin = useCallback(async () => {
     if (!gymInstallCommand) return;
@@ -607,20 +614,15 @@ export function Evaluation() {
   // ── Render ───────────────────────────────────────────────────────────────
   return (
     <div className="flex flex-col h-full">
-      <UdevInstallGate>
       <MotorMappingGate
         onSkip={() => { setSimOnlyMode(true); updateConfig({ eval_env_type: "gym" }); }}
         skipLabel="Use Simulation"
       >
       <div className="flex-1 overflow-y-auto">
-        <div className="p-6 pb-8 flex flex-col gap-4 max-w-[1600px] mx-auto w-full">
+        <section aria-label="Evaluation" className="p-6 pb-8 flex flex-col gap-4 max-w-[1600px] mx-auto w-full">
 
           {/* Header */}
-          <PageHeader
-            title="Policy Evaluation"
-            subtitle="Evaluate trained AI policies on real robots or simulated environments"
-            action={<RefreshButton onClick={() => { void refreshPreflight(); void refreshCalibrationProfiles(); }} />}
-          />
+          <EvaluationHeader onRefresh={() => { void refreshPreflight(); void refreshCalibrationProfiles(); }} />
 
           {/* System blocker — preflight / install issues */}
           {!isRunning && !preflightOk && (
@@ -645,16 +647,11 @@ export function Evaluation() {
           )}
 
           {/* Config blockers — one card per reason */}
-          {showBlockers && !isRunning && configBlockers.length > 0 && configBlockers.map((reason, i) => (
-            <BlockerCard
-              key={i}
-              severity="warning"
-              reasons={[
-                reason,
-                ...(reason === "No checkpoint selected" ? [{ text: "Go to Train", to: "/train" }] : []),
-              ]}
-            />
-          ))}
+          <EvaluationConfigBlockers
+            show={showBlockers}
+            isRunning={isRunning}
+            reasons={configBlockers}
+          />
 
           {/* Gym plugin install card */}
           {gymInstallCommand && !isRunning && (
@@ -676,7 +673,7 @@ export function Evaluation() {
               checkpoints={checkpoints}
               onCheckpointChange={handleCheckpointChange}
               updateConfig={updateConfig}
-              deviceLabel={deviceLabel}
+              deviceLabel={effectiveDeviceLabel}
               setDeviceLabel={setDeviceLabel}
               numEpisodes={numEpisodes}
               setNumEpisodes={setNumEpisodes}
@@ -714,40 +711,17 @@ export function Evaluation() {
 
           {/* ─── STARTING: Log-based steps ──────────────────────────── */}
           {showStarting && (
-            <div className="flex-1 flex flex-col items-center justify-center py-16 gap-6">
-              <Loader2 size={32} className="text-zinc-400 animate-spin" />
-              <div className="flex flex-col gap-2">
-                {EVAL_STARTING_STEPS.map((s, i) => (
-                  <div key={i} className="flex items-center gap-2.5">
-                    {i < startingStep ? (
-                      <CheckCircle2 size={14} className="text-emerald-600 dark:text-emerald-400 flex-none" />
-                    ) : i === startingStep ? (
-                      <Loader2 size={14} className="text-zinc-400 animate-spin flex-none" />
-                    ) : (
-                      <div className="size-3.5 rounded-full border border-zinc-600 flex-none" />
-                    )}
-                    <span className={cn("text-sm",
-                      i < startingStep ? "text-zinc-400" :
-                      i === startingStep ? "text-zinc-800 dark:text-zinc-200" : "text-zinc-500 dark:text-zinc-600"
-                    )}>
-                      {s.label}
-                    </span>
-                  </div>
-                ))}
-              </div>
-              <p className="text-sm text-zinc-500">
-                {selectedEnv?.label ?? envType} · {numEpisodes} episodes · {policyPath.split("/").pop() || policyPath}
-              </p>
-            </div>
+            <EvaluationStartingView
+              steps={EVAL_STARTING_STEPS}
+              startingStep={startingStep}
+              envLabel={selectedEnv?.label ?? envType}
+              numEpisodes={numEpisodes}
+              policyPath={policyPath}
+            />
           )}
 
           {/* ─── RUNNING: Monitoring ────────────────────────────────── */}
-          {evalReconnected && running && (
-            <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-blue-500/30 bg-blue-500/5 text-sm text-blue-600 dark:text-blue-400">
-              <span className="flex-none">⚡</span>
-              <span>Reconnected — This evaluation was recovered from a previous server session. Progress metrics may be unavailable. You can still stop the process.</span>
-            </div>
-          )}
+          <EvaluationReconnectedBanner visible={evalReconnected && running} />
           {showRunning && (
             <EvalProgressPanel
               doneEpisodes={doneEpisodes}
@@ -787,64 +761,28 @@ export function Evaluation() {
             />
           )}
 
-        </div>
+        </section>
       </div>
 
       {/* ── Sticky Control Bar ─────────────────────────────────────────── */}
-      <StickyControlBar>
-        <div className="flex items-center gap-3 min-w-0">
-          <StatusBadge
-            status={
-              showStarting ? "loading" :
-              isRunning ? "running" :
-              progressStatus === "completed" ? "ready" :
-              progressStatus === "error" ? "blocked" :
-              !preflightOk ? "blocked" : "ready"
-            }
-            label={
-              showStarting ? "STARTING" :
-              isRunning ? "EVALUATING" :
-              progressStatus === "completed" ? "DONE" :
-              progressStatus === "error" ? "ERROR" :
-              !preflightOk ? "BLOCKED" : "READY"
-            }
-            pulse={isRunning}
-          />
-          <span className="text-sm text-zinc-400 truncate">
-            {showStarting ? (
-              "Starting evaluation…"
-            ) : isRunning ? (
-              <span className="font-mono">Episode {doneEpisodes} / {progressTotal ?? numEpisodes}</span>
-            ) : (progressStatus === "completed" || progressStatus === "stopped") && avgReward !== null ? (
-              <>
-                Avg Reward: <span className={cn("font-mono", (avgReward ?? 0) >= 0.6 ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400")}>{avgReward.toFixed(3)}</span>
-                {" "}· Success: <span className={cn("font-mono", (computedSuccessRate ?? 0) >= 60 ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400")}>{computedSuccessRate ?? "—"}%</span>
-              </>
-            ) : progressStatus === "error" ? (
-              <span className="text-red-500 dark:text-red-400">Evaluation failed — check logs</span>
-            ) : !preflightOk ? (
-              <span className="text-amber-600 dark:text-amber-400">{preflightReason || "Device preflight failed"}</span>
-            ) : showBlockers && configBlockers.length > 0 ? (
-              <span className="text-amber-600 dark:text-amber-400">{configBlockers[0]}</span>
-            ) : (
-              "Evaluation ready"
-            )}
-          </span>
-        </div>
-        <div className="flex items-center gap-2">
-          <ProcessButtons
-            running={isRunning}
-            onStart={() => { void startEval(); }}
-            onStop={stopEval}
-            disabled={!!conflictProcess || (isRealRobot && armLists.followers.length === 0 && armLists.leaders.length === 0)}
-            startLabel={<><Play size={13} className="fill-current" /> Start Eval</>}
-            compact
-            buttonClassName="py-1"
-          />
-        </div>
-      </StickyControlBar>
+      <EvaluationControlBar
+        showStarting={showStarting}
+        isRunning={isRunning}
+        progressStatus={progressStatus}
+        preflightOk={preflightOk}
+        doneEpisodes={doneEpisodes}
+        progressTotal={progressTotal}
+        numEpisodes={numEpisodes}
+        avgReward={avgReward}
+        computedSuccessRate={computedSuccessRate}
+        preflightReason={preflightReason}
+        showBlockers={showBlockers}
+        configBlockers={configBlockers}
+        disabled={!!conflictProcess || (isRealRobot && armLists.followers.length === 0 && armLists.leaders.length === 0)}
+        onStart={() => { void startEval(); }}
+        onStop={stopEval}
+      />
       </MotorMappingGate>
-      </UdevInstallGate>
     </div>
   );
 }

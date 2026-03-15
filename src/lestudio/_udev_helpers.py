@@ -43,7 +43,7 @@ def _parse_udev_rules(content: str) -> dict[str, list[dict[str, str | bool]]]:
             continue
 
         exists = os.path.exists(f"/dev/{symlink}")
-        item = {
+        item: dict[str, str | bool] = {
             "subsystem": subsystem,
             "kernel": kernels,
             "serial": serial,
@@ -92,6 +92,14 @@ def _build_rules(assignments: dict[str, str], arm_assignments: dict[str, str], r
 
     active_cams = {k: v for k, v in assignments.items() if v and v != "(none)"}
     active_arms = {k: v for k, v in arm_assignments.items() if v and v != "(none)"}
+
+    symlink_serials: dict[str, list[str]] = {}
+    for serial, role in active_arms.items():
+        symlink_serials.setdefault(role, []).append(serial)
+    for role, serials in symlink_serials.items():
+        if len(serials) > 1:
+            logger.warning("DUPLICATE arm symlink '%s' assigned to serials: %s", role, serials)
+
     logger.debug("_build_rules result: cameras=%s, arms=%s, total_lines=%d", active_cams, active_arms, len(lines))
 
     return "\n".join(lines) + "\n"
@@ -134,6 +142,47 @@ def _sudoers_install_snippet() -> str:
     content = f"{user} ALL=(root) NOPASSWD: {cmds}\\n"
     drop_in_q = shlex.quote(str(_SUDOERS_DROP_IN))
     return f"test -f {drop_in_q} || {{ printf '{content}' > {drop_in_q} && chmod 0440 {drop_in_q}; }}"
+
+
+def _udev_remove_steps(rules_path: Path) -> list[list[str]]:
+    return [
+        ["rm", "-f", str(rules_path)],
+        ["udevadm", "control", "--reload-rules"],
+        ["udevadm", "trigger", "--subsystem-match=video4linux"],
+        ["udevadm", "trigger", "--subsystem-match=tty"],
+        ["udevadm", "settle", "--timeout=5"],
+    ]
+
+
+def _remove_rules(rules_path: Path, fallback_rules_path: Path | None) -> tuple[bool, str]:
+    logger.info("removing udev rules → %s", rules_path)
+
+    if fallback_rules_path is not None:
+        try:
+            fallback_rules_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+    if not rules_path.exists():
+        return True, ""
+
+    for step in _udev_remove_steps(rules_path):
+        cmd = ["sudo", "-n", *step]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            break
+    else:
+        logger.info("udev rules removed via sudo -n")
+        return True, ""
+
+    if shutil.which("pkexec"):
+        rm_chain = " && ".join(" ".join(shlex.quote(a) for a in step) for step in _udev_remove_steps(rules_path))
+        result = subprocess.run(["pkexec", "sh", "-c", rm_chain], capture_output=True, text=True)
+        if result.returncode == 0:
+            logger.info("udev rules removed via pkexec")
+            return True, ""
+
+    return False, "Failed to remove rules — run: sudo rm -f " + shlex.quote(str(rules_path))
 
 
 def _udev_steps(source_rules: Path, target_rules: Path) -> list[list[str]]:

@@ -302,7 +302,10 @@ _snapshot_pool = _default_manager._snapshot_pool
 
 def _get_cam_settings(config_path: Path) -> dict:
     cfg = _load_config(config_path)
-    return {**_DEFAULT_CAM_SETTINGS, **cfg.get("camera_settings", {})}
+    camera_settings = cfg.get("camera_settings", {})
+    if not isinstance(camera_settings, dict):
+        return dict(_DEFAULT_CAM_SETTINGS)
+    return {**_DEFAULT_CAM_SETTINGS, **cast(dict[str, object], camera_settings)}
 
 
 def snapshot_get_frame(video_path: str, config_path: Path) -> bytes | None:

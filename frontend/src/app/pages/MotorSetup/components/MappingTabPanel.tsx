@@ -64,12 +64,17 @@ export function MappingTabPanel({
                       options={["(none)", "Follower Arm 1", "Follower Arm 2", "Leader Arm 1", "Leader Arm 2"]}
                       onChange={(v) => {
                         const next = { ...armRoleMap };
+                        const displaced: string[] = [];
                         if (v !== "(none)") {
                           for (const key of Object.keys(next)) {
-                            if (next[key] === v) next[key] = "(none)";
+                            if (next[key] === v) {
+                              displaced.push(`${key}:${next[key]}`);
+                              next[key] = "(none)";
+                            }
                           }
                         }
                         next[arm.device] = v;
+                        console.info(`[ArmMapping:role] ${arm.device}(S/N:${arm.serial ?? "?"}) → ${v}`, displaced.length > 0 ? `displaced:[${displaced}]` : "", "map:", next);
                         onSetArmRoleMap(next);
                         onRoleChange(next);
                       }}
@@ -85,20 +90,18 @@ export function MappingTabPanel({
 
       {arms.length > 0 && (
         <div className="flex justify-end gap-2">
-          {hasAnyMapping && (
-            <button
-              onClick={onClearAllMappings}
-              disabled={autoApplying}
-              className={buttonStyles({
-                variant: "secondary",
-                tone: "neutral",
-                className: "h-10 px-4 whitespace-nowrap",
-              })}
-            >
-              <Trash2 size={12} className="inline mr-1.5" />
-              Clear All
-            </button>
-          )}
+          <button
+            onClick={onClearAllMappings}
+            disabled={!hasAnyMapping || autoApplying}
+            className={buttonStyles({
+              variant: "secondary",
+              tone: "neutral",
+              className: "h-10 px-4 whitespace-nowrap",
+            })}
+          >
+            <Trash2 size={12} className="inline mr-1.5" />
+            Clear All
+          </button>
           <button
             onClick={onOpenIdentify}
             className={buttonStyles({

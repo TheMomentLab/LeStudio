@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { Camera, Bot, Cpu, Download, Eraser, AlertCircle, AlertTriangle, CheckCircle2, Link as LinkIcon, History, Shield } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { Camera, Bot, Cpu, Eraser, AlertCircle, AlertTriangle, CheckCircle2, Link as LinkIcon, History, Shield } from "lucide-react";
 import {
   PageHeader, ResourceBar, EmptyState, RefreshButton,
 } from "../components/wireframe";
@@ -20,14 +20,6 @@ type ArmDevice = { device: string; symlink: string | null; path: string; serial?
 
 type GpuStatusResponse = { exists: boolean; utilization: number; memory_used: number; memory_total: number; memory_percent: number; };
 
-type RulesStatusResponse = {
-  rules_installed?: boolean;
-  install_needed?: boolean;
-  needs_root_for_install?: boolean;
-  sudo_noninteractive?: boolean;
-  gui_auth_available?: boolean;
-  manual_commands?: string[];
-};
 type RuleItem = { kernel?: string; symlink?: string; mode?: string; exists?: boolean; };
 type RulesCurrentResponse = {
   camera_rules?: RuleItem[];
@@ -43,26 +35,9 @@ export function SystemStatus() {
   const [expandedHistory, setExpandedHistory] = useState<Set<number>>(new Set());
   const [gpuStatus, setGpuStatus] = useState<GpuStatusResponse | null>(null);
   const [udevRules, setUdevRules] = useState<RuleItem[]>([]);
-  const [udevStatus, setUdevStatus] = useState<RulesStatusResponse | null>(null);
-  const [udevInstalling, setUdevInstalling] = useState(false);
   const { hfAuth } = useHfAuth();
 
-  const canOneClickInstall = !!(
-    udevStatus
-    && !udevStatus.rules_installed
-    && (udevStatus.sudo_noninteractive || udevStatus.gui_auth_available)
-  );
-
-  const handleInstallUdev = async () => {
-    setUdevInstalling(true);
-    try {
-      await apiPost("/api/rules/apply", { assignments: {}, arm_assignments: {} });
-      refreshStatus();
-    } catch { /* ignore */ }
-    finally { setUdevInstalling(false); }
-  };
-
-  const refreshStatus = () => {
+  const refreshStatus = useCallback(() => {
     apiGet<{ cameras: CameraDevice[]; arms: ArmDevice[] }>("/api/devices").then((res) => {
       setCameras(res.cameras ?? []);
       setArms(res.arms ?? []);
@@ -83,12 +58,15 @@ export function SystemStatus() {
         setUdevRules([...cameraRules, ...armRules]);
       })
       .catch(() => {});
-    apiGet<RulesStatusResponse>("/api/rules/status").then(setUdevStatus).catch(() => {});
-  };
+
+  }, []);
 
   useEffect(() => {
-    refreshStatus();
-  }, []);
+    const timer = window.setTimeout(() => {
+      refreshStatus();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [refreshStatus]);
 
 
   const handleClearHistory = () => {
@@ -103,7 +81,7 @@ export function SystemStatus() {
   return (
     <div className="flex flex-col h-full">
       <div className="flex-1 overflow-y-auto">
-        <div className="p-4 sm:p-6 flex flex-col gap-3 sm:gap-4 max-w-[1600px] mx-auto w-full">
+        <section aria-label="System status dashboard" className="p-4 sm:p-6 flex flex-col gap-3 sm:gap-4 max-w-[1600px] mx-auto w-full">
           <PageHeader
             title="Status"
             subtitle="Hardware and system readiness dashboard"
@@ -131,39 +109,20 @@ export function SystemStatus() {
                 }
               </div>
               {/* udev Rules */}
-              <div className="flex flex-col gap-1.5 px-3 py-2">
-                <div className="flex items-center gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm text-zinc-700 dark:text-zinc-300">udev Rules</div>
-                    <div className="text-xs text-zinc-400">
-                      {udevStatus?.rules_installed
-                        ? udevRules.length > 0
-                          ? `${udevRules.length} rule${udevRules.length !== 1 ? "s" : ""} — stable device symlinks`
-                          : "Installed — no device mappings yet"
-                        : "Ensures persistent camera/arm paths across reboots"
-                      }
-                    </div>
-                  </div>
-                  {udevStatus?.rules_installed ? (
-                    <CheckCircle2 size={18} className="text-emerald-500 dark:text-emerald-400 flex-none" />
-                  ) : canOneClickInstall ? (
-                    <button
-                      onClick={handleInstallUdev}
-                      disabled={udevInstalling}
-                      className="flex items-center gap-1.5 px-3 py-1 rounded border border-amber-500/30 bg-amber-500/5 text-sm text-amber-500 dark:text-amber-400 hover:bg-amber-500/10 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex-none"
-                    >
-                      <Download size={12} />
-                      {udevInstalling ? "Installing..." : "Install"}
-                    </button>
-                  ) : (
-                    <AlertTriangle size={16} className="text-amber-500 dark:text-amber-400 flex-none" />
-                  )}
-                </div>
-                {!udevStatus?.rules_installed && !canOneClickInstall && udevStatus?.needs_root_for_install && (
+              <div className="flex items-center gap-3 px-3 py-2">
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm text-zinc-700 dark:text-zinc-300">Device Mapping</div>
                   <div className="text-xs text-zinc-400">
-                    Run: <code className="font-mono text-xs bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded px-1.5 py-0.5">lestudio install-udev</code>
+                    {udevRules.length > 0
+                      ? `${udevRules.length} device${udevRules.length !== 1 ? "s" : ""} mapped — stable symlinks active`
+                      : "No devices mapped yet — configure in Motor Setup or Camera Setup"
+                    }
                   </div>
-                )}
+                </div>
+                {udevRules.length > 0
+                  ? <CheckCircle2 size={18} className="text-emerald-500 dark:text-emerald-400 flex-none" />
+                  : <AlertTriangle size={16} className="text-amber-500 dark:text-amber-400 flex-none" />
+                }
               </div>
             </div>
           </div>
@@ -278,6 +237,7 @@ export function SystemStatus() {
                   <button
                     onClick={handleClearHistory}
                     className="text-zinc-500 hover:text-red-400 transition-colors cursor-pointer"
+                    aria-label="Clear session history"
                   >
                     <Eraser size={11} />
                   </button>
@@ -312,7 +272,7 @@ export function SystemStatus() {
               }
             </div>
           </div>
-        </div>
+        </section>
       </div>
     </div>
   );
@@ -341,11 +301,6 @@ const CATEGORY_LABELS: Record<HistoryCategory, string> = {
 function formatTimeShort(ts: string): string {
   const match = ts.match(/T?(\d{2}:\d{2})/);
   return match ? match[1] : ts;
-}
-
-function formatDateLabel(ts: string): string {
-  const match = ts.match(/(\d{4}-\d{2}-\d{2})/);
-  return match ? match[1] : "";
 }
 
 function HistoryRow({ entry, expanded, onToggle }: {

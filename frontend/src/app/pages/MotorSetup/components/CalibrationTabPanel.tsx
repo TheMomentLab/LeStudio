@@ -272,7 +272,7 @@ export function CalibrationTabPanel({
             className={buttonStyles({
               variant: "primary",
               tone: "neutral",
-              className: "h-auto px-4 py-1.5 whitespace-nowrap gap-1.5",
+              className: "h-10 px-5 whitespace-nowrap gap-1.5",
             })}
           >
             <Play size={13} className="fill-current" /> Start Calibration
@@ -284,7 +284,7 @@ export function CalibrationTabPanel({
             className={buttonStyles({
               variant: "secondary",
               tone: "danger",
-              className: "h-auto px-4 py-1.5 whitespace-nowrap gap-1.5",
+              className: "h-10 px-5 whitespace-nowrap gap-1.5",
             })}
           >
             <Square size={11} className="fill-current" /> Stop

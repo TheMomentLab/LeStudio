@@ -78,6 +78,7 @@ export function RecordingPlanTab({
           <div className="inline-flex rounded-lg border border-zinc-200 dark:border-zinc-700 overflow-hidden">
             <button
               onClick={() => setDatasetStorageMode("local")}
+              aria-label="Use local dataset storage"
               className={cn(
                 "flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium transition-all cursor-pointer",
                 isLocal
@@ -90,6 +91,7 @@ export function RecordingPlanTab({
             </button>
             <button
               onClick={() => setDatasetStorageMode("hf")}
+              aria-label="Use Hugging Face Hub dataset storage"
               className={cn(
                 "flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium transition-all cursor-pointer border-l border-zinc-200 dark:border-zinc-700",
                 !isLocal
@@ -110,6 +112,7 @@ export function RecordingPlanTab({
               type="number"
               value={totalEps}
               onChange={(e) => setTotalEps(Math.max(1, Number(e.target.value) || 1))}
+              aria-label="Number of episodes"
               className={inputCls}
             />
           </div>
@@ -128,6 +131,7 @@ export function RecordingPlanTab({
                 value={datasetName}
                 onChange={(e) => handleNameChange(e.target.value)}
                 placeholder="my-dataset"
+                aria-label={isLocal ? "Dataset name" : "Dataset repository ID"}
                 className={cn(
                   "flex-1 min-w-0 h-9 px-3 py-2 border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-800 dark:text-zinc-200 text-sm outline-none hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all",
                   !isLocal && prefix ? "rounded-r-lg" : "rounded-lg",
@@ -150,6 +154,7 @@ export function RecordingPlanTab({
               value={localDatasetRoot}
               onChange={(e) => setLocalDatasetRoot(e.target.value)}
               placeholder="~/.cache/huggingface/lerobot"
+              aria-label="Local dataset root path"
               className={inputCls}
             />
             <div className="text-xs text-zinc-400 mt-1">

@@ -63,8 +63,8 @@ export function ColabPanel({
               onClick={onPushToHub}
               className={cn(
                 buttonStyles({
-                  variant: "primary",
-                  tone: "success",
+                  variant: "secondary",
+                  tone: "neutral",
                   className: "h-auto px-4 py-1.5 gap-1.5 whitespace-nowrap",
                 }),
                 hfAuth !== "ready" ? "opacity-40 cursor-not-allowed"

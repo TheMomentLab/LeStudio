@@ -1,9 +1,5 @@
-import { useMemo, useState, useEffect, useRef } from "react";
-import { Link } from "react-router";
-import { ChevronDown, ChevronUp, Play, Pause, Loader2, CheckCircle2, Camera } from "lucide-react";
-import { cn } from "../components/ui/utils";
+import { useCallback, useMemo, useState, useEffect, useRef } from "react";
 import { apiGet, apiPost } from "../services/apiClient";
-import { UdevInstallGate } from "../components/UdevInstallGate";
 import { MotorMappingGate } from "../components/MotorMappingGate";
 import { useLeStudioStore, getLeStudioState } from "../store";
 import {
@@ -19,11 +15,9 @@ import {
   notifyProcessEndedWithError,
 } from "../services/notifications";
 import {
-  PageHeader, StatusBadge, WireSelect, WireToggle,
-  FieldRow, ProcessButtons, ModeToggle, StickyControlBar, SubTabs,
-  WireBox, BlockerCard, RefreshButton, EmptyState,
+  PageHeader, ModeToggle, SubTabs,
+  BlockerCard, RefreshButton,
 } from "../components/wireframe";
-import { ArmPairSelector } from "../components/wireframe/ArmPairSelector";
 import {
   buildMappedArmLists,
   defaultArmSelection,
@@ -33,7 +27,20 @@ import {
   type ResolvedArmConfig,
 } from "../services/armSets";
 import { toVideoName, useCameraFeeds } from "../hooks/useCameraFeeds";
-type TeleopPhase = "idle" | "loading" | "running";
+import {
+  type CalibFile,
+  type MappedCamera,
+  type TeleopDebugJointRow,
+  type TeleopDebugMeta,
+  type TeleopDebugSnapshot,
+  type TeleopPhase,
+} from "./Teleop/shared";
+import { TeleopLoadingView } from "./Teleop/components/TeleopLoadingView";
+import { TeleopMotorSettingsPanel } from "./Teleop/components/TeleopMotorSettingsPanel";
+import { TeleopCameraSettingsPanel } from "./Teleop/components/TeleopCameraSettingsPanel";
+import { TeleopDebugTelemetryPanel } from "./Teleop/components/TeleopDebugTelemetryPanel";
+import { TeleopRunningView } from "./Teleop/components/TeleopRunningView";
+import { TeleopControlBar } from "./Teleop/components/TeleopControlBar";
 
 type ActionResponse = {
   ok: boolean;
@@ -47,40 +54,6 @@ type DepsStatusResponse = {
 type DevicesResponse = {
   cameras: Array<{ device: string; path: string; kernels: string; symlink: string; model: string }>;
   arms: Array<{ device: string; path: string; symlink?: string | null }>;
-};
-
-type CalibFile = { id: string; guessed_type: string; rel_path?: string };
-
-type TeleopDebugMeta = {
-  antijitter_alpha?: number;
-  antijitter_deadband?: number;
-  antijitter_enabled?: boolean;
-  antijitter_max_step?: number | null;
-  debug_enabled?: boolean;
-  debug_supported?: boolean;
-  debug_interval_s?: number;
-  invert_joints?: string[];
-  reason?: string;
-  schema_version?: number;
-};
-
-type TeleopDebugSnapshot = {
-  schema_version: number;
-  emitted_at_ms: number;
-  joint_count_total: number;
-  joint_count_emitted: number;
-  truncated: boolean;
-  loop_index: number;
-  uptime_s: number;
-  active_loop_ms: number;
-  leader_raw_pos: Record<string, number>;
-  follower_current_pos: Record<string, number>;
-  teleop_action_pos: Record<string, number>;
-  follower_goal_pos: Record<string, number>;
-  goal_minus_current_pos: Record<string, number>;
-  max_abs_goal_error: number;
-  rms_goal_error: number;
-  worst_joint: string;
 };
 
 type TeleopLogLine = {
@@ -136,15 +109,6 @@ function parsePrefixedJson<T>(text: string, prefix: string): T | null {
   }
 }
 
-function formatJointName(key: string): string {
-  return key.replace(/\.pos$/, "").replace(/_/g, " ");
-}
-
-function formatDebugNumber(value: number | undefined): string {
-  if (typeof value !== "number" || !Number.isFinite(value)) return "-";
-  return value.toFixed(2);
-}
-
 function asNumberRecord(value: unknown): Record<string, number> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   const entries = Object.entries(value).filter((entry): entry is [string, number] => {
@@ -182,7 +146,7 @@ export function Teleop() {
   const [flowError, setFlowError] = useState<string | null>(null);
   const lastErrorAtRef = useRef(0);
   const prevRunningRef = useRef(false);
-  const [camerasMapped, setCamerasMapped] = useState<{ role: string; path: string }[]>([]);
+  const [camerasMapped, setCamerasMapped] = useState<MappedCamera[]>([]);
   const [enabledCameras, setEnabledCameras] = useState<Set<string>>(new Set());
   const [calibFiles, setCalibFiles] = useState<CalibFile[]>([]);
   const [armLists, setArmLists] = useState<MappedArmLists>({ followers: [], leaders: [] });
@@ -223,11 +187,11 @@ export function Teleop() {
     right_teleop_id: configRecord.right_teleop_id,
   }), [config, configRecord.follower_port, configRecord.leader_port, configRecord.left_follower_port, configRecord.right_follower_port, configRecord.left_leader_port, configRecord.right_leader_port, configRecord.robot_id, configRecord.teleop_id, configRecord.left_robot_id, configRecord.right_robot_id, configRecord.left_teleop_id, configRecord.right_teleop_id, selectedFollowerId, selectedFollowerPort, selectedLeaderId, selectedLeaderPort, selectedLeftFollowerPort, selectedRightFollowerPort, selectedLeftLeaderPort, selectedRightLeaderPort]);
   const selectedCameras = useMemo(
-    () => camerasMapped.filter((cam: { role: string; path: string }) => enabledCameras.has(cam.role)),
+    () => camerasMapped.filter((cam: MappedCamera) => enabledCameras.has(cam.role)),
     [camerasMapped, enabledCameras],
   );
   const feedTargets = useMemo(
-    () => selectedCameras.map((cam: { role: string; path: string }) => ({ id: cam.role, videoName: toVideoName(cam.path) })),
+    () => selectedCameras.map((cam: MappedCamera) => ({ id: cam.role, videoName: toVideoName(cam.path) })),
     [selectedCameras],
   );
   const previewFeedsActive = phase === "idle" && teleopTab === "camera";
@@ -278,7 +242,7 @@ export function Teleop() {
     ]);
     return Array.from(keys)
       .sort((left, right) => left.localeCompare(right))
-      .map((key) => ({
+      .map((key): TeleopDebugJointRow => ({
         key,
         leader: debugSnapshot.leader_raw_pos[key],
         current: debugSnapshot.follower_current_pos[key],
@@ -288,134 +252,6 @@ export function Teleop() {
       }));
   }, [debugSnapshot]);
   const debugAgeMs = debugSnapshot ? Math.max(0, Date.now() - debugSnapshot.emitted_at_ms) : null;
-  const debugTelemetryPanel = debugEnabled ? (
-    <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-3 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800">
-        <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Teleop Debug Telemetry</span>
-        <span className="text-xs font-mono text-zinc-400">
-          {debugEnabled
-            ? (debugMeta?.debug_interval_s ? `sample ${debugMeta.debug_interval_s}s` : "waiting for process telemetry")
-            : "disabled"}
-        </span>
-      </div>
-
-      <div className="px-4 py-4 flex flex-col gap-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
-          <div className="rounded border border-zinc-200 dark:border-zinc-800 bg-zinc-50/60 dark:bg-zinc-950/40 p-3">
-            <div className="text-xs uppercase tracking-wide text-zinc-400">Runtime</div>
-            <div className="mt-2 text-sm text-zinc-600 dark:text-zinc-300 flex flex-col gap-1">
-              <span>WS: {wsReady ? "connected" : "disconnected"}</span>
-              <span>Loop Hz: {loopMetrics ? formatDebugNumber(loopMetrics.hz) : "-"}</span>
-              <span>Loop ms: {debugSnapshot ? formatDebugNumber(debugSnapshot.active_loop_ms) : loopMetrics ? formatDebugNumber(loopMetrics.loopMs) : "-"}</span>
-              <span>Loop #: {debugSnapshot?.loop_index ?? "-"}</span>
-              <span>Uptime: {debugSnapshot ? formatDebugNumber(debugSnapshot.uptime_s) : "-"}s</span>
-              <span>Sample age: {debugAgeMs !== null ? `${debugAgeMs}ms` : "-"}</span>
-            </div>
-          </div>
-
-          <div className="rounded border border-zinc-200 dark:border-zinc-800 bg-zinc-50/60 dark:bg-zinc-950/40 p-3">
-            <div className="text-xs uppercase tracking-wide text-zinc-400">Device Mapping</div>
-            <div className="mt-2 text-sm text-zinc-600 dark:text-zinc-300 flex flex-col gap-1 font-mono">
-              <span>Follower: {selectedFollowerPort || "-"}</span>
-              <span>Leader: {selectedLeaderPort || "-"}</span>
-              <span>Robot ID: {selectedFollowerId || "-"}</span>
-              <span>Teleop ID: {selectedLeaderId || "-"}</span>
-              <span>Cams: {selectedCameras.length}/{camerasMapped.length}</span>
-            </div>
-          </div>
-
-          <div className="rounded border border-zinc-200 dark:border-zinc-800 bg-zinc-50/60 dark:bg-zinc-950/40 p-3">
-            <div className="text-xs uppercase tracking-wide text-zinc-400">Mapping Controls</div>
-            <div className="mt-2 text-sm text-zinc-600 dark:text-zinc-300 flex flex-col gap-1">
-              <span>Invert shoulder: {invertShoulderLift ? "on" : "off"}</span>
-              <span>Invert wrist: {invertWristRoll ? "on" : "off"}</span>
-              <span>Anti-jitter: {(debugMeta?.antijitter_enabled ?? antiJitterEnabled) ? "on" : "off"}</span>
-              <span>Alpha: {formatDebugNumber(debugMeta?.antijitter_alpha ?? antiJitterAlpha)}</span>
-              <span>Deadband: {formatDebugNumber(debugMeta?.antijitter_deadband ?? antiJitterDeadband)}</span>
-            </div>
-          </div>
-
-          <div className="rounded border border-zinc-200 dark:border-zinc-800 bg-zinc-50/60 dark:bg-zinc-950/40 p-3">
-            <div className="text-xs uppercase tracking-wide text-zinc-400">Signals</div>
-            <div className="mt-2 text-sm text-zinc-600 dark:text-zinc-300 flex flex-col gap-1">
-              <span>Log lines: {teleopLogs.length}</span>
-              <span>Supported: {debugMeta?.debug_supported === false ? "no" : "yes"}</span>
-              <span>Leader joints: {debugSnapshot ? Object.keys(debugSnapshot.leader_raw_pos).length : 0}</span>
-              <span>Current joints: {debugSnapshot ? Object.keys(debugSnapshot.follower_current_pos).length : 0}</span>
-              <span>Goal joints: {debugSnapshot ? Object.keys(debugSnapshot.follower_goal_pos).length : 0}</span>
-              <span>Invert joints: {debugMeta?.invert_joints?.join(", ") || "none"}</span>
-            </div>
-          </div>
-        </div>
-
-        {debugEnabled && debugSnapshot ? (
-          <>
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
-              <div className="rounded border border-zinc-200 dark:border-zinc-800 bg-zinc-50/60 dark:bg-zinc-950/40 p-3">
-                <div className="text-xs uppercase tracking-wide text-zinc-400">Joint Coverage</div>
-                <div className="mt-2 text-sm text-zinc-600 dark:text-zinc-300 flex flex-col gap-1">
-                  <span>Total joints: {debugSnapshot.joint_count_total}</span>
-                  <span>Shown joints: {debugSnapshot.joint_count_emitted}</span>
-                  <span>Truncated: {debugSnapshot.truncated ? "yes" : "no"}</span>
-                  <span>Schema: v{debugSnapshot.schema_version}</span>
-                </div>
-              </div>
-
-              <div className="rounded border border-zinc-200 dark:border-zinc-800 bg-zinc-50/60 dark:bg-zinc-950/40 p-3">
-                <div className="text-xs uppercase tracking-wide text-zinc-400">Goal Error</div>
-                <div className="mt-2 text-sm text-zinc-600 dark:text-zinc-300 flex flex-col gap-1">
-                  <span>Max abs: {formatDebugNumber(debugSnapshot.max_abs_goal_error)}</span>
-                  <span>RMS: {formatDebugNumber(debugSnapshot.rms_goal_error)}</span>
-                  <span>Worst joint: {debugSnapshot.worst_joint ? formatJointName(debugSnapshot.worst_joint) : "-"}</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="overflow-x-auto rounded border border-zinc-200 dark:border-zinc-800">
-              <table className="min-w-full text-sm font-mono">
-                <thead className="bg-zinc-50 dark:bg-zinc-800/30 text-zinc-500 dark:text-zinc-400">
-                  <tr>
-                    <th className="px-3 py-2 text-left">Joint</th>
-                    <th className="px-3 py-2 text-right">Leader Raw</th>
-                    <th className="px-3 py-2 text-right">Current</th>
-                    <th className="px-3 py-2 text-right">Mapped</th>
-                    <th className="px-3 py-2 text-right">Goal</th>
-                    <th className="px-3 py-2 text-right">Goal-Current</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {debugJointRows.map((row) => (
-                    <tr key={row.key} className="border-t border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300">
-                      <td className="px-3 py-2 whitespace-nowrap">{formatJointName(row.key)}</td>
-                      <td className="px-3 py-2 text-right">{formatDebugNumber(row.leader)}</td>
-                      <td className="px-3 py-2 text-right">{formatDebugNumber(row.current)}</td>
-                      <td className="px-3 py-2 text-right">{formatDebugNumber(row.mapped)}</td>
-                      <td className="px-3 py-2 text-right">{formatDebugNumber(row.goal)}</td>
-                      <td className="px-3 py-2 text-right">{formatDebugNumber(row.error)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="rounded border border-zinc-200 dark:border-zinc-800 bg-zinc-950 text-zinc-200 p-3 overflow-x-auto">
-              <div className="text-xs uppercase tracking-wide text-zinc-500 mb-2">Latest Raw Snapshot</div>
-              <pre className="text-xs whitespace-pre-wrap break-all">{JSON.stringify(debugSnapshot, null, 2)}</pre>
-            </div>
-          </>
-        ) : (
-          <div className="rounded border border-dashed border-zinc-300 dark:border-zinc-700 px-4 py-6 text-sm text-zinc-500 dark:text-zinc-400">
-            {debugMeta?.debug_supported === false
-              ? `Debug overlay is enabled, but this teleop runtime reported that structured snapshots are unsupported (${debugMeta.reason ?? "unknown reason"}).`
-              : running
-                ? "Debug overlay is enabled, but Teleop has not emitted a snapshot yet. Start Teleop and move the leader slightly to populate runtime data."
-                : "Debug overlay is enabled. Start Teleop to stream live leader/current/goal telemetry here."}
-          </div>
-        )}
-      </div>
-    </div>
-  ) : null;
-
   const toggleFeed = (role: string) =>
     setPausedFeeds((prev) => ({ ...prev, [role]: !prev[role] }));
 
@@ -428,12 +264,12 @@ export function Teleop() {
     });
   };
 
-  const persistConfigPatch = (patch: Record<string, unknown>) => {
+  const persistConfigPatch = useCallback((patch: Record<string, unknown>) => {
     updateConfig(patch);
     void apiPost<Record<string, unknown>>("/api/config", patch).catch(() => undefined);
-  };
+  }, [updateConfig]);
 
-  const handleArmSetConfigResolved = (resolved: ResolvedArmConfig) => {
+  const handleArmSetConfigResolved = useCallback((resolved: ResolvedArmConfig) => {
     setSelectedFollowerPort(resolved.followerPort);
     setSelectedLeaderPort(resolved.leaderPort);
     setSelectedLeftFollowerPort(resolved.leftFollowerPort);
@@ -458,7 +294,12 @@ export function Teleop() {
       left_teleop_id: resolved.leftTeleopId,
       right_teleop_id: resolved.rightTeleopId,
     });
-  };
+  }, [persistConfigPatch]);
+
+  const modeRef = useRef(mode);
+  useEffect(() => {
+    modeRef.current = mode;
+  }, [mode]);
 
   useEffect(() => {
     let cancelled = false;
@@ -559,7 +400,7 @@ export function Teleop() {
       setStartAccepted(false);
       setActionPending(false);
     }
-  }, [teleopRunningOnBackend]);
+  }, [phase, teleopRunningOnBackend]);
 
   // Real log-based loading sequence
   const loadingStartIdxRef = useRef(0);
@@ -660,14 +501,15 @@ export function Teleop() {
 
       const lists = buildMappedArmLists(devResult.arms ?? [], files);
       setArmLists(lists);
-      const sel = defaultArmSelection(lists, mode as "Single Arm" | "Bi-Arm");
+      const currentMode = modeRef.current as "Single Arm" | "Bi-Arm";
+      const sel = defaultArmSelection(lists, currentMode);
       setArmSelection(sel);
-      const resolved = resolveArmConfig(mode as "Single Arm" | "Bi-Arm", sel, lists, files);
+      const resolved = resolveArmConfig(currentMode, sel, lists, files);
       handleArmSetConfigResolved(resolved);
 
     };
     void run();
-  }, [refreshKey]);
+  }, [refreshKey, handleArmSetConfigResolved]);
 
   useEffect(() => {
     if (armLists.followers.length === 0 && armLists.leaders.length === 0) return;
@@ -675,17 +517,55 @@ export function Teleop() {
     setArmSelection(sel);
     const resolved = resolveArmConfig(mode as "Single Arm" | "Bi-Arm", sel, armLists, calibFiles);
     handleArmSetConfigResolved(resolved);
-  }, [mode]);
+  }, [mode, armLists, calibFiles, handleArmSetConfigResolved]);
 
   useEffect(() => {
     if (!flowError) return;
     lastErrorAtRef.current = Date.now();
   }, [flowError]);
 
+  const flowResetKey = useMemo(
+    () => JSON.stringify([
+      selectedFollowerPort,
+      selectedLeaderPort,
+      selectedLeftFollowerPort,
+      selectedRightFollowerPort,
+      selectedLeftLeaderPort,
+      selectedRightLeaderPort,
+      selectedFollowerId,
+      selectedLeaderId,
+      configRecord.left_robot_id,
+      configRecord.right_robot_id,
+      configRecord.left_teleop_id,
+      configRecord.right_teleop_id,
+    ]),
+    [
+      selectedFollowerPort,
+      selectedLeaderPort,
+      selectedLeftFollowerPort,
+      selectedRightFollowerPort,
+      selectedLeftLeaderPort,
+      selectedRightLeaderPort,
+      selectedFollowerId,
+      selectedLeaderId,
+      configRecord.left_robot_id,
+      configRecord.right_robot_id,
+      configRecord.left_teleop_id,
+      configRecord.right_teleop_id,
+    ],
+  );
+  const flowResetKeyRef = useRef(flowResetKey);
+
   useEffect(() => {
-    if (!flowError) return;
-    setFlowError(null);
-  }, [selectedFollowerPort, selectedLeaderPort, selectedLeftFollowerPort, selectedRightFollowerPort, selectedLeftLeaderPort, selectedRightLeaderPort, selectedFollowerId, selectedLeaderId, configRecord.left_robot_id, configRecord.right_robot_id, configRecord.left_teleop_id, configRecord.right_teleop_id]);
+    if (!flowError) {
+      flowResetKeyRef.current = flowResetKey;
+      return;
+    }
+    if (flowResetKeyRef.current !== flowResetKey) {
+      flowResetKeyRef.current = flowResetKey;
+      setFlowError(null);
+    }
+  }, [flowError, flowResetKey]);
 
   useEffect(() => {
     const wasRunning = prevRunningRef.current;
@@ -700,10 +580,9 @@ export function Teleop() {
 
   return (
     <div className="flex flex-col h-full">
-      <UdevInstallGate>
       <MotorMappingGate>
       <div className="flex-1 overflow-y-auto">
-        <div className="p-6 flex flex-col gap-4 max-w-[1600px] mx-auto w-full">
+        <section aria-label="Teleoperation" className="p-6 flex flex-col gap-4 max-w-[1600px] mx-auto w-full">
           {/* Header */}
           <PageHeader
             title="Teleop"
@@ -734,380 +613,110 @@ export function Teleop() {
 
               {/* Motor Setting Tab */}
               {teleopTab === "motor" && (
-                <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden">
-                  <div className="flex items-center justify-between px-4 py-3 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800">
-                    <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Motor Configuration</span>
-                    <div className="flex items-center gap-2">
-                      <WireToggle label="Debug" checked={debugEnabled} onChange={(v) => persistConfigPatch({ teleop_debug_enabled: v })} />
-                    </div>
-                  </div>
-                  <div className="px-4 py-4 flex flex-col gap-3">
-                    <ArmPairSelector
-                      mode={mode as "Single Arm" | "Bi-Arm"}
-                      armLists={armLists}
-                      calibFiles={calibFiles}
-                      selection={armSelection}
-                      onSelectionChange={setArmSelection}
-                      onConfigResolved={handleArmSetConfigResolved}
-                      disabled={phase !== "idle"}
-                    />
-
-                  <button
-                    onClick={() => setMotorTuningOpen(!motorTuningOpen)}
-                    className="flex items-center gap-1 text-sm text-zinc-400 hover:text-zinc-600 cursor-pointer"
-                  >
-                    Motor tuning
-                    {motorTuningOpen ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
-                  </button>
-
-                  {motorTuningOpen && (
-                    <div className="flex flex-col gap-3 pl-2 border-l-2 border-zinc-100 dark:border-zinc-800">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3">
-                        <FieldRow label="Invert Shoulder Lift">
-                          <WireSelect
-                            value={invertShoulderLift ? "On" : "Off"}
-                            options={["Off", "On"]}
-                            onChange={(value) => {
-                              persistConfigPatch({ teleop_invert_shoulder_lift: value === "On" });
-                            }}
-                          />
-                        </FieldRow>
-                        <FieldRow label="Invert Wrist Roll">
-                          <WireSelect
-                            value={invertWristRoll ? "On" : "Off"}
-                            options={["Off", "On"]}
-                            onChange={(value) => {
-                              persistConfigPatch({ teleop_invert_wrist_roll: value === "On" });
-                            }}
-                          />
-                        </FieldRow>
-                        <FieldRow label="Anti-Jitter">
-                          <WireSelect
-                            value={antiJitterAvailable && antiJitterEnabled ? "On" : "Off"}
-                            options={["Off", "On"]}
-                            onChange={(value) => {
-                              if (!antiJitterAvailable) return;
-                              persistConfigPatch({ teleop_antijitter_enabled: value === "On" });
-                            }}
-                          />
-                        </FieldRow>
-                        <FieldRow label="EMA Alpha">
-                          <input
-                            type="number"
-                            min={0}
-                            max={1}
-                            step="0.05"
-                            value={antiJitterAlpha}
-                            disabled={!antiJitterAvailable}
-                            onChange={(event) => {
-                              if (!antiJitterAvailable) return;
-                              const next = Number(event.target.value);
-                              if (Number.isFinite(next)) {
-                                persistConfigPatch({ teleop_antijitter_alpha: next });
-                              }
-                            }}
-                            className="w-full h-9 px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-800 dark:text-zinc-200 text-sm outline-none hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all"
-                          />
-                        </FieldRow>
-                        <FieldRow label="Deadband (deg)">
-                          <input
-                            type="number"
-                            min={0}
-                            step="0.05"
-                            value={antiJitterDeadband}
-                            disabled={!antiJitterAvailable}
-                            onChange={(event) => {
-                              if (!antiJitterAvailable) return;
-                              const next = Number(event.target.value);
-                              if (Number.isFinite(next)) {
-                                persistConfigPatch({ teleop_antijitter_deadband: next });
-                              }
-                            }}
-                            className="w-full h-9 px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-800 dark:text-zinc-200 text-sm outline-none hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all"
-                          />
-                        </FieldRow>
-                        <FieldRow label="Max Step (opt)">
-                          <input
-                            type="number"
-                            min={0}
-                            step="0.1"
-                            value={antiJitterMaxStep}
-                            disabled={!antiJitterAvailable}
-                            placeholder="Disabled"
-                            onChange={(event) => {
-                              if (!antiJitterAvailable) return;
-                              const raw = event.target.value;
-                              if (!raw.trim()) {
-                                persistConfigPatch({ teleop_antijitter_max_step: "" });
-                                return;
-                              }
-                              const next = Number(raw);
-                              if (Number.isFinite(next)) {
-                                persistConfigPatch({ teleop_antijitter_max_step: next });
-                              }
-                            }}
-                            className="w-full h-9 px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-800 dark:text-zinc-200 text-sm outline-none placeholder:text-zinc-400 hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all"
-                          />
-                        </FieldRow>
-                      </div>
-                    </div>
-                  )}
-                  </div>
-                </div>
+                <TeleopMotorSettingsPanel
+                  mode={mode as "Single Arm" | "Bi-Arm"}
+                  armLists={armLists}
+                  calibFiles={calibFiles}
+                  armSelection={armSelection}
+                  onArmSelectionChange={setArmSelection}
+                  onArmConfigResolved={handleArmSetConfigResolved}
+                  phase={phase}
+                  debugEnabled={debugEnabled}
+                  onPersistConfigPatch={persistConfigPatch}
+                  motorTuningOpen={motorTuningOpen}
+                  onToggleMotorTuning={() => setMotorTuningOpen(!motorTuningOpen)}
+                  invertShoulderLift={invertShoulderLift}
+                  invertWristRoll={invertWristRoll}
+                  antiJitterAvailable={antiJitterAvailable}
+                  antiJitterEnabled={antiJitterEnabled}
+                  antiJitterAlpha={antiJitterAlpha}
+                  antiJitterDeadband={antiJitterDeadband}
+                  antiJitterMaxStep={antiJitterMaxStep}
+                />
               )}
 
 
               {/* Camera Setting Tab — settings above, preview below */}
               {teleopTab === "camera" && (
-                <div className="flex flex-col gap-4">
-                  {/* Camera settings — full width */}
-                  <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden">
-                    <div className="flex items-center justify-between px-4 py-3 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800">
-                      <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Camera feed settings</span>
-                    </div>
-                    <div className="px-4 py-4 flex flex-col gap-3">
-                      {camerasMapped.length === 0 ? (
-                        <EmptyState
-                          icon={<Camera size={28} />}
-                          message={
-                            <>
-                              No camera mappings. First connect cameras in the{" "}
-                              <a href="/camera-setup" className="underline hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors">Camera Setup</a> tab.
-                            </>
-                          }
-                          messageClassName="max-w-none"
-                        />
-                      ) : camerasMapped.map((cam) => (
-                        <label key={cam.role} className="flex items-center gap-2 px-2 py-1.5 rounded border border-zinc-100 dark:border-zinc-800/50 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={enabledCameras.has(cam.role)}
-                            onChange={() => toggleCamera(cam.role)}
-                            className="accent-emerald-500"
-                          />
-                          <span className="text-sm text-zinc-600 dark:text-zinc-300 font-mono">{cam.role}</span>
-                          <span className="text-sm text-zinc-400 ml-auto font-mono truncate">{cam.path}</span>
-                        </label>
-                      ))}
-
-                      {/* Advanced stream settings */}
-                      <button
-                        onClick={() => setAdvStreamOpen(!advStreamOpen)}
-                        className="flex items-center gap-1 text-sm text-zinc-400 hover:text-zinc-600 cursor-pointer"
-                      >
-                        Advanced stream settings
-                        {advStreamOpen ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
-                      </button>
-
-                      {advStreamOpen && (
-                        <div className="flex flex-col gap-2 pl-2 border-l-2 border-zinc-100 dark:border-zinc-800">
-                          <FieldRow label="Codec">
-                            <WireSelect value="MJPG" options={["MJPG", "YUYV"]} disabled />
-                          </FieldRow>
-                          <FieldRow label="Resolution">
-                            <WireSelect value="640×480" options={["1280×720", "800×600", "640×480", "320×240"]} disabled />
-                          </FieldRow>
-                          <FieldRow label="FPS">
-                            <WireSelect value="30" options={["15", "30", "60"]} disabled />
-                          </FieldRow>
-                          <FieldRow label="JPEG Quality">
-                            <input type="range" min={30} max={95} defaultValue={75} className="w-full h-1.5 accent-zinc-500 cursor-pointer" disabled />
-                          </FieldRow>
-                          <p className="text-xs text-zinc-400">Camera stream settings are managed from Camera Setup.</p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Camera feed previews — compact thumbnails */}
-                  <div className={cn(
-                    "grid gap-2",
-                    selectedCameras.length <= 2
-                      ? "grid-cols-2"
-                      : selectedCameras.length === 3
-                        ? "grid-cols-3"
-                        : "grid-cols-4",
-                  )}>
-                    {selectedCameras.map((cam) => {
-                      const frameSrc = cameraFrames[cam.role];
-                      return (
-                        <div key={cam.role} className="relative rounded-lg overflow-hidden border border-zinc-200 dark:border-zinc-800">
-                          <div className="aspect-video bg-zinc-200 dark:bg-zinc-900">
-                            {frameSrc ? (
-                              <img src={frameSrc} alt={`${cam.role} preview`} className="h-full w-full object-cover" />
-                            ) : (
-                              <div className="h-full w-full flex items-center justify-center">
-                                <span className="text-sm text-zinc-600">Waiting...</span>
-                              </div>
-                            )}
-                          </div>
-                          <div className="px-2 py-1.5 bg-zinc-50 dark:bg-zinc-900">
-                            <div className="text-sm text-zinc-600 dark:text-zinc-300">{cam.role}</div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
+                <TeleopCameraSettingsPanel
+                  camerasMapped={camerasMapped}
+                  enabledCameras={enabledCameras}
+                  onToggleCamera={toggleCamera}
+                  advStreamOpen={advStreamOpen}
+                  onToggleAdvancedStream={() => setAdvStreamOpen(!advStreamOpen)}
+                  selectedCameras={selectedCameras}
+                  cameraFrames={cameraFrames}
+                />
               )}
             </div>
           )}
 
           {/* ─── LOADING: Step-by-step feedback ─── */}
           {phase === "loading" && (
-            <div className="flex-1 flex flex-col items-center justify-center py-16 gap-6">
-              <Loader2 size={32} className="text-zinc-400 animate-spin" />
-              <div className="flex flex-col gap-2">
-                {LOADING_STEPS.map((step, i) => {
-                  const isActive = i === loadingStep - 1;
-                  const isWaiting = isActive && loadingWaitingInput && !!step.waitPattern;
-                  return (
-                    <div key={step.label} className="flex items-center gap-2.5">
-                      {i < loadingStep ? (
-                        isWaiting ? (
-                          <div className="size-3.5 rounded-full bg-amber-500 flex-none animate-pulse" />
-                        ) : (
-                          <CheckCircle2 size={14} className="text-emerald-600 dark:text-emerald-400 flex-none" />
-                        )
-                      ) : i === loadingStep ? (
-                        <Loader2 size={14} className="text-zinc-400 animate-spin flex-none" />
-                      ) : (
-                        <div className="size-3.5 rounded-full border border-zinc-600 flex-none" />
-                      )}
-                      <span className={cn("text-sm",
-                        isWaiting ? "text-amber-600 dark:text-amber-400 font-medium" :
-                        i < loadingStep ? "text-zinc-400" :
-                        i === loadingStep ? "text-zinc-800 dark:text-zinc-200" : "text-zinc-600"
-                      )}>
-                        {isWaiting ? "Waiting for calibration — press ENTER in console ↓" : step.label}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+            <TeleopLoadingView
+              loadingStep={loadingStep}
+              loadingWaitingInput={loadingWaitingInput}
+              steps={LOADING_STEPS}
+            />
           )}
 
           {/* ─── RUNNING: Camera feed focus ─── */}
-          {phase === "running" && teleopReconnected && (
-            <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-blue-500/30 bg-blue-500/5 text-sm text-blue-600 dark:text-blue-400">
-              <span className="flex-none">⚡</span>
-              <span>Reconnected — This teleop session was recovered from a previous server session. You can still stop the process.</span>
-            </div>
-          )}
           {phase === "running" && (
-            <div className="flex flex-col gap-4">
-              {/* Camera feeds — full width */}
-              <div className={[
-                "grid gap-3",
-                selectedCameras.length <= 2
-                  ? "grid-cols-2"
-                  : selectedCameras.length === 3
-                    ? "grid-cols-3"
-                    : "grid-cols-4",
-              ].join(" ")}>
-                {selectedCameras.map((cam) => {
-                  const frameSrc = cameraFrames[cam.role];
-                  return (
-                    <div key={cam.role} className="relative rounded-lg overflow-hidden border border-zinc-200 dark:border-zinc-800">
-                      <div className="aspect-video bg-zinc-200 dark:bg-zinc-900 relative">
-                        {!pausedFeeds[cam.role] ? (
-                          frameSrc ? (
-                            <img src={frameSrc} alt={`${cam.role} stream`} className="absolute inset-0 h-full w-full object-cover" />
-                          ) : (
-                            <WireBox
-                              className="absolute inset-0 border-0 rounded-none"
-                              label={`MJPEG stream — ${cam.role}`}
-                            />
-                          )
-                        ) : (
-                          <div className="absolute inset-0 flex items-center justify-center text-zinc-600">
-                            <span className="text-sm flex items-center gap-1"><Pause size={10} className="fill-current" /> Paused</span>
-                          </div>
-                        )}
-
-                        {/* Overlays */}
-                        <div className="absolute top-2 left-2">
-                          <span className="px-1.5 py-0.5 rounded bg-red-500/80 text-white text-sm font-mono">LIVE</span>
-                        </div>
-                        <button
-                          onClick={() => toggleFeed(cam.role)}
-                          className="absolute top-2 right-2 p-1.5 rounded bg-black/50 text-white cursor-pointer hover:bg-black/70 transition-colors"
-                        >
-                          {pausedFeeds[cam.role]
-                            ? <Play size={10} className="fill-current" />
-                            : <Pause size={10} className="fill-current" />}
-                        </button>
-                      </div>
-                      <div className="px-3 py-2 bg-zinc-50 dark:bg-zinc-900">
-                        <div className="text-sm text-zinc-600 dark:text-zinc-300">{cam.role}</div>
-                        <div className="text-sm text-zinc-400 font-mono">{cam.path}</div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Session info */}
-              <div className="flex items-center gap-2 px-3 py-2 rounded border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/50">
-                <span className="text-sm text-zinc-500">
-                  {mode} · {speed} · {antiJitterAvailable
-                    ? (antiJitterEnabled ? `anti-jitter a=${antiJitterAlpha} d=${antiJitterDeadband}` : "anti-jitter off")
-                    : "anti-jitter unavailable"} · {debugEnabled ? "debug on" : "debug off"} · Cams: {selectedCameras.length}/{camerasMapped.length}
-                </span>
-              </div>
-
-              {debugTelemetryPanel}
-            </div>
+            <TeleopRunningView
+              teleopReconnected={teleopReconnected}
+              selectedCameras={selectedCameras}
+              cameraFrames={cameraFrames}
+              pausedFeeds={pausedFeeds}
+              onToggleFeed={toggleFeed}
+              mode={mode}
+              speed={speed}
+              antiJitterAvailable={antiJitterAvailable}
+              antiJitterEnabled={antiJitterEnabled}
+              antiJitterAlpha={antiJitterAlpha}
+              antiJitterDeadband={antiJitterDeadband}
+              debugEnabled={debugEnabled}
+              camerasMappedCount={camerasMapped.length}
+              debugTelemetry={(
+                <TeleopDebugTelemetryPanel
+                  debugEnabled={debugEnabled}
+                  debugMeta={debugMeta}
+                  debugSnapshot={debugSnapshot}
+                  debugJointRows={debugJointRows}
+                  debugAgeMs={debugAgeMs}
+                  wsReady={wsReady}
+                  loopMetrics={loopMetrics}
+                  selectedFollowerPort={selectedFollowerPort}
+                  selectedLeaderPort={selectedLeaderPort}
+                  selectedFollowerId={selectedFollowerId}
+                  selectedLeaderId={selectedLeaderId}
+                  selectedCamerasCount={selectedCameras.length}
+                  camerasMappedCount={camerasMapped.length}
+                  invertShoulderLift={invertShoulderLift}
+                  invertWristRoll={invertWristRoll}
+                  antiJitterEnabled={antiJitterEnabled}
+                  antiJitterAlpha={antiJitterAlpha}
+                  antiJitterDeadband={antiJitterDeadband}
+                  teleopLogsCount={teleopLogs.length}
+                  running={running}
+                />
+              )}
+            />
           )}
-        </div>
+        </section>
       </div>
 
-      {/* Sticky control bar */}
-      <StickyControlBar>
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="flex items-center gap-2">
-            <StatusBadge
-              status={running ? "running" : phase === "loading" ? "loading" : "ready"}
-              label={running ? "TELEOP ACTIVE" : phase === "loading" ? "STARTING..." : "READY"}
-              pulse={running}
-            />
-            <span className="text-sm text-zinc-400">
-              {running
-                ? `${mode} · ${speed}`
-                : phase === "loading"
-                  ? "Starting teleop…"
-                  : "Teleop ready"}
-            </span>
-          </div>
-
-          {(phase === "idle" || phase === "running") && (
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-zinc-400 whitespace-nowrap">Speed:</span>
-              <WireSelect
-                value={speed}
-                options={["0.1x", "0.25x", "0.5x", "0.75x", "1.0x"]}
-                onChange={setSpeed}
-                className="h-7 py-0"
-              />
-            </div>
-          )}
-        </div>
-
-        <div className="flex items-center gap-3">
-          <ProcessButtons
-            running={phase !== "idle"}
-            onStart={() => { void handleStart(); }}
-            onStop={() => { void handleStop(); }}
-            startLabel={<><Play size={13} className="fill-current" /> Start Teleop</>}
-            disabled={actionPending || (armLists.followers.length === 0 && armLists.leaders.length === 0)}
-            compact
-            buttonClassName="py-1"
-          />
-        </div>
-      </StickyControlBar>
+      <TeleopControlBar
+        running={running}
+        phase={phase}
+        mode={mode}
+        speed={speed}
+        onSpeedChange={setSpeed}
+        onStart={() => { void handleStart(); }}
+        onStop={() => { void handleStop(); }}
+        actionPending={actionPending}
+        hasMappedArms={armLists.followers.length > 0 || armLists.leaders.length > 0}
+      />
       </MotorMappingGate>
-      </UdevInstallGate>
     </div>
   );
 }

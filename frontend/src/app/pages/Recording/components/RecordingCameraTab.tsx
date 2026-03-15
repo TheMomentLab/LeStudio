@@ -46,6 +46,7 @@ export function RecordingCameraTab({
                 type="checkbox"
                 checked={enabledCameras.has(cam.role)}
                 onChange={() => toggleCamera(cam.role)}
+                aria-label={`Toggle ${cam.role} camera`}
                 className="accent-emerald-500"
               />
               <span className="text-sm text-zinc-600 dark:text-zinc-300 font-mono">{cam.role}</span>
@@ -56,6 +57,8 @@ export function RecordingCameraTab({
           <button
             onClick={() => setAdvStreamOpen(!advStreamOpen)}
             className="flex items-center gap-1 text-sm text-zinc-400 hover:text-zinc-600 cursor-pointer"
+            aria-expanded={advStreamOpen}
+            aria-label="Toggle advanced stream settings"
           >
             Advanced Stream Settings
             {advStreamOpen ? <ChevronUp size={10} /> : <ChevronDown size={10} />}

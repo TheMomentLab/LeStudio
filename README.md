@@ -129,6 +129,7 @@ Flags can be passed without explicitly typing `serve` — `lestudio --port 8080`
 
 - Default bind is local-only: `127.0.0.1`.
 - To expose on LAN, use: `lestudio serve --host 0.0.0.0`.
+- When the UI is opened from another machine, use the header `Remote` badge to save the LeStudio session token for that server. A prompt still appears as a fallback on the first state-changing action if no token is stored yet.
 - Default CORS allows localhost origins only (`localhost` / `127.0.0.1`).
 
 You can override CORS with environment variables:
@@ -149,21 +150,37 @@ For development compatibility only, `LESTUDIO_CORS_ORIGINS="*"` is supported but
 conda activate lerobot
 ```
 
+For contributor verification commands (`ruff`, `mypy`, pytest coverage helpers), install dev extras once:
+
+```bash
+make dev
+```
+
+Backend (with auto-reload on file changes):
+
+```bash
+lestudio serve --reload
+```
+
 Backend checks:
 
 ```bash
+python -m ruff check src/lestudio
+python -m mypy src/lestudio --ignore-missing-imports
 python -m compileall -q src/lestudio
 make test
 ```
 
-`make test` scopes pytest to `tests/` and sets `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1`, which avoids unrelated plugins from the ambient environment.
+`make test` scopes pytest to `tests/` and sets `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1`, which avoids unrelated plugins from the ambient environment. The backend CI job runs the same `ruff`, `mypy`, `compileall`, and pytest sequence before merge.
 
 Frontend checks:
 
 ```bash
 cd frontend
 npm ci
-npx tsc --noEmit
+npm run lint
+npm test -- --run
+npm run test:e2e
 npm run build
 ```
 

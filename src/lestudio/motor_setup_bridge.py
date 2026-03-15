@@ -43,6 +43,7 @@ def maybe_emit_event(text: str) -> None:
 
     if stripped.startswith("'") and "' motor id set to " in stripped:
         motor_part, _, id_part = stripped[1:].partition("' motor id set to ")
+        target_id: int | str
         try:
             target_id = int(id_part)
         except ValueError:
@@ -74,7 +75,17 @@ def maybe_emit_event(text: str) -> None:
         emit_event({"event": "baud_rate", "baud_rate": baudrate, "message": stripped})
         return
 
-    if any(token in stripped for token in ("Traceback", "ConnectionError:", "RuntimeError:", "NotImplementedError", "Failed to write", "Error:")):
+    if any(
+        token in stripped
+        for token in (
+            "Traceback",
+            "ConnectionError:",
+            "RuntimeError:",
+            "NotImplementedError",
+            "Failed to write",
+            "Error:",
+        )
+    ):
         emit_event({"event": "error", "message": stripped})
 
 

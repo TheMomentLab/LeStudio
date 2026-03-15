@@ -15,6 +15,15 @@ import type {
 } from "../../mock-api/handlers";
 import type { DevicesResponse } from "../store/types";
 import { getLeStudioState, setLeStudioState } from "../store";
+import { notifyInfo } from "./notifications";
+import {
+  clearStoredSessionToken,
+  readStoredSessionToken,
+  resolveApiOrigin,
+  SESSION_TOKEN_HEADER,
+  shouldPromptForSessionToken,
+  writeStoredSessionToken,
+} from "./sessionToken";
 
 const NETWORK_DELAY_MS = 120;
 const TRANSPORT_STORAGE_KEY = "wireframe-api-transport-mode";
@@ -53,7 +62,6 @@ const wsNonTrainListeners: Record<NonTrainProcessName, Set<(event: NonTrainOutpu
 };
 
 let wsSocket: WebSocket | null = null;
-let wsOpen = false;
 let wsEventSeq = 0;
 let wsTrainRunning: boolean | null = null;
 let lastDeviceGeneration = -1;
@@ -116,6 +124,53 @@ function buildApiUrl(path: string): string {
   return `${normalizedBase}${normalizedPath}`;
 }
 
+function getResolvedApiOrigin(): string {
+  const windowOrigin = typeof window === "undefined" ? "" : window.location.origin;
+  return resolveApiOrigin(getApiBaseUrl(), windowOrigin);
+}
+
+function promptForSessionToken(currentToken = ""): string {
+  if (typeof window === "undefined") {
+    return "";
+  }
+
+  const apiOrigin = getResolvedApiOrigin();
+  const entered = window.prompt(
+    "Remote LeStudio changes require the session token printed by the server. Paste it to continue, or save it from the header Remote badge.",
+    currentToken,
+  );
+  const normalized = typeof entered === "string" ? entered.trim() : "";
+  if (!normalized) {
+    clearStoredSessionToken(apiOrigin, window.localStorage);
+    return "";
+  }
+
+  writeStoredSessionToken(apiOrigin, normalized, window.localStorage);
+  notifyInfo("Saved LeStudio session token for this server.");
+  return normalized;
+}
+
+async function sendPassthroughMutation(
+  path: string,
+  method: "POST" | "DELETE",
+  body: unknown,
+  token: string,
+): Promise<Response> {
+  const headers = new Headers();
+  if (method === "POST") {
+    headers.set("Content-Type", "application/json");
+  }
+  if (token) {
+    headers.set(SESSION_TOKEN_HEADER, token);
+  }
+
+  return fetch(buildApiUrl(path), {
+    method,
+    headers,
+    ...(method === "POST" ? { body: JSON.stringify(body ?? {}) } : {}),
+  });
+}
+
 async function passthroughGet<T>(path: string): Promise<T> {
   const response = await fetch(buildApiUrl(path), { method: "GET" });
   const data = await response.json();
@@ -123,19 +178,47 @@ async function passthroughGet<T>(path: string): Promise<T> {
 }
 
 async function passthroughPost<T>(path: string, body?: unknown): Promise<T> {
-  const response = await fetch(buildApiUrl(path), {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body ?? {}),
-  });
+  const apiOrigin = getResolvedApiOrigin();
+  let token = typeof window === "undefined" ? "" : readStoredSessionToken(apiOrigin, window.localStorage);
+  let promptedForMissingToken = false;
+
+  if (typeof window !== "undefined" && shouldPromptForSessionToken(apiOrigin, token)) {
+    promptedForMissingToken = true;
+    token = promptForSessionToken(token);
+  }
+
+  let response = await sendPassthroughMutation(path, "POST", body, token);
+  if (response.status === 401 && typeof window !== "undefined" && !promptedForMissingToken) {
+    clearStoredSessionToken(apiOrigin, window.localStorage);
+    const retryToken = promptForSessionToken("");
+    if (retryToken) {
+      response = await sendPassthroughMutation(path, "POST", body, retryToken);
+    }
+  }
+
   const data = await response.json();
   return data as T;
 }
 
 async function passthroughDelete<T>(path: string): Promise<T> {
-  const response = await fetch(buildApiUrl(path), { method: "DELETE" });
+  const apiOrigin = getResolvedApiOrigin();
+  let token = typeof window === "undefined" ? "" : readStoredSessionToken(apiOrigin, window.localStorage);
+  let promptedForMissingToken = false;
+
+  if (typeof window !== "undefined" && shouldPromptForSessionToken(apiOrigin, token)) {
+    promptedForMissingToken = true;
+    token = promptForSessionToken(token);
+  }
+
+  let response = await sendPassthroughMutation(path, "DELETE", undefined, token);
+  if (response.status === 401 && typeof window !== "undefined" && !promptedForMissingToken) {
+    clearStoredSessionToken(apiOrigin, window.localStorage);
+    const retryToken = promptForSessionToken("");
+    if (retryToken) {
+      response = await sendPassthroughMutation(path, "DELETE", undefined, retryToken);
+    }
+  }
+
   const data = await response.json();
   return data as T;
 }
@@ -277,24 +360,20 @@ function connectTrainSocketIfNeeded(): void {
     wsSocket = new WebSocket(socketUrl);
   } catch {
     wsSocket = null;
-    wsOpen = false;
     return;
   }
 
   wsSocket.onopen = () => {
-    wsOpen = true;
     setLeStudioState({ wsReady: true });
   };
 
   wsSocket.onclose = () => {
-    wsOpen = false;
     wsSocket = null;
     wsTrainRunning = null;
     setLeStudioState({ wsReady: false });
   };
 
   wsSocket.onerror = () => {
-    wsOpen = false;
     setLeStudioState({ wsReady: false });
   };
 
@@ -504,7 +583,6 @@ function disconnectTrainSocket(): void {
   if (!wsSocket) return;
   wsSocket.close();
   wsSocket = null;
-  wsOpen = false;
 }
 
 export async function apiGet<T>(path: string): Promise<T> {

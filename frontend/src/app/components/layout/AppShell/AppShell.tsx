@@ -48,7 +48,12 @@ export function AppShell() {
 
           {mobileSidebarOpen && (
             <div className="md:hidden fixed inset-0 z-50 flex" data-testid="mobile-sidebar-overlay">
-              <div className="absolute inset-0 bg-black/50 animate-in fade-in duration-200" onClick={() => setMobileSidebarOpen(false)} />
+              <button
+                type="button"
+                className="absolute inset-0 border-0 bg-black/50 p-0 animate-in fade-in duration-200"
+                onClick={() => setMobileSidebarOpen(false)}
+                aria-label="Close navigation menu"
+              />
               <div className="relative z-10 h-full animate-in slide-in-from-left duration-200">
                 <Sidebar collapsed={false} onClose={() => setMobileSidebarOpen(false)} />
               </div>

@@ -62,6 +62,7 @@ export function MotorCard({
         <button
           onClick={() => onTargetChange(motor.id, Math.max(0, motor.target - 10))}
           className="size-7 flex items-center justify-center rounded border border-zinc-200 dark:border-zinc-700 text-zinc-500 hover:bg-zinc-50 dark:hover:bg-zinc-800 cursor-pointer text-sm"
+          aria-label={`Decrease motor ${motor.id} target`}
         >
           ▼
         </button>
@@ -71,11 +72,13 @@ export function MotorCard({
           onChange={(e) => onTargetChange(motor.id, Math.max(0, Math.min(4095, Number(e.target.value))))}
           min={0}
           max={4095}
+          aria-label={`Motor ${motor.id} target position`}
           className="flex-1 h-7 px-1.5 text-center text-sm font-mono rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-700 dark:text-zinc-300 outline-none focus:border-zinc-400 dark:focus:border-zinc-500"
         />
         <button
           onClick={() => onTargetChange(motor.id, Math.min(4095, motor.target + 10))}
           className="size-7 flex items-center justify-center rounded border border-zinc-200 dark:border-zinc-700 text-zinc-500 hover:bg-zinc-50 dark:hover:bg-zinc-800 cursor-pointer text-sm"
+          aria-label={`Increase motor ${motor.id} target`}
         >
           ▲
         </button>
@@ -83,6 +86,7 @@ export function MotorCard({
           onClick={() => onMove(motor.id, motor.target)}
           disabled={freewheel || motor.collision}
           className="px-2 h-7 rounded border border-zinc-200 dark:border-zinc-700 text-sm text-zinc-500 hover:bg-zinc-50 dark:hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+          aria-label={`Move motor ${motor.id} to target`}
         >
           Move
         </button>

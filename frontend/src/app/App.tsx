@@ -62,7 +62,14 @@ export default function App() {
 
   return (
     <ThemeProvider>
-      <RouterProvider router={router} />
+      <RouterProvider
+        router={router}
+        fallbackElement={(
+          <div className="min-h-screen flex items-center justify-center bg-zinc-50 text-sm text-zinc-500 dark:bg-zinc-950 dark:text-zinc-400">
+            Loading page...
+          </div>
+        )}
+      />
       <Toaster position="top-right" closeButton richColors />
     </ThemeProvider>
   );

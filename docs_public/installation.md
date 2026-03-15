@@ -69,6 +69,8 @@ make install
 The [custom lerobot fork](https://github.com/TheMomentLab/lerobot) is tracked as a git submodule.  
 `--recursive` pulls it automatically; `make install` installs both packages in editable mode.
 
+If you plan to contribute or run the full verification stack (`ruff`, `mypy`, pytest helpers), run `make dev` after the base install.
+
 ## Verify Installation
 
 ```bash

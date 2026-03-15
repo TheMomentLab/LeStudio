@@ -292,33 +292,34 @@ export function useEvalProgress({
     const nextLines = evalLogLines.slice(startIndex);
     if (!nextLines.length) return;
 
-    for (const lineItem of nextLines) {
-      const line = lineItem.text ?? "";
-      if (!line) continue;
+    const timer = window.setTimeout(() => {
+      for (const lineItem of nextLines) {
+        const line = lineItem.text ?? "";
+        if (!line) continue;
 
-      if (lineItem.kind === "error" || ERROR_MARKER.test(line)) {
-        markError();
-      }
+        if (lineItem.kind === "error" || ERROR_MARKER.test(line)) {
+          markError();
+        }
 
-      setLastMetricUpdateMs(lineItem.ts ?? Date.now());
+        setLastMetricUpdateMs(lineItem.ts ?? Date.now());
 
       // ── Starting step advancement ──
-      const curStep = startingStepRef.current;
-      if (curStep < EVAL_STARTING_STEPS.length) {
-        for (let s = curStep; s < EVAL_STARTING_STEPS.length; s++) {
-          if (EVAL_STARTING_STEPS[s].pattern.test(line)) {
-            startingStepRef.current = s + 1;
-            setStartingStep(s + 1);
-            break;
+        const curStep = startingStepRef.current;
+        if (curStep < EVAL_STARTING_STEPS.length) {
+          for (let s = curStep; s < EVAL_STARTING_STEPS.length; s++) {
+            if (EVAL_STARTING_STEPS[s].pattern.test(line)) {
+              startingStepRef.current = s + 1;
+              setStartingStep(s + 1);
+              break;
+            }
           }
         }
-      }
 
       // ── tqdm progress bar ──
       // Skip step-level tqdm (e.g. "Running rollout with at most N steps: X%|...|7/1000 [it/s, running_success_rate=...]")
       // Those track steps within an episode, not episode count.
-      const tqdmMatch = line.match(TQDM_PROGRESS_MARKER);
-      if (tqdmMatch && !STEP_TQDM_MARKER.test(line)) {
+        const tqdmMatch = line.match(TQDM_PROGRESS_MARKER);
+        if (tqdmMatch && !STEP_TQDM_MARKER.test(line)) {
         const pct = parseInt(tqdmMatch[1], 10);
         const done = parseInt(tqdmMatch[2], 10);
         const total = parseInt(tqdmMatch[3], 10);
@@ -329,7 +330,7 @@ export function useEvalProgress({
           startingStepRef.current = EVAL_STARTING_STEPS.length;
           setStartingStep(EVAL_STARTING_STEPS.length);
         }
-      } else if (tqdmMatch && STEP_TQDM_MARKER.test(line)) {
+        } else if (tqdmMatch && STEP_TQDM_MARKER.test(line)) {
         // step-level tqdm: parse step progress and running_success_rate
         const stepD = parseInt(tqdmMatch[2], 10);
         const stepT = parseInt(tqdmMatch[3], 10);
@@ -349,7 +350,7 @@ export function useEvalProgress({
       }
 
       // ── Episode total / done — skip step-tqdm lines ──
-      if (!STEP_TQDM_MARKER.test(line)) {
+        if (!STEP_TQDM_MARKER.test(line)) {
         const epTotalMatch =
           line.match(/(?:^|\s)(?:n_episodes|episodes)\s*[:=]\s*([0-9]+)/i) ||
           line.match(/episode\s*\d+\s*\/\s*([0-9]+)/i) ||
@@ -377,10 +378,10 @@ export function useEvalProgress({
       }
 
       // ── Per-episode result (e.g. "episode 3: reward=0.54 success=True frames=180") ──
-      const perEpMatch = line.match(
+        const perEpMatch = line.match(
         /episode\s*(\d+).*?reward\s*[:=]\s*([+-]?\d*\.?\d+(?:e[+-]?\d+)?)/i,
       );
-      if (perEpMatch) {
+        if (perEpMatch) {
         const epNum = parseInt(perEpMatch[1], 10);
         const reward = Number(perEpMatch[2]);
         if (Number.isFinite(epNum) && Number.isFinite(reward)) {
@@ -401,10 +402,10 @@ export function useEvalProgress({
       }
 
       // ── Aggregate success rate ──
-      const successMatch = line.match(
+        const successMatch = line.match(
         /\bsuccess(?:[_\s-]?rate)?\s*[:=]\s*([0-9]*\.?[0-9]+)\s*%?/i,
       );
-      if (successMatch) {
+        if (successMatch) {
         const parsed = parseSuccessPercent(successMatch[1]);
         if (parsed !== null) {
           setSuccessRate(parsed);
@@ -413,10 +414,10 @@ export function useEvalProgress({
       }
 
       // ── Aggregate reward ──
-      const rewardMatch = line.match(
+        const rewardMatch = line.match(
         /\b(?:mean[_\s-]?reward|avg[_\s-]?reward|episode[_\s-]?reward)\s*[:=]\s*([+-]?[0-9]*\.?[0-9]+(?:e[+-]?[0-9]+)?)/i,
       );
-      if (rewardMatch) {
+        if (rewardMatch) {
         const reward = Number(rewardMatch[1]);
         if (Number.isFinite(reward)) {
           setMeanReward(reward);
@@ -441,44 +442,44 @@ export function useEvalProgress({
       }
 
       // ── Final reward ──
-      const finalRewardMatch = line.match(
+        const finalRewardMatch = line.match(
         /(?:final|overall|eval)\s*(?:mean[_\s-]?reward|avg[_\s-]?reward|reward)\s*[:=]\s*([+-]?[0-9]*\.?[0-9]+(?:e[+-]?[0-9]+)?)/i,
       );
-      if (finalRewardMatch) {
+        if (finalRewardMatch) {
         const value = Number(finalRewardMatch[1]);
         if (Number.isFinite(value)) setFinalReward(value);
       }
 
       // ── Final success ──
-      const finalSuccessMatch = line.match(
+        const finalSuccessMatch = line.match(
         /(?:final|overall|eval)\s*(?:success(?:[_\s-]?rate)?)\s*[:=]\s*([0-9]*\.?[0-9]+)\s*%?/i,
       );
-      if (finalSuccessMatch) {
+        if (finalSuccessMatch) {
         const parsed = parseSuccessPercent(finalSuccessMatch[1]);
         if (parsed !== null) setFinalSuccess(parsed);
       }
 
       // ── Aggregated JSON keys ──
-      const aggregatedMatch = line.match(
+        const aggregatedMatch = line.match(
         /['"](?:sum_reward|avg_reward|mean_reward)['"]\s*:\s*([+-]?\d*\.?\d+(?:e[+-]?\d+)?)/i,
       );
-      if (aggregatedMatch) {
+        if (aggregatedMatch) {
         const val = Number(aggregatedMatch[1]);
         if (Number.isFinite(val))
           setFinalReward((prev) => prev ?? val);
       }
 
-      const aggregatedSuccessMatch = line.match(
+        const aggregatedSuccessMatch = line.match(
         /['"]pc_success['"]\s*:\s*([+-]?\d*\.?\d+(?:e[+-]?\d+)?)/i,
       );
-      if (aggregatedSuccessMatch) {
+        if (aggregatedSuccessMatch) {
         const val = Number(aggregatedSuccessMatch[1]);
         if (Number.isFinite(val))
           setFinalSuccess((prev) => prev ?? (val > 1 ? val : val * 100));
       }
 
       // ── Completion ──
-      if (COMPLETE_MARKER.test(line)) {
+        if (COMPLETE_MARKER.test(line)) {
         setProgressStatus((prev) => (prev === "error" ? "error" : "completed"));
         setEndedAtMs((prev) => prev ?? lineItem.ts ?? Date.now());
         setFinalReward((prev) =>
@@ -490,7 +491,7 @@ export function useEvalProgress({
       }
 
       // ── Process end ──
-      if (END_MARKER.test(line)) {
+        if (END_MARKER.test(line)) {
         setEndedAtMs((prev) => prev ?? lineItem.ts ?? Date.now());
         setProgressStatus((prev) => {
           if (prev === "error") return "error";
@@ -502,13 +503,16 @@ export function useEvalProgress({
           return "stopped";
         });
       }
-    }
+      }
 
-    processedLogsRef.current = evalLogLines.length;
-    processedTailRef.current = {
-      id: lastLine?.id ?? null,
-      ts: lastLine?.ts ?? null,
-    };
+      processedLogsRef.current = evalLogLines.length;
+      processedTailRef.current = {
+        id: lastLine?.id ?? null,
+        ts: lastLine?.ts ?? null,
+      };
+    }, 0);
+
+    return () => window.clearTimeout(timer);
   }, [
     evalLogLines,
     markError,
@@ -521,25 +525,28 @@ export function useEvalProgress({
   // ── Process running sync ─────────────────────────────────────────────────
 
   useEffect(() => {
-    if (running) {
-      setStartedAtMs((prev) => prev ?? Date.now());
-      setEndedAtMs(null);
-      setProgressStatus((prev) =>
-        prev === "starting" ||
-        prev === "error" ||
-        prev === "completed"
-          ? prev
-          : "running",
-      );
-      return;
-    }
-    if (startedAtMs && !endedAtMs) {
-      setEndedAtMs(Date.now());
-      setProgressStatus((prev) => {
-        if (prev === "completed" || prev === "error") return prev;
-        return doneEpisodesRef.current > 0 ? "stopped" : "idle";
-      });
-    }
+    const timer = window.setTimeout(() => {
+      if (running) {
+        setStartedAtMs((prev) => prev ?? Date.now());
+        setEndedAtMs(null);
+        setProgressStatus((prev) =>
+          prev === "starting" ||
+          prev === "error" ||
+          prev === "completed"
+            ? prev
+            : "running",
+        );
+        return;
+      }
+      if (startedAtMs && !endedAtMs) {
+        setEndedAtMs(Date.now());
+        setProgressStatus((prev) => {
+          if (prev === "completed" || prev === "error") return prev;
+          return doneEpisodesRef.current > 0 ? "stopped" : "idle";
+        });
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [running, startedAtMs, endedAtMs]);
 
   // ── Derived ──────────────────────────────────────────────────────────────

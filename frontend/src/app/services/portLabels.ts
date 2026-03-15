@@ -12,26 +12,31 @@ type ArmLike = { device?: string; path?: string; symlink?: string | null };
 
 export type PortOption = { value: string; label: string };
 
-/** Build port options with human-readable symlink labels for WireSelect dropdowns */
-export function buildPortOptions(arms: ArmLike[]): PortOption[] {
-  return arms.map((a) => {
-    const path = a.path ?? `/dev/${a.device}`;
-    const label = a.symlink ? `${symToDisplayLabel(a.symlink)}  (${path})` : path;
-    return { value: path, label };
-  });
+/**
+ * Role-based sort priority: leader first, follower second, unmapped last.
+ * Within the same role, sort by trailing number (arm 1 before arm 2).
+ */
+function portSortKey(symlink: string | null | undefined): [number, number] {
+  if (!symlink) return [2, 0];
+  const lower = symlink.toLowerCase();
+  const role = lower.includes("leader") ? 0 : lower.includes("follower") ? 1 : 2;
+  const numMatch = lower.match(/(\d+)$/);
+  const num = numMatch ? Number(numMatch[1]) : 0;
+  return [role, num];
 }
 
-/**
- * Build port options from raw symlink-based paths like "/dev/leader_arm_1".
- * Used by pages that only have string paths (Teleop, Recording).
- */
-export function buildPortOptionsFromPaths(ports: string[]): PortOption[] {
-  return ports.map((p) => {
-    const match = p.match(/^\/dev\/([a-zA-Z][\w]*)$/);
-    if (match && match[1] && !/^tty/.test(match[1])) {
-      // It's a symlink path like /dev/leader_arm_1
-      return { value: p, label: `${symToDisplayLabel(match[1])}  (${p})` };
-    }
-    return { value: p, label: p };
-  });
+/** Build port options with human-readable symlink labels, sorted by role (leader → follower → unmapped) */
+export function buildPortOptions(arms: ArmLike[]): PortOption[] {
+  return arms
+    .map((a) => {
+      const path = a.path ?? `/dev/${a.device}`;
+      const label = a.symlink ? `${symToDisplayLabel(a.symlink)}  (${path})` : path;
+      return { value: path, label, _sym: a.symlink };
+    })
+    .sort((a, b) => {
+      const [aRole, aNum] = portSortKey(a._sym);
+      const [bRole, bNum] = portSortKey(b._sym);
+      return aRole !== bRole ? aRole - bRole : aNum - bNum;
+    })
+    .map(({ value, label }) => ({ value, label }));
 }

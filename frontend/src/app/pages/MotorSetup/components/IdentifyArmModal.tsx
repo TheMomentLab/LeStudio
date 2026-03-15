@@ -301,7 +301,7 @@ export function IdentifyArmModal({ open, arms, onClose, onComplete }: IdentifyAr
       />
 
       {/* Modal panel */}
-      <div className="relative w-full max-w-md mx-4 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 shadow-2xl">
+      <div className="relative w-full max-w-lg mx-4 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-200 dark:border-zinc-800">
           <div className="flex items-center gap-2">

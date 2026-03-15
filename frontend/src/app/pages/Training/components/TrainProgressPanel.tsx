@@ -1,9 +1,10 @@
-import { AlertTriangle, Cpu, RotateCcw } from "lucide-react";
+import { Cpu } from "lucide-react";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import { StatusBadge } from "../../../components/wireframe";
 import { cn } from "../../../components/ui/utils";
 import { CustomTooltip } from "./CustomTooltip";
+import { TrainOomBanner } from "./TrainOomBanner";
 
 interface TrainProgressPanelProps {
   currentStep: number;
@@ -132,21 +133,12 @@ export function TrainProgressPanel({
         )}
       </div>
 
-      {oomDetected && (
-        <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-3.5 flex items-start gap-2.5">
-          <AlertTriangle size={14} className="text-red-600 dark:text-red-400 flex-none mt-0.5" />
-          <div className="flex-1">
-            <p className="text-sm text-red-600 dark:text-red-400 mb-1">GPU Out of Memory (OOM)</p>
-            <p className="text-sm text-zinc-400">VRAM insufficient. Try reducing Training Steps or switching to CPU/MPS. Retry?</p>
-          </div>
-          <button
-            onClick={onRetryAfterOom}
-            className="flex items-center gap-1 px-4 py-2 rounded-lg border border-red-500/40 bg-red-500/10 text-red-600 dark:text-red-400 text-sm cursor-pointer hover:bg-red-500/20"
-          >
-            <RotateCcw size={12} /> Reduce &amp; Retry
-          </button>
-        </div>
-      )}
+      <TrainOomBanner
+        visible={oomDetected}
+        onRetry={onRetryAfterOom}
+        message="VRAM insufficient. Try reducing Training Steps or switching to CPU/MPS. Retry?"
+        retryLabel="Reduce & Retry"
+      />
     </div>
   );
 }

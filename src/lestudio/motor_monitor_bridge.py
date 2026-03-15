@@ -6,10 +6,12 @@ FeetechMotorsBus를 FastAPI 프로세스 내에서 직접 래핑하여
 subprocess를 쓰지 않으므로 포트 점유 상태를 동일 프로세스에서 관리할 수 있고,
 teleop/record/calibrate 시작 시 명시적으로 disconnect()를 호출해 포트를 반환한다.
 """
+
 from __future__ import annotations
 
 import logging
 import threading
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -26,8 +28,8 @@ except ImportError:
     _LEROBOT_AVAILABLE = False
 
 # 충돌 감지 기본 임계값 (CheckFeetechMotors 기준)
-DEFAULT_LOAD_THRESHOLD = 1023     # Present_Load (0~1023)
-DEFAULT_CURRENT_THRESHOLD = 800   # Present_Current (mA)
+DEFAULT_LOAD_THRESHOLD = 1023  # Present_Load (0~1023)
+DEFAULT_CURRENT_THRESHOLD = 800  # Present_Current (mA)
 
 
 class MotorMonitorBridge:
@@ -43,7 +45,7 @@ class MotorMonitorBridge:
     """
 
     def __init__(self) -> None:
-        self._bus: object | None = None
+        self._bus: Any | None = None
         self._motor_ids: list[int] = []
         self._lock = threading.Lock()
         self._connected = False
@@ -64,6 +66,7 @@ class MotorMonitorBridge:
         self._aux_read_counter: int = 0
         self._aux_read_every: int = 5
         self._cached_aux: dict[int, dict] = {}
+
     # ── 읽기 전용 프로퍼티 ──────────────────────────────────────────────────
 
     @property
@@ -144,7 +147,7 @@ class MotorMonitorBridge:
             except Exception as exc:
                 return {"ok": False, "error": str(exc)}
 
-    def _setup_motor(self, bus: object, motor_name: str) -> None:
+    def _setup_motor(self, bus: Any, motor_name: str) -> None:
         """모터를 position 모드로 초기화한다.
 
         motorcheckgui + CheckFeetechMotors의 _setup_motor_runtime() 시퀀스:
@@ -206,7 +209,7 @@ class MotorMonitorBridge:
 
             # Load/Current 읽을 차례인지 결정
             self._aux_read_counter += 1
-            read_aux = (self._aux_read_counter % self._aux_read_every == 0)
+            read_aux = self._aux_read_counter % self._aux_read_every == 0
 
             motors_data: dict[int, dict] = {}
             for mid in self._motor_ids:
@@ -244,7 +247,9 @@ class MotorMonitorBridge:
                     if load_val > self._load_threshold or current_val > self._current_threshold:
                         logger.warning(
                             "Collision detected on motor %d (load=%d, current=%d)",
-                            mid, load_val, current_val,
+                            mid,
+                            load_val,
+                            current_val,
                         )
                         try:
                             self._bus.write("Torque_Enable", name, TorqueMode.DISABLED.value, normalize=False)

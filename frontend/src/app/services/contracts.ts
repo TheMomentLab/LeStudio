@@ -386,12 +386,6 @@ function extractShortPath(policyPath: string): string {
   return parts.slice(-2).join("/");
 }
 
-function formatTimeOnly(ts: string): string {
-  // "2026-02-28T11:09:42" → "11:09"
-  const match = ts.match(/T?(\d{2}:\d{2})/);
-  return match ? match[1] : ts;
-}
-
 function summarizeHistoryEntry(type: string, meta: string): string {
   const category = classifyEvent(type);
   const isEnd = type.endsWith("_end");

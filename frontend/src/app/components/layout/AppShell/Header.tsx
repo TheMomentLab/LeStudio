@@ -1,11 +1,19 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { NavLink } from "react-router";
-import { Moon, Sun, Menu } from "lucide-react";
+import { KeyRound, Moon, Sun, Menu } from "lucide-react";
 import { buttonStyles } from "../../ui/button";
 import { cn } from "../../ui/utils";
 import { useTheme } from "../../../theme-context";
 import { useHfAuth } from "../../../hf-auth-context";
 import { apiDelete, apiPost } from "../../../services/apiClient";
+import {
+  clearStoredSessionToken,
+  describeApiOrigin,
+  isRemoteApiOrigin,
+  readStoredSessionToken,
+  resolveApiOrigin,
+  writeStoredSessionToken,
+} from "../../../services/sessionToken";
 import { useLeStudioStore } from "../../../store";
 import { Popover, PopoverTrigger, PopoverContent } from "../../ui/popover";
 
@@ -27,6 +35,33 @@ export function Header({
   const [savingHfToken, setSavingHfToken] = useState(false);
   const [deletingHfToken, setDeletingHfToken] = useState(false);
   const [hfPopoverOpen, setHfPopoverOpen] = useState(false);
+  const apiOrigin = useMemo(() => {
+    const windowOrigin = typeof window === "undefined" ? "" : window.location.origin;
+    return resolveApiOrigin(String(import.meta.env.VITE_API_BASE_URL ?? ""), windowOrigin);
+  }, []);
+  const remoteSessionEnabled = isRemoteApiOrigin(apiOrigin);
+  const [remotePopoverOpen, setRemotePopoverOpen] = useState(false);
+  const [sessionTokenInput, setSessionTokenInput] = useState("");
+  const [sessionTokenSaved, setSessionTokenSaved] = useState(() => (
+    typeof window !== "undefined"
+      ? !!readStoredSessionToken(apiOrigin, window.localStorage)
+      : false
+  ));
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      if (typeof window === "undefined") return;
+      const stored = readStoredSessionToken(apiOrigin, window.localStorage);
+      setSessionTokenSaved(!!stored);
+      setSessionTokenInput(stored);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [apiOrigin]);
+
+  const remoteLabel = sessionTokenSaved ? "Remote OK" : "Remote";
+  const remoteTitle = sessionTokenSaved
+    ? `Session token saved for ${describeApiOrigin(apiOrigin)}`
+    : `Session token required for remote changes on ${describeApiOrigin(apiOrigin)}`;
 
   const wsColor = {
     connected: "bg-emerald-400",
@@ -87,6 +122,103 @@ export function Header({
       <div className="flex-1" />
 
       <div className="flex items-center gap-1.5">
+        {remoteSessionEnabled && (
+          <Popover open={remotePopoverOpen} onOpenChange={setRemotePopoverOpen}>
+            <PopoverTrigger asChild>
+              <button
+                className={cn(
+                  "flex items-center gap-1.5 px-2.5 py-1 rounded border text-sm cursor-pointer transition-colors",
+                  sessionTokenSaved
+                    ? "border-zinc-200 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400"
+                    : "border-amber-500/30 text-amber-600 dark:text-amber-400 bg-amber-500/5",
+                )}
+                title={remoteTitle}
+                aria-label={remoteTitle}
+              >
+                <KeyRound size={12} />
+                <span>{remoteLabel}</span>
+              </button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-80 bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-700 p-0">
+              <div className="px-3 py-2.5 border-b border-zinc-100 dark:border-zinc-800">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-medium text-zinc-700 dark:text-zinc-200">Remote Session Token</span>
+                  <span className="text-xs text-zinc-400 font-mono">{describeApiOrigin(apiOrigin)}</span>
+                </div>
+                <p className="text-xs text-zinc-400 mt-0.5">
+                  Remote LeStudio changes require the session token printed by the server at startup.
+                </p>
+              </div>
+              <div className="p-3 flex flex-col gap-2">
+                <input
+                  type="password"
+                  value={sessionTokenInput}
+                  onChange={(e) => setSessionTokenInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key !== "Enter") return;
+                    e.preventDefault();
+                    const token = sessionTokenInput.trim();
+                    if (typeof window === "undefined") return;
+                    if (!token) {
+                      addToast("Enter session token.", "error");
+                      return;
+                    }
+                    writeStoredSessionToken(apiOrigin, token, window.localStorage);
+                    setSessionTokenSaved(true);
+                    setSessionTokenInput(token);
+                    addToast("Remote session token saved.", "success");
+                    setRemotePopoverOpen(false);
+                  }}
+                  placeholder="Paste LeStudio token"
+                  aria-label="LeStudio session token"
+                  className="w-full px-2.5 py-1.5 rounded border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 text-sm text-zinc-700 dark:text-zinc-200 placeholder:text-zinc-400 outline-none focus:border-zinc-400 dark:focus:border-zinc-500 transition-colors"
+                />
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      const token = sessionTokenInput.trim();
+                      if (typeof window === "undefined") return;
+                      if (!token) {
+                        addToast("Enter session token.", "error");
+                        return;
+                      }
+                      writeStoredSessionToken(apiOrigin, token, window.localStorage);
+                      setSessionTokenSaved(true);
+                      setSessionTokenInput(token);
+                      addToast("Remote session token saved.", "success");
+                      setRemotePopoverOpen(false);
+                    }}
+                    className={buttonStyles({
+                      variant: "primary",
+                      tone: "neutral",
+                      className: "flex-1 h-auto px-3 py-1.5 justify-center",
+                    })}
+                    disabled={!sessionTokenInput.trim()}
+                  >
+                    Save Token
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (typeof window === "undefined") return;
+                      clearStoredSessionToken(apiOrigin, window.localStorage);
+                      setSessionTokenSaved(false);
+                      setSessionTokenInput("");
+                      addToast("Remote session token cleared.", "success");
+                    }}
+                    className={buttonStyles({
+                      variant: "secondary",
+                      tone: "danger",
+                      className: "h-auto px-3 py-1.5 justify-center",
+                    })}
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
+            </PopoverContent>
+          </Popover>
+        )}
+
         <Popover open={hfPopoverOpen} onOpenChange={setHfPopoverOpen}>
           <PopoverTrigger asChild>
             <button

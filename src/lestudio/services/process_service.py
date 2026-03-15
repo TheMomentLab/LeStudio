@@ -4,6 +4,7 @@ import datetime
 import logging
 import os
 from pathlib import Path
+from typing import cast
 
 import cv2
 
@@ -360,7 +361,7 @@ def calibrate_list() -> dict:
                     "guessed_type": guessed_type,
                 }
             )
-    files.sort(key=lambda x: x["timestamp"], reverse=True)
+    files.sort(key=lambda x: cast(float, x["timestamp"]), reverse=True)
     return {"files": files}
 
 

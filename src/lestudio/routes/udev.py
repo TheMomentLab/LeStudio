@@ -16,6 +16,7 @@ from .._udev_helpers import (
     _build_rules,
     _manual_udev_install_commands,
     _parse_udev_rules,
+    _remove_rules,
 )
 from ..capabilities import Capability, register
 from ._state import AppState
@@ -24,6 +25,7 @@ logger = logging.getLogger(__name__)
 
 register("/api/rules/preview", Capability.HARDWARE_CONTROL)
 register("/api/rules/apply", Capability.HARDWARE_CONTROL)
+register("/api/rules/remove", Capability.HARDWARE_CONTROL)
 
 
 def create_router(state: AppState) -> APIRouter:
@@ -67,7 +69,16 @@ def create_router(state: AppState) -> APIRouter:
             (os.environ.get("DISPLAY") or "").strip() or (os.environ.get("WAYLAND_DISPLAY") or "").strip()
         )
         gui_auth_available = pkexec_available and graphical_session
-        rules_installed = state.rules_path.exists()
+        rules_installed = False
+        if state.rules_path.exists():
+            try:
+                content = state.rules_path.read_text()
+                # File exists but only has comments/blanks → treat as not installed
+                rules_installed = any(
+                    line.strip() and not line.strip().startswith("#") for line in content.splitlines()
+                )
+            except OSError:
+                rules_installed = False
         install_needed = not rules_installed
         needs_root_for_install = install_needed and not (sudo_noninteractive or gui_auth_available)
         return {
@@ -125,6 +136,15 @@ def create_router(state: AppState) -> APIRouter:
             "fallback_rules_path": str(state.fallback_rules_path),
             "manual_commands": _manual_udev_install_commands(state.fallback_rules_path, state.rules_path),
         }
+
+    @router.delete("/api/rules/remove")
+    async def api_rules_remove():
+        ok, err = _remove_rules(state.rules_path, state.fallback_rules_path)
+        if ok:
+            logger.info("udev rules removed successfully")
+        else:
+            logger.warning("udev rules removal failed: %s", err)
+        return {"ok": ok, "error": err}
 
     @router.get("/api/rules/verify")
     def api_rules_verify():

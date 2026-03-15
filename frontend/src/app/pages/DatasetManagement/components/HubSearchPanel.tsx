@@ -82,34 +82,39 @@ export function HubSearchPanel() {
 
   useEffect(() => {
     if (hfAuth !== "ready") {
-      setMyHubLoading(false);
-      setMyHubDatasets([]);
-      return;
+      const timer = window.setTimeout(() => {
+        setMyHubLoading(false);
+        setMyHubDatasets([]);
+      }, 0);
+      return () => window.clearTimeout(timer);
     }
 
     let cancelled = false;
-    setMyHubLoading(true);
+    const timer = window.setTimeout(() => {
+      setMyHubLoading(true);
 
-    void apiGet<MyHubDatasetsResponse>("/api/hf/my-datasets?limit=50")
-      .then((res) => {
-        if (cancelled) return;
-        if (res.ok) {
-          setMyHubDatasets(Array.isArray(res.datasets) ? res.datasets : []);
-          setMyHubUsername(typeof res.username === "string" && res.username ? res.username : "lerobot-user");
-          return;
-        }
-        setMyHubDatasets([]);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setMyHubDatasets([]);
-      })
-      .finally(() => {
-        if (!cancelled) setMyHubLoading(false);
-      });
+      void apiGet<MyHubDatasetsResponse>("/api/hf/my-datasets?limit=50")
+        .then((res) => {
+          if (cancelled) return;
+          if (res.ok) {
+            setMyHubDatasets(Array.isArray(res.datasets) ? res.datasets : []);
+            setMyHubUsername(typeof res.username === "string" && res.username ? res.username : "lerobot-user");
+            return;
+          }
+          setMyHubDatasets([]);
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setMyHubDatasets([]);
+        })
+        .finally(() => {
+          if (!cancelled) setMyHubLoading(false);
+        });
+    }, 0);
 
     return () => {
       cancelled = true;
+      window.clearTimeout(timer);
     };
   }, [hfAuth, myHubReloadToken]);
 
