@@ -1,4 +1,5 @@
 import type { LeStudioConfig } from "../store/types";
+import { getDefaults } from "./robotPolicy";
 
 type CameraMapping = { role: string; path: string };
 
@@ -88,7 +89,7 @@ function normalizeMode(modeLabel: string): "single" | "bi" {
 }
 
 function normalizeRobotTypeForMode(cfg: RecordLike, mode: "single" | "bi"): string {
-  const fallback = mode === "bi" ? "bi_so_follower" : "so101_follower";
+  const fallback = getDefaults(mode).robot_type;
   const value = getString(cfg, "robot_type", fallback).trim();
   if (!value) return fallback;
   if (mode === "bi") return value.startsWith("bi_") ? value : fallback;
@@ -96,7 +97,7 @@ function normalizeRobotTypeForMode(cfg: RecordLike, mode: "single" | "bi"): stri
 }
 
 function normalizeTeleopTypeForMode(cfg: RecordLike, mode: "single" | "bi"): string {
-  const fallback = mode === "bi" ? "bi_so_leader" : "so101_leader";
+  const fallback = getDefaults(mode).teleop_type;
   const value = getString(cfg, "teleop_type", fallback).trim();
   if (!value) return fallback;
   if (mode === "bi") return value.startsWith("bi_") ? value : fallback;
@@ -303,6 +304,7 @@ export function toBackendEvalPayload(input: {
   config: LeStudioConfig;
 }): RecordLike {
   const cfg = asRecord(input.config) ?? {};
+  const evalDefaults = getDefaults(getString(cfg, "robot_mode", "single").toLowerCase().includes("bi") ? "bi" : "single");
   const cameraByRole = new Map(input.cameraCatalog.map((camera) => [camera.role, camera.path]));
   const cameras: Record<string, string> = {};
   for (const [imageKey, role] of Object.entries(input.cameraMapping)) {
@@ -320,8 +322,8 @@ export function toBackendEvalPayload(input: {
     eval_episodes: Math.max(1, Math.floor(input.episodes || 1)),
     eval_device: normalizeDeviceKey(input.deviceLabel),
     eval_task: input.task,
-    eval_robot_type: getString(cfg, "eval_robot_type", getString(cfg, "robot_type", "so101_follower")),
-    eval_teleop_type: getString(cfg, "eval_teleop_type", getString(cfg, "teleop_type", "so101_leader")),
+    eval_robot_type: getString(cfg, "eval_robot_type", getString(cfg, "robot_type", evalDefaults.robot_type)),
+    eval_teleop_type: getString(cfg, "eval_teleop_type", getString(cfg, "teleop_type", evalDefaults.teleop_type)),
     cameras,
     record_cam_width: getNumber(cfg, "record_cam_width", 640),
     record_cam_height: getNumber(cfg, "record_cam_height", 480),

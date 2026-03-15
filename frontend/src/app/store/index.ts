@@ -8,7 +8,7 @@ import type {
   SidebarSignals,
   StoreSelector,
 } from "./types";
-import { DEFAULT_SIDEBAR_SIGNALS } from "./types";
+import { DEFAULT_SIDEBAR_SIGNALS, DEFAULT_TYPE_CATALOG_RESPONSE } from "./types";
 
 const MAX_LOG_LINES = 1200;
 const ACTIVE_TAB_STORAGE_KEY = "lestudio.active-tab";
@@ -36,6 +36,13 @@ function notifyListeners(): void {
 
 function uid(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function findLastLogIndex(lines: { replace?: string }[], replace: string): number {
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    if (lines[index]?.replace === replace) return index;
+  }
+  return -1;
 }
 
 function loadInitialActiveTab(): AppTab {
@@ -105,13 +112,20 @@ const actions: LeStudioStoreActions = {
   setApiSupport: (key, value) => {
     setState((prev) => ({ apiSupport: { ...prev.apiSupport, [key]: value } }));
   },
+  setTypeCatalog: (catalog) => {
+    setState({
+      typeCatalog: catalog,
+      typeCatalogVersion: catalog.version,
+      typeCatalogLoaded: true,
+    });
+  },
   appendLog: (processName, text, kind, replace) => {
     setState((prev) => {
       const existing = prev.logLines[processName] ?? [];
       let next: typeof existing;
       if (replace) {
         // Replace the last entry with the same replace tag instead of appending
-        const idx = existing.findLastIndex((l) => l.replace === replace);
+        const idx = findLastLogIndex(existing, replace);
         if (idx >= 0) {
           next = [...existing];
           next[idx] = { id: next[idx].id, text, kind, ts: Date.now(), replace };
@@ -181,6 +195,9 @@ let storeState: LeStudioStoreState = {
   wsReady: false,
   apiHealth: { resources: true, history: true },
   apiSupport: { resources: true, history: true },
+  typeCatalog: DEFAULT_TYPE_CATALOG_RESPONSE,
+  typeCatalogVersion: DEFAULT_TYPE_CATALOG_RESPONSE.version,
+  typeCatalogLoaded: false,
   hfUsername: null,
   datasets: [],
   loadingDatasets: false,
@@ -214,6 +231,9 @@ export function resetLeStudioState(overrides?: Partial<LeStudioConfig>): void {
     wsReady: false,
     apiHealth: { resources: true, history: true },
     apiSupport: { resources: true, history: true },
+    typeCatalog: DEFAULT_TYPE_CATALOG_RESPONSE,
+    typeCatalogVersion: DEFAULT_TYPE_CATALOG_RESPONSE.version,
+    typeCatalogLoaded: false,
     hfUsername: null,
     datasets: [],
     loadingDatasets: false,

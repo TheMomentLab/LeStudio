@@ -11,6 +11,7 @@ import { useLeStudioStore } from "./store";
 export default function App() {
   const setConfig = useLeStudioStore((s) => s.setConfig);
   const setDevices = useLeStudioStore((s) => s.setDevices);
+  const setTypeCatalog = useLeStudioStore((s) => s.setTypeCatalog);
   const setSidebarSignals = useLeStudioStore((s) => s.setSidebarSignals);
   const setHfUsername = useLeStudioStore((s) => s.setHfUsername);
   const setProcStatus = useLeStudioStore((s) => s.setProcStatus);
@@ -30,6 +31,7 @@ export default function App() {
 
       setConfig(withPrefilledRepoIds(result.config, result.hfUsername));
       setDevices(result.devices);
+      setTypeCatalog(result.typeCatalog);
       setSidebarSignals(result.sidebarSignals);
       setHfUsername(result.hfUsername);
 
@@ -58,17 +60,12 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [addToast, setConfig, setDevices, setHfUsername, setProcStatus, setProcReconnected, setSidebarSignals]);
+  }, [addToast, setConfig, setDevices, setHfUsername, setProcStatus, setProcReconnected, setSidebarSignals, setTypeCatalog]);
 
   return (
     <ThemeProvider>
       <RouterProvider
         router={router}
-        fallbackElement={(
-          <div className="min-h-screen flex items-center justify-center bg-zinc-50 text-sm text-zinc-500 dark:bg-zinc-950 dark:text-zinc-400">
-            Loading page...
-          </div>
-        )}
       />
       <Toaster position="top-right" closeButton richColors />
     </ThemeProvider>
