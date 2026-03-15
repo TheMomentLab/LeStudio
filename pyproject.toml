@@ -64,6 +64,7 @@ addopts = "--ignore=src/lerobot -p no:launch_testing -p no:launch_ros"
 testpaths = ["tests"]
 markers = [
     "smoke_hw: hardware smoke tests that require physical devices (/dev/video*, /dev/tty*)",
+    "lerobot: tests that require the lerobot submodule",
 ]
 
 

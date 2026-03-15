@@ -5,9 +5,13 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import pytest
+from pytest import MonkeyPatch
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "lerobot" / "src"))
 
+pytest.importorskip("lerobot.motors.motors_bus", reason="lerobot submodule not available")
 from lerobot.motors.motors_bus import MotorCalibration
 from lerobot.robots.so_follower.so_follower import SO_ARM_DRIVE_MODES as FOLLOWER_DRIVE_MODES
 from lerobot.robots.so_follower.so_follower import FIRST_SYNC_READ_RETRIES
@@ -16,7 +20,8 @@ from lerobot.robots.so_follower.so_follower import SOFollower
 from lerobot.robots.so_follower.so_follower import _apply_default_so_drive_modes as apply_follower_drive_modes
 from lerobot.teleoperators.so_leader.so_leader import SO_ARM_DRIVE_MODES as LEADER_DRIVE_MODES
 from lerobot.teleoperators.so_leader.so_leader import _apply_default_so_drive_modes as apply_leader_drive_modes
-from pytest import MonkeyPatch
+
+pytestmark = pytest.mark.lerobot
 
 
 def make_zero_drive_mode_calibration() -> dict[str, MotorCalibration]:

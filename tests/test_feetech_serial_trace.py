@@ -6,12 +6,16 @@ import io
 import sys
 from pathlib import Path
 
+import pytest
 from pytest import MonkeyPatch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "lerobot" / "src"))
 
+pytest.importorskip("lerobot.motors.feetech.feetech", reason="lerobot submodule not available")
 from lerobot.motors.feetech import feetech
+
+pytestmark = pytest.mark.lerobot
 
 
 def test_nearest_representable_homing_offset_wraps_extra_turns():
