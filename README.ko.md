@@ -11,15 +11,19 @@
 
 내부 구조 문서:
 
-- [내부 문서 맵](docs/README.md)
-- [현재 아키텍처](docs/current-architecture.md)
-- [API 및 스트리밍](docs/api-and-streaming.md)
+- [내부 문서 맵](docs_public/docs-map.md)
+- [현재 아키텍처](docs_public/current-architecture.md)
+- [API 및 스트리밍](docs_public/api-and-streaming.md)
 
 ## 스크린샷
 
-| 상태 | 녹화 |
+| 상태 | 모터 셋업 |
 |---|---|
-| ![Status](docs_public/assets/screenshot-status.png) | ![Record](docs_public/assets/screenshot-record.png) |
+| ![Status](docs_public/assets/screenshot-status.png) | ![Motor Setup](docs_public/assets/screenshot-motor-setup.png) |
+
+| 카메라 설정 | 텔레옵 |
+|---|---|
+| ![Camera Setup](docs_public/assets/screenshot-camera.png) | ![Teleop](docs_public/assets/screenshot-teleop.png) |
 
 | 데이터셋 | 학습 |
 |---|---|
@@ -196,7 +200,7 @@ CI는 모든 push 시 이 검사를 자동으로 실행합니다: `.github/workf
 make test-hw
 ```
 
-PR에서 사용자에게 보이는 기능이나 상위 소개 문서를 바꾸면 `docs/feature-spec.md`, `README.md`, `README.ko.md`를 같은 변경에서 함께 갱신하세요.
+PR에서 사용자에게 보이는 기능이나 상위 소개 문서를 바꾸면 `docs_public/feature-spec.md`, `README.md`, `README.ko.md`를 같은 변경에서 함께 갱신하세요.
 
 ## 워크플로우 가이드
 

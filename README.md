@@ -11,15 +11,19 @@ A web-based GUI workbench for [Hugging Face LeRobot](https://github.com/huggingf
 
 Architecture docs:
 
-- [Internal Docs Map](docs/README.md)
-- [Current Architecture](docs/current-architecture.md)
-- [API and Streaming](docs/api-and-streaming.md)
+- [Internal Docs Map](docs_public/docs-map.md)
+- [Current Architecture](docs_public/current-architecture.md)
+- [API and Streaming](docs_public/api-and-streaming.md)
 
 ## Screenshots
 
-| Status | Record |
+| Status | Motor Setup |
 |---|---|
-| ![Status](docs_public/assets/screenshot-status.png) | ![Record](docs_public/assets/screenshot-record.png) |
+| ![Status](docs_public/assets/screenshot-status.png) | ![Motor Setup](docs_public/assets/screenshot-motor-setup.png) |
+
+| Camera Setup | Teleop |
+|---|---|
+| ![Camera Setup](docs_public/assets/screenshot-camera.png) | ![Teleop](docs_public/assets/screenshot-teleop.png) |
 
 | Dataset | Train |
 |---|---|
@@ -196,7 +200,7 @@ Hardware smoke checks (real devices only, opt-in):
 make test-hw
 ```
 
-When a pull request changes user-visible capabilities or top-level product messaging, update `docs/feature-spec.md`, `README.md`, and `README.ko.md` as part of the same change.
+When a pull request changes user-visible capabilities or top-level product messaging, update `docs_public/feature-spec.md`, `README.md`, and `README.ko.md` as part of the same change.
 
 ## Workflow Guide
 
