@@ -26,6 +26,7 @@ import {
   type ArmSelection,
   type ResolvedArmConfig,
 } from "../services/armSets";
+import { getResolvedConfigSignature } from "../components/wireframe/armPairSelectorState";
 import { getDefaults } from "../services/robotPolicy";
 import { toVideoName, useCameraFeeds } from "../hooks/useCameraFeeds";
 import {
@@ -180,6 +181,7 @@ export function Teleop() {
   const invertShoulderLift = getConfigBoolean(configRecord, "teleop_invert_shoulder_lift", false);
   const invertWristRoll = getConfigBoolean(configRecord, "teleop_invert_wrist_roll", false);
   const teleopLogs = teleopLogLines ?? EMPTY_TELEOP_LOGS;
+  const lastResolvedConfigSignatureRef = useRef<string | null>(null);
   const effectiveConfig = useMemo(() => ({
     ...config,
     follower_port: selectedFollowerPort || configRecord.follower_port,
@@ -279,6 +281,11 @@ export function Teleop() {
   }, [updateConfig]);
 
   const handleArmSetConfigResolved = useCallback((resolved: ResolvedArmConfig) => {
+    const signature = getResolvedConfigSignature(resolved);
+    if (lastResolvedConfigSignatureRef.current === signature) {
+      return;
+    }
+    lastResolvedConfigSignatureRef.current = signature;
     setSelectedFollowerPort(resolved.followerPort);
     setSelectedLeaderPort(resolved.leaderPort);
     setSelectedLeftFollowerPort(resolved.leftFollowerPort);

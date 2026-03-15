@@ -24,6 +24,7 @@ import {
   type ArmSelection,
   type ResolvedArmConfig,
 } from "../../services/armSets";
+import { getResolvedConfigSignature } from "../../components/wireframe/armPairSelectorState";
 import { getDefaults } from "../../services/robotPolicy";
 import { useHfAuth } from "../../hf-auth-context";
 import {
@@ -114,6 +115,7 @@ export function Recording() {
   const [selectedRightLeaderPort, setSelectedRightLeaderPort] = useState("");
   const [selectedFollowerId, setSelectedFollowerId] = useState("");
   const [selectedLeaderId, setSelectedLeaderId] = useState("");
+  const lastResolvedConfigSignatureRef = useRef<string | null>(null);
   const singleDefaults = useMemo(() => getDefaults("single", typeCatalog), [typeCatalog]);
   const biDefaults = useMemo(() => getDefaults("bi", typeCatalog), [typeCatalog]);
 
@@ -150,6 +152,11 @@ export function Recording() {
     void apiPost<Record<string, unknown>>("/api/config", patch).catch(() => undefined);
   }, [updateConfig]);
   const handleArmSetConfigResolved = useCallback((resolved: ResolvedArmConfig) => {
+    const signature = getResolvedConfigSignature(resolved);
+    if (lastResolvedConfigSignatureRef.current === signature) {
+      return;
+    }
+    lastResolvedConfigSignatureRef.current = signature;
     setSelectedFollowerPort(resolved.followerPort);
     setSelectedLeaderPort(resolved.leaderPort);
     setSelectedLeftFollowerPort(resolved.leftFollowerPort);

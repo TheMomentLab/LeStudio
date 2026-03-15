@@ -6,7 +6,7 @@
  * No forced number-based pairing.
  */
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { CheckCircle2, Unplug, XCircle } from "lucide-react";
 import { EmptyState, FieldRow, WireSelect } from "./index";
 import type { ArmSelection, MappedArmLists, PreferredArmTypes, ResolvedArmConfig } from "../../services/armSets";
@@ -14,6 +14,7 @@ import { buildArmOptions, resolveArmConfig } from "../../services/armSets";
 import type { CalibrationListFile } from "../../services/calibrationProfiles";
 import { getCalibrationHelperText, getCalibrationUiMode } from "../../services/robotPolicy";
 import { useLeStudioStore } from "../../store";
+import { getResolvedConfigSignature, shouldPublishResolvedConfig } from "./armPairSelectorState";
 
 // ── Props ──────────────────────────────────────────────────────────────────
 
@@ -75,6 +76,7 @@ export function ArmPairSelector({
   const leaderOptions = useMemo(() => buildArmOptions(armLists.leaders), [armLists.leaders]);
   const hasArms = armLists.followers.length > 0 || armLists.leaders.length > 0;
   const typeCatalog = useLeStudioStore((s) => s.typeCatalog);
+  const lastResolvedSignatureRef = useRef<string | null>(null);
 
   // Resolve config whenever selection changes
   const resolved = useMemo(() => {
@@ -83,7 +85,15 @@ export function ArmPairSelector({
   }, [mode, selection, armLists, calibFiles, preferredTypes, hasArms]);
 
   useEffect(() => {
-    if (resolved) onConfigResolved(resolved);
+    if (!resolved) {
+      lastResolvedSignatureRef.current = null;
+      return;
+    }
+    if (!shouldPublishResolvedConfig(lastResolvedSignatureRef.current, resolved)) {
+      return;
+    }
+    lastResolvedSignatureRef.current = getResolvedConfigSignature(resolved);
+    onConfigResolved(resolved);
   }, [onConfigResolved, resolved]);
 
   // Lookup helpers for details

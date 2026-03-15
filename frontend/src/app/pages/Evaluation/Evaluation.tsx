@@ -23,6 +23,7 @@ import {
   type ArmSelection,
   type ResolvedArmConfig,
 } from "../../services/armSets";
+import { getResolvedConfigSignature } from "../../components/wireframe/armPairSelectorState";
 import type { CalibrationListFile } from "../../services/calibrationProfiles";
 import { deriveBiSharedSelection } from "../../services/calibrationProfiles";
 import {
@@ -86,6 +87,7 @@ export function Evaluation() {
   const [armLists, setArmLists] = useState<MappedArmLists>({ followers: [], leaders: [] });
   const [armSelection, setArmSelection] = useState<ArmSelection>({ follower: "", leader: "" });
   const [evalCalibFiles, setEvalCalibFiles] = useState<CalibrationListFile[]>([]);
+  const lastResolvedConfigSignatureRef = useRef<string | null>(null);
   const singleDefaults = useMemo(() => getDefaults("single", typeCatalog), [typeCatalog]);
   const biDefaults = useMemo(() => getDefaults("bi", typeCatalog), [typeCatalog]);
 
@@ -259,6 +261,11 @@ export function Evaluation() {
   ];
 
   const handleEvalArmConfigResolved = useCallback((resolved: ResolvedArmConfig) => {
+    const signature = getResolvedConfigSignature(resolved);
+    if (lastResolvedConfigSignatureRef.current === signature) {
+      return;
+    }
+    lastResolvedConfigSignatureRef.current = signature;
     updateConfig({
       eval_robot_type: resolved.robotType,
       eval_teleop_type: resolved.teleopType,
