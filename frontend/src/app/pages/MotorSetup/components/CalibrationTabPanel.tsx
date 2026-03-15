@@ -30,8 +30,8 @@ interface CalibrationTabPanelProps {
   calibBiId: string;
   calibBiIdAuto: boolean;
   calibFiles: CalibrationFileItem[];
-  calibFileScope: string;
-  calibFileScopeOptions: string[];
+  calibFileScope: "Single" | "Bi";
+  calibFileScopeOptions: Array<"Single" | "Bi">;
   selectedCalibrationExists: boolean;
   selectedCalibrationPath: string;
   validation?: CalibrationValidation;
@@ -45,7 +45,7 @@ interface CalibrationTabPanelProps {
   onSetCalibBiLeftPort: (value: string) => void;
   onSetCalibBiRightPort: (value: string) => void;
   onSetCalibBiId: (value: string) => void;
-  onSetCalibFileScope: (value: string) => void;
+  onSetCalibFileScope: (value: "Single" | "Bi") => void;
   onHandleCalibrationStart: () => void;
   onHandleCalibrationStop: () => void;
   onHandleCalibrationDelete: (file: CalibrationFileItem) => void;
@@ -121,7 +121,13 @@ export function CalibrationTabPanel({
         <Card
           title="Calibration Files"
           className="min-h-[300px]"
-          action={<ModeToggle options={calibFileScopeOptions} value={calibFileScope} onChange={onSetCalibFileScope} />}
+          action={(
+            <ModeToggle
+              options={calibFileScopeOptions}
+              value={calibFileScope}
+              onChange={(value) => onSetCalibFileScope(value === "Bi" ? "Bi" : "Single")}
+            />
+          )}
         >
           {calibFiles.length === 0 ? (
             <div className="flex min-h-[220px] items-center justify-center">

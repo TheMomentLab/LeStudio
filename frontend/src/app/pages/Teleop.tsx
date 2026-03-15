@@ -26,6 +26,7 @@ import {
   type ArmSelection,
   type ResolvedArmConfig,
 } from "../services/armSets";
+import { getDefaults } from "../services/robotPolicy";
 import { toVideoName, useCameraFeeds } from "../hooks/useCameraFeeds";
 import {
   type CalibFile,
@@ -83,6 +84,11 @@ function getConfigBoolean(config: Record<string, unknown>, key: string, fallback
   return fallback;
 }
 
+function getConfigString(config: Record<string, unknown>, key: string, fallback: string): string {
+  const value = config[key];
+  return typeof value === "string" && value.trim() ? value : fallback;
+}
+
 function getConfigNumber(config: Record<string, unknown>, key: string, fallback: number): number {
   const value = config[key];
   if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -127,6 +133,7 @@ const LOADING_STEPS = [
 
 export function Teleop() {
   const config = useLeStudioStore((s) => s.config);
+  const typeCatalog = useLeStudioStore((s) => s.typeCatalog);
   const updateConfig = useLeStudioStore((s) => s.updateConfig);
   const teleopLogLines = useLeStudioStore((s) => s.logLines["teleop"]);
   const wsReady = useLeStudioStore((s) => s.wsReady);
@@ -163,6 +170,8 @@ export function Teleop() {
   const [antiJitterAvailable, setAntiJitterAvailable] = useState(true);
   const running = phase === "running";
   const configRecord = useMemo(() => asConfigRecord(config), [config]);
+  const singleDefaults = useMemo(() => getDefaults("single", typeCatalog), [typeCatalog]);
+  const biDefaults = useMemo(() => getDefaults("bi", typeCatalog), [typeCatalog]);
   const antiJitterEnabled = getConfigBoolean(configRecord, "teleop_antijitter_enabled", false);
   const antiJitterAlpha = getConfigNumber(configRecord, "teleop_antijitter_alpha", 0.35);
   const antiJitterDeadband = getConfigNumber(configRecord, "teleop_antijitter_deadband", 0.75);
@@ -502,9 +511,13 @@ export function Teleop() {
       const lists = buildMappedArmLists(devResult.arms ?? [], files);
       setArmLists(lists);
       const currentMode = modeRef.current as "Single Arm" | "Bi-Arm";
+      const modeDefaults = currentMode === "Bi-Arm" ? biDefaults : singleDefaults;
       const sel = defaultArmSelection(lists, currentMode);
       setArmSelection(sel);
-      const resolved = resolveArmConfig(currentMode, sel, lists, files);
+      const resolved = resolveArmConfig(currentMode, sel, lists, files, {
+        robotType: getConfigString(configRecord, "robot_type", modeDefaults.robot_type),
+        teleopType: getConfigString(configRecord, "teleop_type", modeDefaults.teleop_type),
+      });
       handleArmSetConfigResolved(resolved);
 
     };
@@ -514,10 +527,14 @@ export function Teleop() {
   useEffect(() => {
     if (armLists.followers.length === 0 && armLists.leaders.length === 0) return;
     const sel = defaultArmSelection(armLists, mode as "Single Arm" | "Bi-Arm");
+    const modeDefaults = mode === "Bi-Arm" ? biDefaults : singleDefaults;
     setArmSelection(sel);
-    const resolved = resolveArmConfig(mode as "Single Arm" | "Bi-Arm", sel, armLists, calibFiles);
+    const resolved = resolveArmConfig(mode as "Single Arm" | "Bi-Arm", sel, armLists, calibFiles, {
+      robotType: getConfigString(configRecord, "robot_type", modeDefaults.robot_type),
+      teleopType: getConfigString(configRecord, "teleop_type", modeDefaults.teleop_type),
+    });
     handleArmSetConfigResolved(resolved);
-  }, [mode, armLists, calibFiles, handleArmSetConfigResolved]);
+  }, [armLists, biDefaults, calibFiles, configRecord, handleArmSetConfigResolved, mode, singleDefaults]);
 
   useEffect(() => {
     if (!flowError) return;
@@ -618,6 +635,10 @@ export function Teleop() {
                   armLists={armLists}
                   calibFiles={calibFiles}
                   armSelection={armSelection}
+                  preferredTypes={{
+                    robotType: getConfigString(configRecord, "robot_type", (mode === "Bi-Arm" ? biDefaults : singleDefaults).robot_type),
+                    teleopType: getConfigString(configRecord, "teleop_type", (mode === "Bi-Arm" ? biDefaults : singleDefaults).teleop_type),
+                  }}
                   onArmSelectionChange={setArmSelection}
                   onArmConfigResolved={handleArmSetConfigResolved}
                   phase={phase}

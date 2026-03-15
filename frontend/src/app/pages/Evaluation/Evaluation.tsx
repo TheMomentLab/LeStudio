@@ -33,6 +33,7 @@ import {
   useEvalCheckpoint,
 } from "../../hooks/useEvalCheckpoint";
 import { useMappedCameras } from "../../hooks/useMappedCameras";
+import { getCalibrationUiMode, getDefaults } from "../../services/robotPolicy";
 
 import { EMPTY_LOG } from "./types";
 import type {
@@ -60,6 +61,7 @@ function getConfigString(config: Record<string, unknown>, key: string, fallback:
 export function Evaluation() {
   // ── Store ────────────────────────────────────────────────────────────────
   const config = useLeStudioStore((s) => s.config);
+  const typeCatalog = useLeStudioStore((s) => s.typeCatalog);
   const updateConfig = useLeStudioStore((s) => s.updateConfig);
   const procStatus = useLeStudioStore((s) => s.procStatus);
   const running = useLeStudioStore((s) => !!s.procStatus.eval);
@@ -84,6 +86,8 @@ export function Evaluation() {
   const [armLists, setArmLists] = useState<MappedArmLists>({ followers: [], leaders: [] });
   const [armSelection, setArmSelection] = useState<ArmSelection>({ follower: "", leader: "" });
   const [evalCalibFiles, setEvalCalibFiles] = useState<CalibrationListFile[]>([]);
+  const singleDefaults = useMemo(() => getDefaults("single", typeCatalog), [typeCatalog]);
+  const biDefaults = useMemo(() => getDefaults("bi", typeCatalog), [typeCatalog]);
 
   // ── Preflight ────────────────────────────────────────────────────────────
   const [preflightOk, setPreflightOk] = useState(true);
@@ -119,15 +123,16 @@ export function Evaluation() {
   const task = ((config.eval_task as string) ?? "").trim() || envTaskFromCheckpoint || "";
   const isRealRobot = envType === "gym_manipulator";
   const robotMode = getConfigString(config, "robot_mode", "single").toLowerCase().includes("bi") ? "bi" : "single";
+  const modeDefaults = robotMode === "bi" ? biDefaults : singleDefaults;
   const evalRobotType = getConfigString(
     config,
     "eval_robot_type",
-    getConfigString(config, "robot_type", "so101_follower"),
+    getConfigString(config, "robot_type", modeDefaults.robot_type),
   );
   const evalTeleopType = getConfigString(
     config,
     "eval_teleop_type",
-    getConfigString(config, "teleop_type", "so101_leader"),
+    getConfigString(config, "teleop_type", modeDefaults.teleop_type),
   );
   const isRunning = running || progressStatus === "starting";
   void elapsedTick; // used for timer re-renders
@@ -201,7 +206,7 @@ export function Evaluation() {
     for (const profile of calibrationProfiles) {
       if (!profile.deviceId.trim()) {
         blockers.push(`${profile.label} ID is required`);
-      } else if (profile.exists === false) {
+      } else if (profile.exists === false && getCalibrationUiMode(profile.deviceType) === "required") {
         blockers.push(`${profile.label} '${profile.deviceId}' not found`);
       }
     }
@@ -318,14 +323,17 @@ export function Evaluation() {
         const mode = robotMode === "bi" ? "Bi-Arm" : "Single Arm";
         const sel = defaultArmSelection(lists, mode as "Single Arm" | "Bi-Arm");
         setArmSelection(sel);
-        const resolved = resolveArmConfig(mode as "Single Arm" | "Bi-Arm", sel, lists, files);
+        const resolved = resolveArmConfig(mode as "Single Arm" | "Bi-Arm", sel, lists, files, {
+          robotType: getConfigString(config, "robot_type", modeDefaults.robot_type),
+          teleopType: getConfigString(config, "teleop_type", modeDefaults.teleop_type),
+        });
         handleEvalArmConfigResolved(resolved);
       } catch {
         return;
       }
     };
     void loadDevices();
-  }, [handleEvalArmConfigResolved, robotMode]);
+  }, [config, handleEvalArmConfigResolved, modeDefaults.robot_type, modeDefaults.teleop_type, robotMode]);
 
   useEffect(() => {
     if (armLists.followers.length === 0 && armLists.leaders.length === 0) return;
@@ -333,11 +341,14 @@ export function Evaluation() {
       const mode = robotMode === "bi" ? "Bi-Arm" : "Single Arm";
       const sel = defaultArmSelection(armLists, mode as "Single Arm" | "Bi-Arm");
       setArmSelection(sel);
-      const resolved = resolveArmConfig(mode as "Single Arm" | "Bi-Arm", sel, armLists, evalCalibFiles);
+      const resolved = resolveArmConfig(mode as "Single Arm" | "Bi-Arm", sel, armLists, evalCalibFiles, {
+        robotType: getConfigString(config, "robot_type", modeDefaults.robot_type),
+        teleopType: getConfigString(config, "teleop_type", modeDefaults.teleop_type),
+      });
       handleEvalArmConfigResolved(resolved);
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [armLists, evalCalibFiles, handleEvalArmConfigResolved, robotMode]);
+  }, [armLists, config, evalCalibFiles, handleEvalArmConfigResolved, modeDefaults.robot_type, modeDefaults.teleop_type, robotMode]);
 
   const refreshCalibrationProfiles = useCallback(async (): Promise<string[]> => {
     if (!isRealRobot || calibrationTargets.length === 0) {
@@ -360,10 +371,14 @@ export function Evaluation() {
           `/api/calibrate/file?robot_type=${encodeURIComponent(profile.deviceType)}&robot_id=${encodeURIComponent(deviceId)}`,
         );
         nextStatus[profile.configKey] = status;
-        if (!status.exists) issues.push(`${profile.label} '${deviceId}' not found`);
+        if (!status.exists && getCalibrationUiMode(profile.deviceType) === "required") {
+          issues.push(`${profile.label} '${deviceId}' not found`);
+        }
       } catch {
         nextStatus[profile.configKey] = { exists: false, path: "" };
-        issues.push(`${profile.label} '${deviceId}' could not be verified`);
+        if (getCalibrationUiMode(profile.deviceType) === "required") {
+          issues.push(`${profile.label} '${deviceId}' could not be verified`);
+        }
       }
     }));
 
@@ -701,6 +716,10 @@ export function Evaluation() {
               onCalibrationIdChange={handleCalibrationIdChange}
               armLists={armLists}
               armSelection={armSelection}
+              preferredTypes={{
+                robotType: getConfigString(config, "robot_type", modeDefaults.robot_type),
+                teleopType: getConfigString(config, "teleop_type", modeDefaults.teleop_type),
+              }}
               onArmSelectionChange={setArmSelection}
               onArmConfigResolved={handleEvalArmConfigResolved}
               evalCalibFiles={evalCalibFiles}
