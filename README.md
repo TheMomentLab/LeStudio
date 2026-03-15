@@ -19,15 +19,15 @@ Architecture docs:
 
 | Status | Motor Setup |
 |---|---|
-| ![Status](docs_public/assets/screenshot-status.png) | ![Motor Setup](docs_public/assets/screenshot-motor-setup.png) |
+| <img src="docs_public/assets/screenshot-status.png" width="400"> | <img src="docs_public/assets/screenshot-motor-setup.png" width="400"> |
 
 | Camera Setup | Teleop |
 |---|---|
-| ![Camera Setup](docs_public/assets/screenshot-camera.png) | ![Teleop](docs_public/assets/screenshot-teleop.png) |
+| <img src="docs_public/assets/screenshot-camera.png" width="400"> | <img src="docs_public/assets/screenshot-teleop.png" width="400"> |
 
 | Dataset | Train |
 |---|---|
-| ![Dataset](docs_public/assets/screenshot-dataset.png) | ![Train](docs_public/assets/screenshot-train.png) |
+| <img src="docs_public/assets/screenshot-dataset.png" width="400"> | <img src="docs_public/assets/screenshot-train.png" width="400"> |
 
 ## Features
 
