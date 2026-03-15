@@ -60,6 +60,7 @@ Architecture docs:
 
 ### Training & Evaluation
 - **Train**: LeRobot training with CUDA preflight, real-time loss/LR chart, ETA tracking, and hyperparameter presets.
+- **Colab Integration**: One-click Google Colab workflow for GPU-less environments.
 - **Dependency Remediation**: Guided install flows for PyTorch and related training dependencies.
 - **Checkpoint Browser**: Scan local checkpoints and auto-link to Eval.
 - **Eval**: Policy evaluation with live process output and per-episode result tracking.
