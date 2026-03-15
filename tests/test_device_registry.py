@@ -33,6 +33,14 @@ def test_get_teleop_types_filters_with_compatibility_map(monkeypatch):
     assert result == ["so101_leader"]
 
 
+def test_real_registry_exposes_omx_when_lerobot_available():
+    if not dr.is_lerobot_available() or dr._RobotConfig is None or dr._TeleoperatorConfig is None:
+        return
+
+    assert "omx_follower" in dr.get_robot_types()
+    assert "omx_leader" in dr.get_teleop_types()
+
+
 def test_get_camera_types_fallback(monkeypatch):
     monkeypatch.setattr(dr, "_LEROBOT_AVAILABLE", False)
     monkeypatch.setattr(dr, "_CameraConfig", None)

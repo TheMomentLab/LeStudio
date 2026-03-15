@@ -1,3 +1,6 @@
+import type { TypePolicyCatalogResponse } from "../../store/types";
+import { supportsMotorSetup } from "../../services/robotPolicy";
+
 export const SETUP_MOTORS = [
   { name: "gripper", id: 6 },
   { name: "wrist_roll", id: 5 },
@@ -20,6 +23,12 @@ export const MOTOR_SETUP_TYPES = [
   "omx_leader",
   "lekiwi",
 ];
+
+export function deriveSetupArmTypes(armTypes: string[], typeCatalog: TypePolicyCatalogResponse): string[] {
+  const source = Array.from(new Set([...MOTOR_SETUP_TYPES, ...armTypes]));
+  const filtered = source.filter((type) => supportsMotorSetup(type, typeCatalog));
+  return filtered.length > 0 ? filtered : MOTOR_SETUP_TYPES;
+}
 
 export function toArmSymlink(roleLabel: string): string {
   if (roleLabel === "Follower Arm 1") return "follower_arm_1";

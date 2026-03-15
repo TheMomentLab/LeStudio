@@ -5,10 +5,10 @@ import {
 import { apiDelete, apiGet, apiPost } from "../../services/apiClient";
 import { buildCalibrationListEntries } from "../../services/calibrationProfiles";
 import { symToDisplayLabel, buildPortOptions } from "../../services/portLabels";
-import { getCanonicalPair, getDefaults, supportsMotorSetup } from "../../services/robotPolicy";
+import { getCanonicalPair, getDefaults } from "../../services/robotPolicy";
 import { useLeStudioStore } from "../../store";
 import type { LogLine } from "../../store/types";
-import { SETUP_MOTORS, ARM_TYPES, MOTOR_SETUP_TYPES, toArmSymlink } from "./constants";
+import { ARM_TYPES, deriveSetupArmTypes, SETUP_MOTORS, toArmSymlink } from "./constants";
 import { MotorCard } from "./components/MotorCard";
 import { MappingTabPanel } from "./components/MappingTabPanel";
 import { IdentifyArmModal } from "./components/IdentifyArmModal";
@@ -882,8 +882,7 @@ export function MotorSetup() {
     return filtered.length > 0 ? filtered : ARM_TYPES;
   }, [armTypes]);
   const setupArmTypes = useMemo(() => {
-    const filtered = armTypes.filter((type) => supportsMotorSetup(type, typeCatalog));
-    return filtered.length > 0 ? filtered : MOTOR_SETUP_TYPES;
+    return deriveSetupArmTypes(armTypes, typeCatalog);
   }, [armTypes, typeCatalog]);
 
   useEffect(() => {
