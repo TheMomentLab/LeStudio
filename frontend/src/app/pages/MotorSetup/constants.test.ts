@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { TypePolicyCatalogResponse } from "../../store/types";
-import { deriveSetupArmTypes } from "./constants";
+import { deriveSetupArmTypes, deriveSingleArmTypes } from "./constants";
 
 const CATALOG: TypePolicyCatalogResponse = {
   version: 1,
@@ -77,5 +77,14 @@ describe("deriveSetupArmTypes", () => {
     expect(result).toContain("omx_follower");
     expect(result).toContain("omx_leader");
     expect(result).toContain("so101_leader");
+  });
+
+  it("derives single arm calibration types from catalog defaults and matching catalog entries", () => {
+    const result = deriveSingleArmTypes(["so101_follower", "omx_follower"], CATALOG);
+
+    expect(result).toContain("so101_follower");
+    expect(result).toContain("so101_leader");
+    expect(result).toContain("omx_follower");
+    expect(result).toContain("omx_leader");
   });
 });

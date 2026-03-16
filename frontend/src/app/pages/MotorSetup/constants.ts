@@ -10,8 +10,6 @@ export const SETUP_MOTORS = [
   { name: "shoulder_pan", id: 1 },
 ];
 
-export const ARM_TYPES = ["so101_follower", "so100_follower", "so101_leader", "so100_leader"];
-
 export const MOTOR_SETUP_TYPES = [
   "so101_follower",
   "so100_follower",
@@ -23,6 +21,16 @@ export const MOTOR_SETUP_TYPES = [
   "omx_leader",
   "lekiwi",
 ];
+
+export function deriveSingleArmTypes(armTypes: string[], typeCatalog: TypePolicyCatalogResponse): string[] {
+  const dynamic = armTypes.filter((type) => !type.startsWith("bi_") && (type.includes("_leader") || type.includes("_follower")));
+  const catalogTypes = Object.entries(typeCatalog.types)
+    .filter(([type, policy]) => !policy.bimanual.supported && (type.includes("_leader") || type.includes("_follower")))
+    .map(([type]) => type);
+  const defaults = [typeCatalog.defaults.single.robot_type, typeCatalog.defaults.single.teleop_type];
+  const combined = Array.from(new Set([...defaults, ...catalogTypes, ...dynamic]));
+  return combined.length > 0 ? combined : defaults;
+}
 
 export function deriveSetupArmTypes(armTypes: string[], typeCatalog: TypePolicyCatalogResponse): string[] {
   const source = Array.from(new Set([...MOTOR_SETUP_TYPES, ...armTypes]));

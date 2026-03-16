@@ -9,7 +9,7 @@ import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from lestudio import device_registry, path_policy
+from lestudio import device_registry, path_policy, type_policy
 
 logger = logging.getLogger(__name__)
 
@@ -79,16 +79,6 @@ def _sanitize_calibration_candidate(raw: str) -> str:
     return cleaned.strip("_")[:64]
 
 
-def _single_arm_source_types(device_type: str) -> list[str]:
-    if device_type == "bi_so_follower":
-        return ["so101_follower", "so100_follower"]
-    if device_type == "bi_so_leader":
-        return ["so101_leader", "so100_leader"]
-    if device_type.startswith("bi_"):
-        return [device_type[3:]]
-    return [device_type]
-
-
 def _single_arm_calibration_candidates(port_path: str) -> list[str]:
     candidates: list[str] = []
     seen: set[str] = set()
@@ -125,7 +115,7 @@ def _single_arm_calibration_candidates(port_path: str) -> list[str]:
 
 
 def _find_single_arm_calibration_path(device_type: str, port_path: str) -> Path | None:
-    for source_type in _single_arm_source_types(device_type):
+    for source_type in type_policy.get_calibration_source_types(device_type):
         for candidate in _single_arm_calibration_candidates(port_path):
             path = get_calibration_file_path(source_type, candidate)
             if path.exists():

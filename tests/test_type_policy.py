@@ -71,6 +71,13 @@ def test_get_defaults_for_mode_returns_expected_pairs():
     assert bi.teleop_type == "bi_so_leader"
 
 
+def test_get_calibration_source_types_handles_bimanual_and_single_types():
+    assert tp.get_calibration_source_types("bi_so_follower") == ["so101_follower", "so100_follower"]
+    assert tp.get_calibration_source_types("bi_so_leader") == ["so101_leader", "so100_leader"]
+    assert tp.get_calibration_source_types("bi_openarm_follower") == ["openarm_follower"]
+    assert tp.get_calibration_source_types("omx_follower") == ["omx_follower"]
+
+
 def test_supports_motor_setup_and_calibration_requirement_helpers():
     assert tp.supports_motor_setup("omx_leader") is True
     assert tp.supports_motor_setup("bi_so_follower") is False

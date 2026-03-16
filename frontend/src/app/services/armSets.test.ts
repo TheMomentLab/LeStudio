@@ -114,4 +114,22 @@ describe("armSets OMX support", () => {
 
     resetLeStudioState();
   });
+
+  it("uses policy defaults for fallback calibration type labels", () => {
+    resetLeStudioState();
+    setLeStudioState({ typeCatalog: CUSTOM_DEFAULTS, typeCatalogVersion: 1, typeCatalogLoaded: true });
+
+    const lists = buildMappedArmLists(
+      [
+        { device: "ttyUSB0", path: "/dev/ttyUSB0", symlink: "follower_arm_1" },
+        { device: "ttyUSB1", path: "/dev/ttyUSB1", symlink: "leader_arm_1" },
+      ],
+      [],
+    );
+
+    expect(lists.followers[0]?.calibrationType).toBe("custom_single_follower");
+    expect(lists.leaders[0]?.calibrationType).toBe("custom_single_leader");
+
+    resetLeStudioState();
+  });
 });
