@@ -137,6 +137,7 @@ export function buildMappedArmLists(
 ): MappedArmLists {
   const followers: MappedArm[] = [];
   const leaders: MappedArm[] = [];
+  const singleDefaults = getDefaults("single");
 
   for (const arm of arms) {
     if (!arm.symlink) continue;
@@ -154,7 +155,7 @@ export function buildMappedArmLists(
         symlink: arm.symlink,
         port: arm.symlink ? `/dev/${arm.symlink}` : (arm.path ?? ""),
         calibrationId: calibId,
-        calibrationType: calibFile?.guessed_type ?? parsed.inferredType ?? (parsed.role === "follower" ? "so101_follower" : "so101_leader"),
+        calibrationType: calibFile?.guessed_type ?? parsed.inferredType ?? (parsed.role === "follower" ? singleDefaults.robot_type : singleDefaults.teleop_type),
         calibrationExists: !!calibFile,
         typeSource: calibFile?.guessed_type ? "calibration" : parsed.inferredType ? "symlink" : "default",
         label: arm.symlink,

@@ -8,7 +8,7 @@ import { symToDisplayLabel, buildPortOptions } from "../../services/portLabels";
 import { getCanonicalPair, getDefaults } from "../../services/robotPolicy";
 import { useLeStudioStore } from "../../store";
 import type { LogLine } from "../../store/types";
-import { ARM_TYPES, deriveSetupArmTypes, SETUP_MOTORS, toArmSymlink } from "./constants";
+import { deriveSetupArmTypes, deriveSingleArmTypes, SETUP_MOTORS, toArmSymlink } from "./constants";
 import { MotorCard } from "./components/MotorCard";
 import { MappingTabPanel } from "./components/MappingTabPanel";
 import { IdentifyArmModal } from "./components/IdentifyArmModal";
@@ -199,7 +199,7 @@ export function MotorSetup() {
   const calibrateReconnected = useLeStudioStore((s) => !!s.procReconnected.calibrate);
   const [setupArmType, setSetupArmType] = useState(singleDefaults.robot_type);
   const [setupPort, setSetupPort] = useState("");
-  const [armTypes, setArmTypes] = useState<string[]>(ARM_TYPES);
+  const [armTypes, setArmTypes] = useState<string[]>(() => deriveSingleArmTypes([], typeCatalog));
 
   // ── Motor Monitor ─────────────────────────────────────────────────────────
   const [monConnected, setMonConnected] = useState(false);
@@ -327,13 +327,18 @@ export function MotorSetup() {
         const dynamicTypes = res.types
           .filter((type): type is string => typeof type === "string")
           .filter((type) => type.includes("_leader") || type.includes("_follower") || type === "lekiwi");
-        const merged = Array.from(new Set([...ARM_TYPES, ...dynamicTypes]));
-        setArmTypes(merged);
+        setArmTypes(deriveSingleArmTypes(dynamicTypes, typeCatalog));
       }
     } catch {
       // keep defaults
     }
-  }, []);
+  }, [typeCatalog]);
+
+  useEffect(() => {
+    if (armTypes.length === 0) {
+      setArmTypes(deriveSingleArmTypes([], typeCatalog));
+    }
+  }, [armTypes.length, typeCatalog]);
 
   useEffect(() => {
     void loadDevices();
@@ -878,9 +883,8 @@ export function MotorSetup() {
     return "";
   }, [calibArmIdTrimmed]);
   const singleArmCalibTypes = useMemo(() => {
-    const filtered = armTypes.filter((type) => !type.startsWith("bi_") && (type.includes("_leader") || type.includes("_follower")));
-    return filtered.length > 0 ? filtered : ARM_TYPES;
-  }, [armTypes]);
+    return deriveSingleArmTypes(armTypes, typeCatalog);
+  }, [armTypes, typeCatalog]);
   const setupArmTypes = useMemo(() => {
     return deriveSetupArmTypes(armTypes, typeCatalog);
   }, [armTypes, typeCatalog]);
