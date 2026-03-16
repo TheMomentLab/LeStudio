@@ -38,6 +38,32 @@ describe("bootstrap", () => {
     vi.mocked(apiGet).mockImplementation(async (path: string) => {
       if (path === "/api/config") return { record_repo_id: "user/pick" };
       if (path === "/api/devices") return { cameras: [{ device: "video0" }], arms: [] };
+      if (path === "/api/policy/type-catalog") {
+        return {
+          version: 1,
+          defaults: {
+            single: { robot_type: "so101_follower", teleop_type: "so101_leader" },
+            bi: { robot_type: "bi_so_follower", teleop_type: "bi_so_leader" },
+          },
+          types: {
+            omx_follower: {
+              type_name: "omx_follower",
+              registry_kind: "robot",
+              family_id: "omx",
+              role: "follower",
+              pairing: { canonical_robot_type: "omx_follower", canonical_teleop_type: "omx_leader" },
+              calibration: {
+                requirement: "optional",
+                enforcement: { preflight: "skip", eval_real_robot: "skip", ui: "optional" },
+                validator_id: "none",
+              },
+              motor_setup: { supported: true },
+              bimanual: { supported: false, group_type: "" },
+            },
+          },
+          lerobot_available: true,
+        };
+      }
       if (path === "/api/deps/status") {
         return {
           ok: true,
@@ -54,6 +80,8 @@ describe("bootstrap", () => {
     const result = await runBootstrap();
 
     expect(result.hfUsername).toBe("alice");
+    expect(result.typeCatalog.defaults.single.robot_type).toBe("so101_follower");
+    expect(result.typeCatalog.types.omx_follower?.family_id).toBe("omx");
     expect(result.prefillPatch).toEqual({ record_repo_id: "alice/pick" });
     expect(result.sidebarSignals).toMatchObject({
       hasCameras: true,
@@ -70,6 +98,7 @@ describe("bootstrap", () => {
     vi.mocked(apiGet).mockImplementation(async (path: string) => {
       if (path === "/api/config") throw new Error("config down");
       if (path === "/api/devices") throw new Error("devices down");
+      if (path === "/api/policy/type-catalog") throw new Error("catalog down");
       if (path === "/api/deps/status") throw new Error("deps down");
       if (path === "/api/hf/whoami") return { ok: false, username: null };
       if (path === "/api/train/preflight?device=cuda") throw new Error("preflight down");
@@ -80,10 +109,13 @@ describe("bootstrap", () => {
 
     expect(result.config).toEqual({});
     expect(result.devices).toEqual({ cameras: [], arms: [] });
+    expect(result.typeCatalog.defaults.single.robot_type).toBe("so101_follower");
+    expect(result.typeCatalog.types).toEqual({});
     expect(result.hfUsername).toBeNull();
     expect(result.errors).toMatchObject({
       config: expect.stringContaining("config down"),
       devices: expect.stringContaining("devices down"),
+      typeCatalog: expect.stringContaining("catalog down"),
       depsStatus: expect.stringContaining("deps down"),
       trainPreflight: expect.stringContaining("preflight down"),
     });

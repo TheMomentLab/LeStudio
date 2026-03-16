@@ -75,6 +75,44 @@ def test_build_teleop_args_single_mode_includes_speed_limit():
     assert "--lestudio.debug.enabled=false" in args
 
 
+def test_normalized_process_types_preserves_explicit_omx_single_types():
+    robot_type, teleop_type = cb._normalized_process_types(
+        {"robot_type": "omx_follower", "teleop_type": "omx_leader"},
+        is_bi=False,
+    )
+
+    assert robot_type == "omx_follower"
+    assert teleop_type == "omx_leader"
+
+
+def test_normalized_process_types_uses_type_policy_defaults(monkeypatch):
+    class FakeDefaults:
+        robot_type = "custom_single_robot"
+        teleop_type = "custom_single_teleop"
+
+    monkeypatch.setattr(
+        cb,
+        "type_policy",
+        type("FakePolicy", (), {"get_defaults_for_mode": staticmethod(lambda mode: FakeDefaults)})(),
+        raising=False,
+    )
+
+    robot_type, teleop_type = cb._normalized_process_types({}, is_bi=False)
+
+    assert robot_type == "custom_single_robot"
+    assert teleop_type == "custom_single_teleop"
+
+
+def test_normalized_process_types_coerces_non_bi_types_in_bimanual_mode():
+    robot_type, teleop_type = cb._normalized_process_types(
+        {"robot_type": "omx_follower", "teleop_type": "so101_leader"},
+        is_bi=True,
+    )
+
+    assert robot_type == "bi_so_follower"
+    assert teleop_type == "bi_so_leader"
+
+
 def test_build_teleop_args_single_mode_includes_joint_invert_flags_when_enabled():
     args = cb.build_teleop_args(
         "/py",
@@ -101,6 +139,25 @@ def test_build_teleop_args_single_mode_includes_debug_flag_when_enabled():
     )
 
     assert "--lestudio.debug.enabled=true" in args
+
+
+def test_build_teleop_args_single_mode_preserves_explicit_omx_types():
+    args = cb.build_teleop_args(
+        "/py",
+        {
+            "robot_type": "omx_follower",
+            "teleop_type": "omx_leader",
+            "follower_port": "/dev/omx_follower",
+            "leader_port": "/dev/omx_leader",
+            "robot_id": "omx_follower",
+            "teleop_id": "omx_leader",
+        },
+    )
+
+    assert "--robot.type=omx_follower" in args
+    assert "--teleop.type=omx_leader" in args
+    assert "--robot.id=omx_follower" in args
+    assert "--teleop.id=omx_leader" in args
 
 
 def test_build_teleop_args_bi_mode_without_limit_when_speed_1():
@@ -151,6 +208,23 @@ def test_build_record_args_single_with_camera_serialization():
     assert payload["wrist_1"]["width"] == 320
     assert "--robot.type=so100_follower" in args
     assert "--teleop.type=so100_leader" in args
+
+
+def test_build_record_args_single_preserves_explicit_omx_types():
+    cfg = {
+        "record_repo_id": "u/omx",
+        "record_episodes": 1,
+        "record_task": "move",
+        "follower_port": "/dev/omx_follower",
+        "leader_port": "/dev/omx_leader",
+        "robot_type": "omx_follower",
+        "teleop_type": "omx_leader",
+    }
+
+    args = cb.build_record_args("/py", cfg, resume_enabled=False)
+
+    assert "--robot.type=omx_follower" in args
+    assert "--teleop.type=omx_leader" in args
 
 
 def test_build_record_args_bi_mode_places_camera_on_left_arm():
@@ -285,6 +359,18 @@ def test_build_motor_setup_args_rejects_unsupported_type():
         cb.build_motor_setup_args("/py", {"robot_type": "bi_so_follower", "port": "/dev/f"})
 
 
+def test_build_motor_setup_args_uses_type_policy_support_check(monkeypatch):
+    monkeypatch.setattr(
+        cb,
+        "type_policy",
+        type("FakePolicy", (), {"supports_motor_setup": staticmethod(lambda robot_type: False)})(),
+        raising=False,
+    )
+
+    with pytest.raises(ValueError, match="Motor Setup does not support"):
+        cb.build_motor_setup_args("/py", {"robot_type": "so101_follower", "port": "/dev/f"})
+
+
 def test_build_train_args_maps_tdmpc2_and_optional_fields():
     args = cb.build_train_args(
         "/py",
@@ -353,6 +439,36 @@ def test_build_eval_args_single_real_robot_includes_calibration_dirs_and_ids(tmp
     )
     assert "--env.robot.id=follower_arm_1" in args
     assert "--env.teleop.id=leader_arm_1" in args
+
+
+def test_build_eval_args_single_real_robot_preserves_omx_types_and_dirs(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    args = cb.build_eval_args(
+        "/py",
+        {
+            "eval_env_type": "gym_manipulator",
+            "eval_task": "real_robot",
+            "eval_robot_type": "omx_follower",
+            "eval_teleop_type": "omx_leader",
+            "follower_port": "/dev/omx_follower",
+            "leader_port": "/dev/omx_leader",
+            "robot_id": "omx_follower",
+            "teleop_id": "omx_leader",
+        },
+    )
+
+    assert "--env.robot.type=omx_follower" in args
+    assert "--env.teleop.type=omx_leader" in args
+    assert (
+        f"--env.robot.calibration_dir={tmp_path / '.cache' / 'huggingface' / 'lerobot' / 'calibration' / 'robots' / 'omx_follower'}"
+        in args
+    )
+    assert (
+        f"--env.teleop.calibration_dir={tmp_path / '.cache' / 'huggingface' / 'lerobot' / 'calibration' / 'teleoperators' / 'omx_leader'}"
+        in args
+    )
+    assert "--env.robot.id=omx_follower" in args
+    assert "--env.teleop.id=omx_leader" in args
 
 
 def test_build_eval_args_bi_real_robot_includes_calibration_dirs(tmp_path: Path, monkeypatch):

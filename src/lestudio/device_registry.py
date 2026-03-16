@@ -26,6 +26,7 @@ class _RegistryConfig(Protocol):
     @staticmethod
     def get_known_choices() -> dict[str, type]: ...
 
+
 # ─── LeRobot 격리 import ────────────────────────────────────────────────────────
 _LEROBOT_AVAILABLE = False
 _RobotConfig: type[_RegistryConfig] | None = None
@@ -39,21 +40,21 @@ try:
     from lerobot.utils.import_utils import register_third_party_plugins  # type: ignore
 
     register_third_party_plugins()
-    # Trigger decorator registration for bi-arm types
-    try:
-        __import__("lerobot.robots.bi_so_follower")
-    except ImportError:
-        pass
-    try:
-        __import__("lerobot.teleoperators.bi_so_leader")
-    except ImportError:
-        pass
+    for module_name in (
+        "lerobot.robots.bi_so_follower",
+        "lerobot.robots.omx_follower",
+        "lerobot.teleoperators.bi_so_leader",
+        "lerobot.teleoperators.omx_leader",
+    ):
+        try:
+            __import__(module_name)
+        except ImportError:
+            pass
     _LEROBOT_AVAILABLE = True
     logger.info("LeRobot registry loaded successfully.")
 except ImportError as _e:
     warnings.warn(
-        f"LeRobot not available ({_e}). Using fallback robot types. "
-        "Install lerobot to unlock full ecosystem support.",
+        f"LeRobot not available ({_e}). Using fallback robot types. Install lerobot to unlock full ecosystem support.",
         stacklevel=2,
     )
 
@@ -410,21 +411,11 @@ def get_config_schema(registry: str, type_name: str) -> dict:
 
     try:
         if registry == "robots":
-            config_cls = (
-                _RobotConfig.get_known_choices().get(type_name) if _RobotConfig else None
-            )
+            config_cls = _RobotConfig.get_known_choices().get(type_name) if _RobotConfig else None
         elif registry == "teleoperators":
-            config_cls = (
-                _TeleoperatorConfig.get_known_choices().get(type_name)
-                if _TeleoperatorConfig
-                else None
-            )
+            config_cls = _TeleoperatorConfig.get_known_choices().get(type_name) if _TeleoperatorConfig else None
         elif registry == "cameras":
-            config_cls = (
-                _CameraConfig.get_known_choices().get(type_name)
-                if _CameraConfig
-                else None
-            )
+            config_cls = _CameraConfig.get_known_choices().get(type_name) if _CameraConfig else None
         else:
             result["error"] = f"Unknown registry: {registry}"
             return result
@@ -482,9 +473,7 @@ def get_config_schema(registry: str, type_name: str) -> dict:
         result["fields"] = fields
 
     except Exception as e:  # broad-except: schema extraction must not crash API on unknown dataclass edge cases
-        logger.exception(
-            "Failed to extract config schema for %s/%s", registry, type_name
-        )
+        logger.exception("Failed to extract config schema for %s/%s", registry, type_name)
         result["error"] = str(e)
 
     return result

@@ -9,6 +9,8 @@ from pathlib import Path
 
 import pytest
 
+import lestudio.routes.eval as eval_routes
+import lestudio.services.process_service as process_service
 import lestudio.routes.training as training_routes
 import lestudio.services.training_service as training_service
 from lestudio.routes.models import HfTokenRequest
@@ -225,7 +227,7 @@ def test_api_preflight_uses_bimanual_defaults_for_non_single_mode(monkeypatch, t
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
     monkeypatch.setattr(
         "lestudio.services.process_service.validate_calibration_file",
-        lambda path: types.SimpleNamespace(errors=[], warnings=[]),
+        lambda path, **kwargs: types.SimpleNamespace(errors=[], warnings=[]),
     )
 
     robot_single_dir = tmp_path / ".cache" / "huggingface" / "lerobot" / "calibration" / "robots" / "so_follower"
@@ -268,6 +270,146 @@ def test_api_preflight_uses_bimanual_defaults_for_non_single_mode(monkeypatch, t
     checks = {entry["label"]: entry["msg"] for entry in payload["checks"]}
     assert "bimanual_follower_left.json" in checks["follower"]
     assert "bimanual_leader_left.json" in checks["leader"]
+
+
+def test_api_preflight_allows_omx_without_calibration_file(tmp_path: Path):
+    follower = tmp_path / "omx_follower"
+    leader = tmp_path / "omx_leader"
+    follower.write_text("", encoding="utf-8")
+    leader.write_text("", encoding="utf-8")
+
+    app = _make_app(tmp_path)
+    endpoint = _find_endpoint(app, "/api/preflight", "POST")
+    payload = asyncio.run(
+        endpoint(
+            {
+                "robot_mode": "single",
+                "robot_type": "omx_follower",
+                "teleop_type": "omx_leader",
+                "follower_port": str(follower),
+                "leader_port": str(leader),
+                "robot_id": "omx_follower",
+                "teleop_id": "omx_leader",
+                "cameras": {},
+            }
+        )
+    )
+
+    assert payload["ok"] is True
+    assert any(
+        check["label"] == "Follower calibration" and "not required for omx_follower" in check["msg"]
+        for check in payload["checks"]
+    )
+    assert any(
+        check["label"] == "Leader calibration" and "not required for omx_leader" in check["msg"]
+        for check in payload["checks"]
+    )
+
+
+def test_api_preflight_uses_type_policy_for_calibration_requirement(monkeypatch, tmp_path: Path):
+    class FakeTypePolicy:
+        @staticmethod
+        def is_calibration_required(device_type: str, *, context: str) -> bool:
+            return False
+
+    monkeypatch.setattr(process_service, "type_policy", FakeTypePolicy, raising=False)
+
+    follower = tmp_path / "follower_arm_1"
+    leader = tmp_path / "leader_arm_1"
+    follower.write_text("", encoding="utf-8")
+    leader.write_text("", encoding="utf-8")
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+    app = _make_app(tmp_path)
+    endpoint = _find_endpoint(app, "/api/preflight", "POST")
+    payload = asyncio.run(
+        endpoint(
+            {
+                "robot_mode": "single",
+                "robot_type": "so101_follower",
+                "teleop_type": "so101_leader",
+                "follower_port": str(follower),
+                "leader_port": str(leader),
+                "robot_id": "follower_arm_1",
+                "teleop_id": "leader_arm_1",
+                "cameras": {},
+            }
+        )
+    )
+
+    assert payload["ok"] is True
+    assert any(
+        check["label"] == "Follower calibration" and "not required for so101_follower" in check["msg"]
+        for check in payload["checks"]
+    )
+    assert any(
+        check["label"] == "Leader calibration" and "not required for so101_leader" in check["msg"]
+        for check in payload["checks"]
+    )
+
+
+def test_api_type_policy_catalog_exposes_defaults_and_known_types(tmp_path: Path):
+    app = _make_app(tmp_path)
+    endpoint = _find_endpoint(app, "/api/policy/type-catalog", "GET")
+    payload = endpoint()
+
+    assert payload["version"] == 1
+    assert payload["defaults"] == {
+        "single": {"robot_type": "so101_follower", "teleop_type": "so101_leader"},
+        "bi": {"robot_type": "bi_so_follower", "teleop_type": "bi_so_leader"},
+    }
+    assert payload["lerobot_available"] in {True, False}
+    assert payload["types"]["omx_follower"]["family_id"] == "omx"
+    assert payload["types"]["omx_follower"]["calibration"]["requirement"] == "optional"
+    assert payload["types"]["so101_follower"]["calibration"]["requirement"] == "required"
+    assert payload["types"]["omx_leader"]["registry_kind"] == "teleop"
+
+
+def test_api_type_policy_catalog_still_returns_static_policy_when_lerobot_unavailable(monkeypatch, tmp_path: Path):
+    monkeypatch.setattr("lestudio.device_registry._LEROBOT_AVAILABLE", False)
+
+    app = _make_app(tmp_path)
+    endpoint = _find_endpoint(app, "/api/policy/type-catalog", "GET")
+    payload = endpoint()
+
+    assert payload["lerobot_available"] is False
+    assert payload["defaults"]["single"]["robot_type"] == "so101_follower"
+    assert payload["types"]["omx_follower"]["pairing"]["canonical_teleop_type"] == "omx_leader"
+
+
+def test_api_preflight_warns_for_so_without_calibration_file(monkeypatch, tmp_path: Path):
+    follower = tmp_path / "follower_arm_1"
+    leader = tmp_path / "leader_arm_1"
+    follower.write_text("", encoding="utf-8")
+    leader.write_text("", encoding="utf-8")
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+    app = _make_app(tmp_path)
+    endpoint = _find_endpoint(app, "/api/preflight", "POST")
+    payload = asyncio.run(
+        endpoint(
+            {
+                "robot_mode": "single",
+                "robot_type": "so101_follower",
+                "teleop_type": "so101_leader",
+                "follower_port": str(follower),
+                "leader_port": str(leader),
+                "robot_id": "follower_arm_1",
+                "teleop_id": "leader_arm_1",
+                "cameras": {},
+            }
+        )
+    )
+
+    assert payload["ok"] is True
+    assert any(
+        check["label"] == "Follower calibration" and "Calibration file not found" in check["msg"]
+        for check in payload["checks"]
+    )
+    assert any(
+        check["label"] == "Leader calibration" and "Calibration file not found" in check["msg"]
+        for check in payload["checks"]
+    )
 
 
 def test_api_eval_start_blocks_missing_real_robot_calibration(monkeypatch, tmp_path: Path):
@@ -321,6 +463,96 @@ def test_api_eval_start_blocks_missing_real_robot_calibration(monkeypatch, tmp_p
     assert started["called"] is False
     assert streamer_calls["count"] == 0
     assert unlock_calls["count"] == 0
+
+
+def test_api_eval_start_allows_omx_without_calibration_file(monkeypatch, tmp_path: Path):
+    started = {"called": False}
+
+    monkeypatch.setattr("lestudio.process_manager.ProcessManager.is_running", lambda self, name: False)
+    monkeypatch.setattr("lestudio.process_manager.ProcessManager.conflicting_processes", lambda self, name: [])
+    monkeypatch.setattr("lestudio.routes.eval._check_train_python_deps", lambda python_exe: {"ok": True})
+    monkeypatch.setattr("lestudio.routes.eval._check_torchcodec_compat", lambda python_exe: {"ok": True})
+    monkeypatch.setattr("lestudio.routes.eval._check_cuda_runtime_compat", lambda python_exe: (True, ""))
+    monkeypatch.setattr("lestudio.routes.eval.stop_all_streamers_for_process", lambda: None)
+    monkeypatch.setattr("lestudio.routes.eval.unlock_cameras", lambda: None)
+    monkeypatch.setattr(
+        "lestudio.routes.eval.build_eval_args",
+        lambda python_exe, data: [python_exe, "-m", "lerobot.scripts.lerobot_eval", "--env.type=gym_manipulator"],
+    )
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+    def fake_start(self, name: str, args: list[str]) -> bool:
+        started["called"] = True
+        return True
+
+    monkeypatch.setattr("lestudio.process_manager.ProcessManager.start", fake_start)
+
+    app = _make_app(tmp_path)
+    endpoint = _find_endpoint(app, "/api/eval/start", "POST")
+    payload = asyncio.run(
+        endpoint(
+            {
+                "eval_env_type": "gym_manipulator",
+                "eval_task": "real_robot",
+                "robot_mode": "single",
+                "eval_robot_type": "omx_follower",
+                "eval_teleop_type": "omx_leader",
+                "robot_id": "omx_follower",
+                "teleop_id": "omx_leader",
+            }
+        )
+    )
+
+    assert payload["ok"] is True
+    assert started["called"] is True
+
+
+def test_api_eval_start_uses_type_policy_for_calibration_requirement(monkeypatch, tmp_path: Path):
+    started = {"called": False}
+
+    class FakeTypePolicy:
+        @staticmethod
+        def is_calibration_required(device_type: str, *, context: str) -> bool:
+            return False
+
+    monkeypatch.setattr(eval_routes, "type_policy", FakeTypePolicy, raising=False)
+    monkeypatch.setattr("lestudio.process_manager.ProcessManager.is_running", lambda self, name: False)
+    monkeypatch.setattr("lestudio.process_manager.ProcessManager.conflicting_processes", lambda self, name: [])
+    monkeypatch.setattr("lestudio.routes.eval._check_train_python_deps", lambda python_exe: {"ok": True})
+    monkeypatch.setattr("lestudio.routes.eval._check_torchcodec_compat", lambda python_exe: {"ok": True})
+    monkeypatch.setattr("lestudio.routes.eval._check_cuda_runtime_compat", lambda python_exe: (True, ""))
+    monkeypatch.setattr("lestudio.routes.eval.stop_all_streamers_for_process", lambda: None)
+    monkeypatch.setattr("lestudio.routes.eval.unlock_cameras", lambda: None)
+    monkeypatch.setattr(
+        "lestudio.routes.eval.build_eval_args",
+        lambda python_exe, data: [python_exe, "-m", "lerobot.scripts.lerobot_eval", "--env.type=gym_manipulator"],
+    )
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+    def fake_start(self, name: str, args: list[str]) -> bool:
+        started["called"] = True
+        return True
+
+    monkeypatch.setattr("lestudio.process_manager.ProcessManager.start", fake_start)
+
+    app = _make_app(tmp_path)
+    endpoint = _find_endpoint(app, "/api/eval/start", "POST")
+    payload = asyncio.run(
+        endpoint(
+            {
+                "eval_env_type": "gym_manipulator",
+                "eval_task": "real_robot",
+                "robot_mode": "single",
+                "eval_robot_type": "so101_follower",
+                "eval_teleop_type": "so101_leader",
+                "robot_id": "follower_arm_1",
+                "teleop_id": "leader_arm_1",
+            }
+        )
+    )
+
+    assert payload["ok"] is True
+    assert started["called"] is True
 
 
 def test_api_eval_start_rejects_invalid_bimanual_profile_ids(monkeypatch, tmp_path: Path):
@@ -452,7 +684,7 @@ def test_api_calibrate_file_supports_bimanual_shared_profile_id(monkeypatch, tmp
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
     monkeypatch.setattr(
         "lestudio.services.process_service.validate_calibration_file",
-        lambda path: types.SimpleNamespace(errors=[], warnings=[]),
+        lambda path, **kwargs: types.SimpleNamespace(errors=[], warnings=[]),
     )
 
     bi_dir = tmp_path / ".cache" / "huggingface" / "lerobot" / "calibration" / "teleoperators" / "bi_so_leader"

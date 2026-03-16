@@ -181,6 +181,43 @@ let mockCalibrationFiles: Array<{ id: string; guessed_type: string; modified: st
   { id: "bimanual_leader_right", guessed_type: "bi_so_leader", modified: "2026-03-02 09:16:00", size: 1528, rel_path: "teleoperators/bi_so_leader/bimanual_leader_right.json" },
 ];
 
+function syncMockCalibrationTypes(config: Record<string, unknown>): void {
+  const robotType = String(config.robot_type ?? "").trim();
+  const teleopType = String(config.teleop_type ?? "").trim();
+  const robotId = String(config.robot_id ?? "follower_arm_1").trim() || "follower_arm_1";
+  const teleopId = String(config.teleop_id ?? "leader_arm_1").trim() || "leader_arm_1";
+
+  if (!robotType || !teleopType) return;
+
+  const calibrationMeta = new Map<string, { relPath: string; size: number }>([
+    ["so101_follower", { relPath: "robots/so_follower", size: 2140 }],
+    ["so101_leader", { relPath: "teleoperators/so_leader", size: 2080 }],
+    ["omx_follower", { relPath: "robots/omx_follower", size: 2140 }],
+    ["omx_leader", { relPath: "teleoperators/omx_leader", size: 2080 }],
+  ]);
+
+  const updateEntry = (id: string, guessedType: string) => {
+    const meta = calibrationMeta.get(guessedType);
+    if (!meta) return;
+    const existingIndex = mockCalibrationFiles.findIndex((file) => file.id === id);
+    const nextEntry = {
+      id,
+      guessed_type: guessedType,
+      modified: "2026-03-16 02:35:00",
+      size: meta.size,
+      rel_path: `${meta.relPath}/${id}.json`,
+    };
+    if (existingIndex >= 0) {
+      mockCalibrationFiles[existingIndex] = nextEntry;
+      return;
+    }
+    mockCalibrationFiles = [nextEntry, ...mockCalibrationFiles];
+  };
+
+  updateEntry(robotId, robotType);
+  updateEntry(teleopId, teleopType);
+}
+
 function nextMockJobId(): string {
   return Math.random().toString(36).slice(2, 10);
 }
@@ -478,10 +515,11 @@ export async function handleMockGet(path: string): Promise<unknown> {
 
   if (pathname === "/api/robots") {
     return {
-      types: ["so101_follower", "so100_follower", "aloha"],
+      types: ["so101_follower", "so100_follower", "omx_follower", "aloha"],
       details: {
         so101_follower: { capabilities: ["has_arms", "has_cameras"], compatible_teleops: ["so101_leader", "keyboard"] },
         so100_follower: { capabilities: ["has_arms"], compatible_teleops: ["so100_leader", "keyboard"] },
+        omx_follower: { capabilities: ["has_arms"], compatible_teleops: ["omx_leader", "keyboard"] },
         aloha: { capabilities: ["has_arms", "has_cameras"], compatible_teleops: ["keyboard"] },
       },
     };
@@ -490,6 +528,7 @@ export async function handleMockGet(path: string): Promise<unknown> {
   if (pathname === "/api/teleops") {
     const robotType = query.get("robot_type") ?? "";
     if (robotType === "so100_follower") return { types: ["so100_leader", "keyboard"] };
+    if (robotType === "omx_follower") return { types: ["omx_leader", "keyboard"] };
     return { types: ["so101_leader", "keyboard"] };
   }
 
@@ -749,6 +788,7 @@ export async function handleMockPost(path: string, body?: unknown): Promise<unkn
   if (pathname === "/api/config") {
     const nextConfig = (body ?? {}) as Record<string, unknown>;
     state.config = { ...state.config, ...nextConfig };
+    syncMockCalibrationTypes(state.config);
     return state.config;
   }
 

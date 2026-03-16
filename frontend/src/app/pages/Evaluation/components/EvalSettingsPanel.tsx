@@ -9,6 +9,7 @@ import type {
 import type {
   ArmSelection,
   MappedArmLists,
+  PreferredArmTypes,
   ResolvedArmConfig,
 } from "../../../services/armSets";
 import type { CalibrationListFile } from "../../../services/calibrationProfiles";
@@ -49,6 +50,7 @@ export interface EvalSettingsPanelProps {
   onCalibrationIdChange: (configKey: string, value: string) => void;
   armLists: MappedArmLists;
   armSelection: ArmSelection;
+  preferredTypes: PreferredArmTypes;
   onArmSelectionChange: (selection: ArmSelection) => void;
   onArmConfigResolved: (config: ResolvedArmConfig) => void;
   evalCalibFiles: CalibrationListFile[];
@@ -91,6 +93,7 @@ export function EvalSettingsPanel({
   onCalibrationIdChange,
   armLists,
   armSelection,
+  preferredTypes,
   onArmSelectionChange,
   onArmConfigResolved,
   evalCalibFiles,
@@ -303,6 +306,7 @@ export function EvalSettingsPanel({
                 armLists={armLists}
                 calibFiles={evalCalibFiles}
                 selection={armSelection}
+                preferredTypes={preferredTypes}
                 onSelectionChange={onArmSelectionChange}
                 onConfigResolved={onArmConfigResolved}
               />

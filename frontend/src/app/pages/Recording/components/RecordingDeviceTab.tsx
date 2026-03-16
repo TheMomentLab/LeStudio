@@ -1,5 +1,5 @@
 import { ArmPairSelector } from "../../../components/wireframe/ArmPairSelector";
-import type { ArmSelection, MappedArmLists, ResolvedArmConfig } from "../../../services/armSets";
+import type { ArmSelection, MappedArmLists, PreferredArmTypes, ResolvedArmConfig } from "../../../services/armSets";
 import type { CalibrationListFile } from "../../../services/calibrationProfiles";
 
 type RecordingDeviceTabProps = {
@@ -7,6 +7,7 @@ type RecordingDeviceTabProps = {
   armLists: MappedArmLists;
   calibFiles: CalibrationListFile[];
   armSelection: ArmSelection;
+  preferredTypes: PreferredArmTypes;
   onSelectionChange: (selection: ArmSelection) => void;
   onArmSetConfigResolved: (resolved: ResolvedArmConfig) => void;
 };
@@ -16,6 +17,7 @@ export function RecordingDeviceTab({
   armLists,
   calibFiles,
   armSelection,
+  preferredTypes,
   onSelectionChange,
   onArmSetConfigResolved,
 }: RecordingDeviceTabProps) {
@@ -30,6 +32,7 @@ export function RecordingDeviceTab({
           armLists={armLists}
           calibFiles={calibFiles}
           selection={armSelection}
+          preferredTypes={preferredTypes}
           onSelectionChange={onSelectionChange}
           onConfigResolved={onArmSetConfigResolved}
         />

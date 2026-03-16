@@ -11,6 +11,7 @@ from typing import Any
 
 from fastapi import APIRouter
 
+from .. import type_policy
 from .._device_helpers import ensure_bimanual_calibration_files, get_calibration_file_path
 from .._streaming import stop_all_streamers_for_process, unlock_cameras
 from .._train_helpers import (
@@ -92,6 +93,8 @@ def _missing_eval_calibration(data: dict[str, Any]) -> str | None:
         if not device_id:
             return f"Eval requires a {label} calibration profile id before starting."
         path = get_calibration_file_path(device_type, device_id)
+        if not path.exists() and not type_policy.is_calibration_required(device_type, context="eval_real_robot"):
+            continue
         if not path.exists():
             return (
                 f"Missing {label} calibration file: `{path.name}`. "

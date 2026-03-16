@@ -7,7 +7,7 @@ import os
 
 from fastapi import APIRouter
 
-from .. import device_registry
+from .. import device_registry, type_policy
 from .._device_helpers import CAMERA_ROLES, get_arms, get_cameras
 from .._streaming import _DEFAULT_CAM_SETTINGS, _get_cam_settings, restart_all_streamers
 from ..capabilities import Capability, register
@@ -79,6 +79,12 @@ def create_router(state: AppState) -> APIRouter:
             },
             "lerobot_available": device_registry.is_lerobot_available(),
         }
+
+    @router.get("/api/policy/type-catalog")
+    def api_type_policy_catalog():
+        payload = type_policy.get_type_catalog_payload()
+        payload["lerobot_available"] = device_registry.is_lerobot_available()
+        return payload
 
     @router.get("/api/robots/{robot_type}/schema")
     def api_robot_schema(robot_type: str):

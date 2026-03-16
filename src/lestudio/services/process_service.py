@@ -8,7 +8,7 @@ from typing import cast
 
 import cv2
 
-from lestudio import command_builders, device_registry, path_policy
+from lestudio import command_builders, device_registry, path_policy, type_policy
 from lestudio._device_helpers import ensure_bimanual_calibration_files, get_calibration_file_path
 from lestudio._streaming import (
     _get_cam_settings,
@@ -63,7 +63,7 @@ def _merge_bimanual_validation(robot_type: str, robot_id: str, paths: list[Path]
     if len(paths) != 2:
         return merged
     for side, path in zip(("left", "right"), paths, strict=True):
-        result = validate_calibration_file(path)
+        result = validate_calibration_file(path, device_type=robot_type)
         merged.errors.extend(
             CalibrationIssue(
                 severity=issue.severity,
@@ -138,9 +138,12 @@ def run_preflight(data: dict, state: AppState) -> dict:
             return
         path = get_calibration_file_path(device_type, device_id)
         if not path.exists():
+            if not type_policy.is_calibration_required(device_type, context="preflight"):
+                add("ok", label, f"Calibration not required for {device_type} (preconfigured)")
+                return
             add("warn", label, f"Calibration file not found ({path.name})")
             return
-        validation = validate_calibration_file(path)
+        validation = validate_calibration_file(path, device_type=device_type)
         if validation.errors:
             msgs = "; ".join(e.message for e in validation.errors[:3])
             add("error", label, f"Calibration file has errors: {msgs}")
@@ -177,7 +180,10 @@ def run_preflight(data: dict, state: AppState) -> dict:
         if missing:
             add("warn", label, f"Calibration file not found ({', '.join(missing)})")
             return
-        validation_results = [validate_calibration_file(left_path), validate_calibration_file(right_path)]
+        validation_results = [
+            validate_calibration_file(left_path, device_type=device_type),
+            validate_calibration_file(right_path, device_type=device_type),
+        ]
         errors = [err.message for result in validation_results for err in result.errors[:3]]
         warnings = [warn.message for result in validation_results for warn in result.warnings[:3]]
         copied_msg = ""
@@ -309,7 +315,7 @@ def calibrate_file_status(robot_type: str, robot_id: str) -> dict:
     if path.exists():
         mtime = path.stat().st_mtime
         mdate = datetime.datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M:%S")
-        validation = validate_calibration_file(path)
+        validation = validate_calibration_file(path, device_type=robot_type)
         return {
             "exists": True,
             "path": str(path),
@@ -371,7 +377,7 @@ def calibrate_validate(robot_type: str, robot_id: str) -> dict:
     except (TypeError, ValueError) as e:
         return {"ok": False, "error": f"Unknown robot_type '{robot_type}': {e}"}
     path = path_policy.calibration_file(category, dir_name, robot_id)
-    result = validate_calibration_file(path)
+    result = validate_calibration_file(path, device_type=robot_type)
     return result.to_dict()
 
 
@@ -393,7 +399,12 @@ def calibrate_validate_pair(data: dict) -> dict:
     follower_path = path_policy.calibration_file(f_cat, f_dir, robot_id)
     leader_path = path_policy.calibration_file(l_cat, l_dir, teleop_id)
 
-    result = validate_and_cross_validate(leader_path, follower_path)
+    result = validate_and_cross_validate(
+        leader_path,
+        follower_path,
+        leader_type=teleop_type,
+        follower_type=robot_type,
+    )
     return result
 
 

@@ -99,6 +99,68 @@ export type TrainPreflightResponse = {
   command: string;
 };
 
+export type TypeCatalogDefaults = {
+  robot_type: string;
+  teleop_type: string;
+};
+
+export type TypePolicyCalibrationEnforcement = {
+  preflight: string;
+  eval_real_robot: string;
+  ui: string;
+};
+
+export type TypePolicyCalibration = {
+  requirement: string;
+  enforcement: TypePolicyCalibrationEnforcement;
+  validator_id: string;
+};
+
+export type TypePolicyPairing = {
+  canonical_robot_type: string;
+  canonical_teleop_type: string;
+};
+
+export type TypePolicyMotorSetup = {
+  supported: boolean;
+};
+
+export type TypePolicyBimanual = {
+  supported: boolean;
+  group_type: string;
+};
+
+export type TypePolicyRecord = {
+  type_name: string;
+  registry_kind: string;
+  family_id: string;
+  role: string;
+  pairing: TypePolicyPairing;
+  calibration: TypePolicyCalibration;
+  motor_setup: TypePolicyMotorSetup;
+  bimanual: TypePolicyBimanual;
+};
+
+export type TypePolicyCatalogResponse = {
+  version: number;
+  defaults: {
+    single: TypeCatalogDefaults;
+    bi: TypeCatalogDefaults;
+  };
+  types: Record<string, TypePolicyRecord>;
+  lerobot_available: boolean;
+};
+
+export const DEFAULT_TYPE_CATALOG_RESPONSE: TypePolicyCatalogResponse = {
+  version: 1,
+  defaults: {
+    single: { robot_type: "so101_follower", teleop_type: "so101_leader" },
+    bi: { robot_type: "bi_so_follower", teleop_type: "bi_so_leader" },
+  },
+  types: {},
+  lerobot_available: false,
+};
+
 export type DatasetListItem = {
   id: string;
   timestamp?: number;
@@ -123,6 +185,9 @@ export type LeStudioStoreData = {
   wsReady: boolean;
   apiHealth: ApiHealthState;
   apiSupport: ApiSupportState;
+  typeCatalog: TypePolicyCatalogResponse;
+  typeCatalogVersion: number;
+  typeCatalogLoaded: boolean;
   hfUsername: string | null;
   datasets: DatasetListItem[];
   loadingDatasets: boolean;
@@ -143,6 +208,7 @@ export type LeStudioStoreActions = {
   setWsReady: (ready: boolean) => void;
   setApiHealth: (key: string, value: boolean) => void;
   setApiSupport: (key: string, value: boolean) => void;
+  setTypeCatalog: (catalog: TypePolicyCatalogResponse) => void;
   appendLog: (processName: string, text: string, kind: LogKind, replace?: string) => void;
   clearLog: (processName: string) => void;
   addToast: (message: string, kind: ToastLevel) => void;

@@ -5,6 +5,7 @@ import { FieldRow, WireSelect, WireToggle } from "../../../components/wireframe"
 import type {
   ArmSelection,
   MappedArmLists,
+  PreferredArmTypes,
   ResolvedArmConfig,
 } from "../../../services/armSets";
 import type { CalibFile, TeleopPhase } from "../shared";
@@ -14,6 +15,7 @@ type TeleopMotorSettingsPanelProps = {
   armLists: MappedArmLists;
   calibFiles: CalibFile[];
   armSelection: ArmSelection;
+  preferredTypes: PreferredArmTypes;
   onArmSelectionChange: (selection: ArmSelection) => void;
   onArmConfigResolved: (resolved: ResolvedArmConfig) => void;
   phase: TeleopPhase;
@@ -35,6 +37,7 @@ export function TeleopMotorSettingsPanel({
   armLists,
   calibFiles,
   armSelection,
+  preferredTypes,
   onArmSelectionChange,
   onArmConfigResolved,
   phase,
@@ -68,6 +71,7 @@ export function TeleopMotorSettingsPanel({
           armLists={armLists}
           calibFiles={calibFiles}
           selection={armSelection}
+          preferredTypes={preferredTypes}
           onSelectionChange={onArmSelectionChange}
           onConfigResolved={onArmConfigResolved}
           disabled={phase !== "idle"}
