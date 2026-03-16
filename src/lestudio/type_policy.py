@@ -319,6 +319,17 @@ def get_calibration_validator(type_name: str) -> str:
     return get_type_policy(type_name).calibration.validator_id
 
 
+def get_calibration_source_types(type_name: str) -> list[str]:
+    normalized = str(type_name or "").strip()
+    if normalized == "bi_so_follower":
+        return ["so101_follower", "so100_follower"]
+    if normalized == "bi_so_leader":
+        return ["so101_leader", "so100_leader"]
+    if normalized.startswith("bi_"):
+        return [normalized[3:]]
+    return [normalized]
+
+
 def is_calibration_required(type_name: str, *, context: CalibrationContext) -> bool:
     policy = get_type_policy(type_name).calibration.enforcement
     if context == "preflight":
@@ -351,6 +362,7 @@ __all__ = [
     "TypePolicy",
     "get_defaults_for_mode",
     "get_calibration_validator",
+    "get_calibration_source_types",
     "get_type_catalog_payload",
     "get_type_policy",
     "is_calibration_required",
