@@ -40,7 +40,7 @@ export function TeleopRunningView({
   return (
     <>
       {teleopReconnected && (
-        <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-blue-500/30 bg-blue-500/5 text-sm text-blue-600 dark:text-blue-400">
+        <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-info-line bg-info-bg text-sm text-info">
           <span className="flex-none">⚡</span>
           <span>Reconnected - This teleop session was recovered from a previous server session. You can still stop the process.</span>
         </div>
@@ -60,8 +60,8 @@ export function TeleopRunningView({
           {selectedCameras.map((cam) => {
             const frameSrc = cameraFrames[cam.role];
             return (
-              <div key={cam.role} className="relative rounded-lg overflow-hidden border border-zinc-200 dark:border-zinc-800">
-                <div className="aspect-video bg-zinc-200 dark:bg-zinc-900 relative">
+              <div key={cam.role} className="relative rounded-lg overflow-hidden border border-line">
+                <div className="aspect-video bg-surface-sunken relative">
                   {!pausedFeeds[cam.role] ? (
                     frameSrc ? (
                       <img src={frameSrc} alt={`${cam.role} stream`} className="absolute inset-0 h-full w-full object-cover" />
@@ -69,13 +69,13 @@ export function TeleopRunningView({
                       <WireBox className="absolute inset-0 border-0 rounded-none" label={`MJPEG stream - ${cam.role}`} />
                     )
                   ) : (
-                    <div className="absolute inset-0 flex items-center justify-center text-zinc-600">
+                    <div className="absolute inset-0 flex items-center justify-center text-fg-muted">
                       <span className="text-sm flex items-center gap-1"><Pause size={10} className="fill-current" /> Paused</span>
                     </div>
                   )}
 
                   <div className="absolute top-2 left-2">
-                    <span className="px-1.5 py-0.5 rounded bg-red-500/80 text-white text-sm font-mono">LIVE</span>
+                    <span className="px-1.5 py-0.5 rounded bg-danger-solid/80 text-on-solid text-sm font-mono">LIVE</span>
                   </div>
                   <button
                     onClick={() => onToggleFeed(cam.role)}
@@ -86,17 +86,17 @@ export function TeleopRunningView({
                       : <Pause size={10} className="fill-current" />}
                   </button>
                 </div>
-                <div className="px-3 py-2 bg-zinc-50 dark:bg-zinc-900">
-                  <div className="text-sm text-zinc-600 dark:text-zinc-300">{cam.role}</div>
-                  <div className="text-sm text-zinc-400 font-mono">{cam.path}</div>
+                <div className="px-3 py-2 bg-surface-muted">
+                  <div className="text-sm text-fg-body">{cam.role}</div>
+                  <div className="text-sm text-fg-muted font-mono">{cam.path}</div>
                 </div>
               </div>
             );
           })}
         </div>
 
-        <div className="flex items-center gap-2 px-3 py-2 rounded border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/50">
-          <span className="text-sm text-zinc-500">
+        <div className="flex items-center gap-2 px-3 py-2 rounded border border-line bg-surface-muted">
+          <span className="text-sm text-fg-muted">
             {mode} · {speed} · {antiJitterAvailable
               ? (antiJitterEnabled ? `anti-jitter a=${antiJitterAlpha} d=${antiJitterDeadband}` : "anti-jitter off")
               : "anti-jitter unavailable"} · {debugEnabled ? "debug on" : "debug off"} · Cams: {selectedCameras.length}/{camerasMappedCount}

@@ -54,6 +54,9 @@ export default tseslint.config(
       'src/app/pages/Training/**/*.{ts,tsx}',
       'src/app/pages/MotorSetup/**/*.{ts,tsx}',
       'src/app/pages/DatasetManagement/**/*.{ts,tsx}',
+      'src/app/pages/Teleop.tsx',
+      'src/app/pages/Teleop/**/*.{ts,tsx}',
+      'src/app/pages/Recording/**/*.{ts,tsx}',
     ],
     plugins: { design: designSystem },
     rules: {

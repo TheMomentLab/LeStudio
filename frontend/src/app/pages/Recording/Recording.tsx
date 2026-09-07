@@ -563,7 +563,7 @@ export function Recording() {
           {phase === "loading" && <RecordingLoadingView loadingStep={loadingStep} steps={LOADING_STEPS} />}
 
           {phase === "running" && recordReconnected && (
-            <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-blue-500/30 bg-blue-500/5 text-sm text-blue-600 dark:text-blue-400">
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-info-line bg-info-bg text-sm text-info">
               <span className="flex-none">⚡</span>
               <span>Reconnected — This recording session was recovered from a previous server session. You can still stop the process.</span>
             </div>
@@ -590,7 +590,7 @@ export function Recording() {
             label={running ? "RECORDING" : phase === "loading" ? "STARTING..." : "READY"}
             pulse={running}
           />
-          <span className="text-sm text-zinc-400 truncate">
+          <span className="text-sm text-fg-muted truncate">
             {running
               ? `Episode ${currentEp} / ${totalEps}`
               : phase === "loading"

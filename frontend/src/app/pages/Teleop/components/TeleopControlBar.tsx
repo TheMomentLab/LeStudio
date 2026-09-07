@@ -40,7 +40,7 @@ export function TeleopControlBar({
             label={running ? "TELEOP ACTIVE" : phase === "loading" ? "STARTING..." : "READY"}
             pulse={running}
           />
-          <span className="text-sm text-zinc-400">
+          <span className="text-sm text-fg-muted">
             {running
               ? `${mode} · ${speed}`
               : phase === "loading"
@@ -51,7 +51,7 @@ export function TeleopControlBar({
 
         {(phase === "idle" || phase === "running") && (
           <div className="flex items-center gap-2">
-            <span className="text-sm text-zinc-400 whitespace-nowrap">Speed:</span>
+            <span className="text-sm text-fg-muted whitespace-nowrap">Speed:</span>
             <WireSelect
               value={speed}
               options={["0.1x", "0.25x", "0.5x", "0.75x", "1.0x"]}
