@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Cloud, Download, ExternalLink, HardDrive, Heart, Search } from "lucide-react";
+import { EmptyState } from "../../../components/wireframe";
 
 import { buttonStyles } from "../../../components/ui/button";
 import { useHfAuth } from "../../../hf-auth-context";
@@ -315,9 +316,9 @@ export function HubSearchPanel() {
         </div>
         <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
           {myHubLoading ? (
-            <div className="px-4 py-6 text-sm text-zinc-400 text-center">Loading your Hub datasets...</div>
+            <EmptyState compact message="Loading your Hub datasets…" />
           ) : myHubDatasets.length === 0 ? (
-            <div className="px-4 py-6 text-sm text-zinc-400 text-center">No Hub datasets found.</div>
+            <EmptyState compact icon={<Cloud size={20} />} message="No Hub datasets found." />
           ) : myHubDatasets.map((ds) => (
             <div key={ds.id} className="flex items-center justify-between px-3 py-2.5 hover:bg-zinc-50 dark:hover:bg-zinc-800/30 transition-colors">
               <div className="flex flex-col gap-0.5 min-w-0 flex-1 mr-4">

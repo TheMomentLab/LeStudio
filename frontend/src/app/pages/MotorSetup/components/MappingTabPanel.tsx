@@ -1,6 +1,5 @@
 import type { Dispatch, SetStateAction } from "react";
-import { Bot, Loader2, Trash2, Zap } from "lucide-react";
-import { buttonStyles } from "../../../components/ui/button";
+import { Bot, Loader2, Zap } from "lucide-react";
 import { Card, EmptyState, WireSelect } from "../../../components/wireframe";
 import type { ArmDevice } from "../types";
 
@@ -8,22 +7,16 @@ interface MappingTabPanelProps {
   arms: ArmDevice[];
   armRoleMap: Record<string, string>;
   onSetArmRoleMap: Dispatch<SetStateAction<Record<string, string>>>;
-  hasAnyMapping: boolean;
-  onClearAllMappings: () => void;
   autoApplying: boolean;
   onRoleChange: (nextMap: Record<string, string>) => void;
-  onOpenIdentify: () => void;
 }
 
 export function MappingTabPanel({
   arms,
   armRoleMap,
   onSetArmRoleMap,
-  hasAnyMapping,
-  onClearAllMappings,
   autoApplying,
   onRoleChange,
-  onOpenIdentify,
 }: MappingTabPanelProps) {
   return (
     <div className="flex flex-col gap-4">
@@ -88,33 +81,6 @@ export function MappingTabPanel({
         </div>
       )}
 
-      {arms.length > 0 && (
-        <div className="flex justify-end gap-2">
-          <button
-            onClick={onClearAllMappings}
-            disabled={!hasAnyMapping || autoApplying}
-            className={buttonStyles({
-              variant: "secondary",
-              tone: "neutral",
-              className: "h-10 px-4 whitespace-nowrap",
-            })}
-          >
-            <Trash2 size={12} className="inline mr-1.5" />
-            Clear All
-          </button>
-          <button
-            onClick={onOpenIdentify}
-            className={buttonStyles({
-              variant: "primary",
-              tone: "neutral",
-              className: "h-10 px-5 whitespace-nowrap",
-            })}
-          >
-              <Zap size={12} className="inline mr-1.5" />
-              Identify Arm
-          </button>
-        </div>
-      )}
     </div>
   );
 }

@@ -1,3 +1,4 @@
+import { SectionLabel } from "../../../components/wireframe";
 import {
   formatDebugNumber,
   formatJointName,
@@ -67,7 +68,7 @@ export function TeleopDebugTelemetryPanel({
       <div className="px-4 py-4 flex flex-col gap-4">
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
           <div className="rounded border border-zinc-200 dark:border-zinc-800 bg-zinc-50/60 dark:bg-zinc-950/40 p-3">
-            <div className="text-xs uppercase tracking-wide text-zinc-400">Runtime</div>
+            <SectionLabel>Runtime</SectionLabel>
             <div className="mt-2 text-sm text-zinc-600 dark:text-zinc-300 flex flex-col gap-1">
               <span>WS: {wsReady ? "connected" : "disconnected"}</span>
               <span>Loop Hz: {loopMetrics ? formatDebugNumber(loopMetrics.hz) : "-"}</span>
@@ -79,7 +80,7 @@ export function TeleopDebugTelemetryPanel({
           </div>
 
           <div className="rounded border border-zinc-200 dark:border-zinc-800 bg-zinc-50/60 dark:bg-zinc-950/40 p-3">
-            <div className="text-xs uppercase tracking-wide text-zinc-400">Device Mapping</div>
+            <SectionLabel>Device Mapping</SectionLabel>
             <div className="mt-2 text-sm text-zinc-600 dark:text-zinc-300 flex flex-col gap-1 font-mono">
               <span>Follower: {selectedFollowerPort || "-"}</span>
               <span>Leader: {selectedLeaderPort || "-"}</span>
@@ -90,7 +91,7 @@ export function TeleopDebugTelemetryPanel({
           </div>
 
           <div className="rounded border border-zinc-200 dark:border-zinc-800 bg-zinc-50/60 dark:bg-zinc-950/40 p-3">
-            <div className="text-xs uppercase tracking-wide text-zinc-400">Mapping Controls</div>
+            <SectionLabel>Mapping Controls</SectionLabel>
             <div className="mt-2 text-sm text-zinc-600 dark:text-zinc-300 flex flex-col gap-1">
               <span>Invert shoulder: {invertShoulderLift ? "on" : "off"}</span>
               <span>Invert wrist: {invertWristRoll ? "on" : "off"}</span>
@@ -101,7 +102,7 @@ export function TeleopDebugTelemetryPanel({
           </div>
 
           <div className="rounded border border-zinc-200 dark:border-zinc-800 bg-zinc-50/60 dark:bg-zinc-950/40 p-3">
-            <div className="text-xs uppercase tracking-wide text-zinc-400">Signals</div>
+            <SectionLabel>Signals</SectionLabel>
             <div className="mt-2 text-sm text-zinc-600 dark:text-zinc-300 flex flex-col gap-1">
               <span>Log lines: {teleopLogsCount}</span>
               <span>Supported: {debugMeta?.debug_supported === false ? "no" : "yes"}</span>
@@ -117,7 +118,7 @@ export function TeleopDebugTelemetryPanel({
           <>
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
               <div className="rounded border border-zinc-200 dark:border-zinc-800 bg-zinc-50/60 dark:bg-zinc-950/40 p-3">
-                <div className="text-xs uppercase tracking-wide text-zinc-400">Joint Coverage</div>
+                <SectionLabel>Joint Coverage</SectionLabel>
                 <div className="mt-2 text-sm text-zinc-600 dark:text-zinc-300 flex flex-col gap-1">
                   <span>Total joints: {debugSnapshot.joint_count_total}</span>
                   <span>Shown joints: {debugSnapshot.joint_count_emitted}</span>
@@ -127,7 +128,7 @@ export function TeleopDebugTelemetryPanel({
               </div>
 
               <div className="rounded border border-zinc-200 dark:border-zinc-800 bg-zinc-50/60 dark:bg-zinc-950/40 p-3">
-                <div className="text-xs uppercase tracking-wide text-zinc-400">Goal Error</div>
+                <SectionLabel>Goal Error</SectionLabel>
                 <div className="mt-2 text-sm text-zinc-600 dark:text-zinc-300 flex flex-col gap-1">
                   <span>Max abs: {formatDebugNumber(debugSnapshot.max_abs_goal_error)}</span>
                   <span>RMS: {formatDebugNumber(debugSnapshot.rms_goal_error)}</span>
@@ -164,7 +165,7 @@ export function TeleopDebugTelemetryPanel({
             </div>
 
             <div className="rounded border border-zinc-200 dark:border-zinc-800 bg-zinc-950 text-zinc-200 p-3 overflow-x-auto">
-              <div className="text-xs uppercase tracking-wide text-zinc-500 mb-2">Latest Raw Snapshot</div>
+              <SectionLabel className="mb-2">Latest Raw Snapshot</SectionLabel>
               <pre className="text-xs whitespace-pre-wrap break-all">{JSON.stringify(debugSnapshot, null, 2)}</pre>
             </div>
           </>

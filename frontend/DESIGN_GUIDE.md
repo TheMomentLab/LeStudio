@@ -265,8 +265,26 @@ import { buttonStyles } from "../components/ui/button";
 `cursor-pointer`, `disabled:cursor-not-allowed`, `disabled:opacity-50`, 포커스 링은
 모두 `BASE_STYLES`에 포함되어 있습니다 — 다시 붙이지 마세요.
 
+**톤 규칙 — 초록은 "프로세스 시작"에만.**
+
+| 버튼이 하는 일 | variant / tone | 예 |
+|---|---|---|
+| 하드웨어·ML 프로세스를 시작한다 (Stop 짝이 있다) | `primary` / `success` | Start Teleop, Start Recording, Start Training, Start Eval, Start Calibration, Identify Arm, Connect (Motor Monitor) |
+| 실행 중인 프로세스를 멈춘다 | `secondary` / `danger` (`ProcessButtons`가 처리) | Stop |
+| 즉시 위험한 정지 | `primary` / `danger` | E-Stop |
+| 그 외 페이지의 주요 액션 | `primary` / `neutral` | Search (Hub), Push to Hub, Save |
+| 보조 액션 | `secondary` / `neutral` | Clear All, Disconnect, Refresh |
+| 파괴적 보조 액션 | `ghost` 또는 `secondary` / `danger` | Delete |
+
+초록 버튼이 화면에 둘 이상 보이면 규칙을 잘못 적용한 것입니다.
+
 **프로세스 Start/Stop**은 `ProcessButtons`를 씁니다. 내부적으로 `buttonStyles`의
 `primary/success`·`primary/danger`를 쓰되 세로 패딩을 키운 형태입니다.
+
+**위치 규칙 — 프로세스 CTA는 하단 `StickyControlBar`에.** 상태 배지 + 한 줄 상태 문구를
+왼쪽에, Start/Stop을 오른쪽에 둡니다. Teleop · Record · Train · Eval · Motor Setup(Mapping,
+Motor Monitor, Calibration)이 이 형태입니다. 카드 아래에 버튼을 띄우지 마세요. 예외는
+Motor Setup의 Setup 위저드처럼 단계별 버튼이 필요한 안내 흐름뿐입니다.
 
 **콘솔 예외**: `RuntimeConsoleDrawer`의 탭·아이콘·로그 유틸 버튼은 이 위계 밖입니다.
 콘솔은 로그 가독성과 밀도가 우선이므로 가벼운 스타일을 유지합니다.
@@ -274,6 +292,27 @@ import { buttonStyles } from "../components/ui/button";
 ### 5.3 토글
 
 `WireToggle` — 트랙 `w-8 h-4`, ON `bg-ok-solid`, OFF `bg-surface-raised`, 썸 `size-3`.
+
+### 5.4 레이블 표기
+
+- **입력 필드 레이블은 문장 케이스**: `Policy Type`, `Number of Episodes`. `text-sm text-fg-muted mb-1.5`.
+- **카드 안에서 그룹을 나누는 구분 레이블만 대문자**: `SectionLabel` 컴포넌트를 씁니다
+  (`text-xs font-medium uppercase tracking-wide text-fg-muted`). Curation의 "Episode Tags",
+  Teleop 디버그 패널의 "Runtime" 같은 것들입니다.
+- 사이드바 그룹 헤더(HARDWARE / OPERATE …)는 별도 스타일이며 페이지 안에서 흉내 내지 마세요.
+
+### 5.5 선택 상태
+
+목록 행, 라디오 카드, 탭을 가리지 않고 **선택됨은 한 가지로만** 그립니다.
+
+```
+선택:   bg-surface-selected  (테두리가 있는 요소는 + border-line-strong)
+호버:   bg-surface-hover     (테두리가 있는 요소는 + hover:border-line-strong)
+라디오: 선택 border-fg + 점 bg-fg, 비선택 border-line-strong
+```
+
+파란 왼쪽 바, 파란 배경, 초록 테두리 같은 색은 선택에 쓰지 않습니다. 색은 상태
+(`ok` / `warn` / `danger`)에만 씁니다 (§2.4).
 
 ---
 
@@ -306,6 +345,18 @@ Lucide React 기준.
   → step 뱃지: size-5 rounded bg-surface-raised text-fg-muted font-mono
 바디: p-4
 ```
+
+### 7.1a 빈 상태
+
+"아직 없음"은 어디서나 `EmptyState`로 그립니다. 카드 본문은 기본, 고정 크기 영역
+(카메라 프리뷰 상자, 짧은 목록)은 `compact`. 회색 텍스트 한 줄이나 "Waiting..." 같은
+임시 마크업을 직접 쓰지 마세요.
+
+### 7.1b 매핑 안 된 장치
+
+장치 목록에서 아직 역할이 없는 장치는 **어느 페이지에서나 같은 강도로 낮춥니다**:
+이름·경로 `text-fg-disabled`, 오른쪽에 `unmapped` 칩, 카드 제목은
+`Cameras (2 of 3 mapped)`처럼 쓸 수 있는 수를 먼저 보여 줍니다 (Status 페이지 참고).
 
 ### 7.2 상태 배너
 
@@ -343,11 +394,19 @@ inline-flex items-center gap-1 px-2 py-0.5 rounded border text-sm
 
 ### 9.1 Pill 탭 — `SubTabs` / `ModeToggle`
 
+앱의 세그먼트 컨트롤은 **이 한 가지 모양**뿐입니다. 둘은 같은 스타일을 공유하며
+`ModeToggle`은 문자열 옵션용, `SubTabs`는 key + icon용 편의 API입니다.
+
 ```
-컨테이너: flex gap-1 bg-surface-sunken p-1 rounded-lg w-fit
-비활성:   px-3.5 py-1.5 rounded-md text-sm font-medium text-fg-muted hover:text-fg-body
-활성:     px-3.5 py-1.5 rounded-md text-sm font-medium bg-surface-elevated text-fg shadow-sm
+컨테이너: inline-flex gap-1 bg-surface-sunken rounded-lg w-fit  + p-1 (md) / p-0.5 (sm)
+비활성:   rounded-md text-sm font-medium text-fg-muted hover:text-fg-body
+활성:     rounded-md text-sm font-medium bg-surface-elevated text-fg shadow-sm
+md:       px-3.5 py-1.5  — 페이지 하위 탭, 헤더의 모드 전환
+sm:       px-3   py-1    — 폼 안에서 h-9 입력 옆에 놓이는 값 선택 (Local/HF, 프리셋)
 ```
+
+인라인으로 알약 버튼 묶음을 만들지 마세요. 검정 채움 활성 상태, 테두리 그룹 등
+변형은 모두 이 컴포넌트로 통합되었습니다.
 
 ### 9.2 파이프라인 네비게이션 — `StepperNav`
 
@@ -483,13 +542,14 @@ npm run build
 | `WireSelect` | 표준 셀렉트 |
 | `WireToggle` | 토글 스위치 |
 | `FieldRow` | 라벨 + 컨트롤 행 |
-| `ModeToggle` | 토글 버튼 그룹 |
-| `SubTabs` | 아이콘 지원 pill 탭 |
+| `ModeToggle` | 문자열 옵션 세그먼트 컨트롤 (`size`: md / sm) |
+| `SubTabs` | key + icon 세그먼트 컨트롤 (`size`: md / sm) |
 | `StepperNav` | 파이프라인 이전/다음 + 진행 바 |
 | `RefreshButton` | 아이콘 새로고침 버튼 |
 | `ResourceBar` | 사용률 바 (임계값 색상) |
 | `WireBox` | 점선 플레이스홀더 |
-| `EmptyState` | 빈 상태 메시지 |
+| `EmptyState` | 빈 상태 메시지 (`compact`: 프리뷰 상자·짧은 목록용) |
+| `SectionLabel` | 카드 안 그룹 구분용 대문자 레이블 (§5.4) |
 
 별도 파일: `ArmPairSelector` (`components/wireframe/ArmPairSelector.tsx`).
 

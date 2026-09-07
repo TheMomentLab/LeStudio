@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 
 import { buttonStyles } from "../../../components/ui/button";
-import { Card, FieldRow, StatusBadge, WireInput } from "../../../components/wireframe";
+import { Card, FieldRow, SectionLabel, StatusBadge, WireInput } from "../../../components/wireframe";
 import { cn } from "../../../components/ui/utils";
 import { apiGet, apiPost } from "../../../services/apiClient";
 import { useLeStudioStore } from "../../../store";
@@ -197,9 +197,7 @@ export function CurationPanelContent({
 
       {/* ─── 1. Tag Summary Dashboard ─── */}
       <div>
-        <div className="text-xs font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wide mb-2">
-          Episode Tags
-        </div>
+        <SectionLabel className="mb-2">Episode Tags</SectionLabel>
         <div className="grid grid-cols-4 gap-2">
           {(["good", "bad", "review", "untagged"] as const).map((t) => {
             const cfg = TAG_CONFIG[t];
@@ -223,9 +221,7 @@ export function CurationPanelContent({
 
       {/* ─── 2. Derive Mode — Radio Cards ─── */}
       <div>
-        <div className="text-xs font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wide mb-2">
-          Derive Mode
-        </div>
+        <SectionLabel className="mb-2">Derive Mode</SectionLabel>
         <div className="flex flex-col gap-1.5">
           {DERIVE_MODES.map((mode) => (
             <button
@@ -236,8 +232,8 @@ export function CurationPanelContent({
               className={cn(
                 "flex items-start gap-3 px-3 py-2.5 rounded-lg border text-left transition-all cursor-pointer",
                 deriveMode === mode.key
-                  ? "border-blue-500/50 bg-blue-50 dark:bg-blue-500/10 ring-1 ring-blue-500/20"
-                  : "border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800/30",
+                  ? "border-line-strong bg-surface-selected"
+                  : "border-line hover:border-line-strong hover:bg-surface-hover",
                 running && "opacity-50 cursor-not-allowed",
               )}
             >
@@ -245,10 +241,10 @@ export function CurationPanelContent({
               <div
                 className={cn(
                   "mt-0.5 size-4 rounded-full border-2 flex items-center justify-center flex-none",
-                  deriveMode === mode.key ? "border-blue-500" : "border-zinc-300 dark:border-zinc-600",
+                  deriveMode === mode.key ? "border-fg" : "border-line-strong",
                 )}
               >
-                {deriveMode === mode.key && <div className="size-2 rounded-full bg-blue-500" />}
+                {deriveMode === mode.key && <div className="size-2 rounded-full bg-fg" />}
               </div>
               <div>
                 <div className="text-sm font-medium text-zinc-800 dark:text-zinc-200">{mode.label}</div>
@@ -261,9 +257,7 @@ export function CurationPanelContent({
 
       {/* ─── 3. Impact Preview ─── */}
       <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/30 p-3">
-        <div className="text-xs font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wide mb-2">
-          Impact Preview
-        </div>
+        <SectionLabel className="mb-2">Impact Preview</SectionLabel>
         {/* Bar */}
         <div className="flex h-3 rounded-full overflow-hidden bg-zinc-200 dark:bg-zinc-700 mb-2">
           {keepIndices.length > 0 && (
@@ -297,7 +291,7 @@ export function CurationPanelContent({
         <button
           type="button"
           onClick={() => setShowEpisodes(!showEpisodes)}
-          className="flex items-center gap-1.5 text-xs font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wide hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors cursor-pointer"
+          className="flex items-center gap-1.5 text-xs font-medium text-fg-muted uppercase tracking-wide hover:text-fg-body transition-colors cursor-pointer"
         >
           <ChevronRight
             size={12}

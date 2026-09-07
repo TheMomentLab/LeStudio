@@ -98,7 +98,7 @@ export function RecordingCameraTab({
                   <img src={frameSrc} alt={`${cam.role} preview`} className="h-full w-full object-cover" />
                 ) : (
                   <div className="h-full w-full flex items-center justify-center">
-                    <span className="text-sm text-zinc-600">Waiting...</span>
+                    <EmptyState compact icon={<Camera size={20} />} message="Waiting for frames…" />
                   </div>
                 )}
               </div>

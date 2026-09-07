@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { cn } from "../components/ui/utils";
 import { Camera, Bot, Cpu, Eraser, AlertCircle, AlertTriangle, CheckCircle2, Link as LinkIcon, History, Shield } from "lucide-react";
 import {
   PageHeader, ResourceBar, EmptyState, RefreshButton,
@@ -21,6 +22,21 @@ type ArmDevice = { device: string; symlink: string | null; path: string; serial?
 type GpuStatusResponse = { exists: boolean; utilization: number; memory_used: number; memory_total: number; memory_percent: number; };
 
 type RuleItem = { kernel?: string; symlink?: string; mode?: string; exists?: boolean; };
+
+// "Cameras (2 of 3 mapped)" — the count a user can actually use, not just what is plugged in.
+function deviceCountLabel(noun: string, devices: Array<{ symlink: string | null }>) {
+  if (devices.length === 0) return `${noun} (0)`;
+  const mapped = devices.filter((d) => d.symlink).length;
+  return mapped === devices.length ? `${noun} (${devices.length})` : `${noun} (${mapped} of ${devices.length} mapped)`;
+}
+
+function UnmappedChip() {
+  return (
+    <span className="inline-flex items-center px-2 py-0.5 rounded border border-line-control bg-surface-sunken text-xs text-fg-muted flex-none">
+      unmapped
+    </span>
+  );
+}
 type RulesCurrentResponse = {
   camera_rules?: RuleItem[];
   arm_rules?: RuleItem[];
@@ -133,7 +149,7 @@ export function SystemStatus() {
             <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-card overflow-hidden">
               <div className="px-4 py-3 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800 flex items-center gap-2">
                 <Camera size={13} className="text-zinc-400" />
-                <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Cameras ({cameras.length})</span>
+                <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">{deviceCountLabel("Cameras", cameras)}</span>
               </div>
               {cameras.length === 0 ? (
                 <div className="p-3 flex flex-col gap-3 flex-1 justify-start">
@@ -148,10 +164,10 @@ export function SystemStatus() {
                   {[...cameras].sort((a, b) => (b.symlink ? 1 : 0) - (a.symlink ? 1 : 0)).map((cam) => (
                     <div key={cam.device} className="flex items-center gap-2 sm:gap-3 px-3 py-1.5 sm:py-2">
                       <div className="flex-1 min-w-0">
-                        <div className="text-sm text-zinc-700 dark:text-zinc-300 truncate">{cam.symlink ?? cam.device}</div>
-                        <div className="text-sm text-zinc-400 truncate">{cam.path}{cam.model ? ` · ${cam.model}` : ""}</div>
+                        <div className={cn("text-sm truncate", cam.symlink ? "text-fg-body" : "text-fg-disabled")}>{cam.symlink ?? cam.device}</div>
+                        <div className={cn("text-sm truncate", cam.symlink ? "text-fg-muted" : "text-fg-disabled")}>{cam.path}{cam.model ? ` · ${cam.model}` : ""}</div>
                       </div>
-                      {cam.symlink && <LinkIcon size={16} className="text-zinc-400 flex-none" />}
+                      {cam.symlink ? <LinkIcon size={16} className="text-fg-muted flex-none" /> : <UnmappedChip />}
                     </div>
                   ))}
                 </div>
@@ -162,7 +178,7 @@ export function SystemStatus() {
             <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-card overflow-hidden">
               <div className="px-4 py-3 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800 flex items-center gap-2">
                 <Bot size={13} className="text-zinc-400" />
-                <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Arms ({arms.length})</span>
+                <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">{deviceCountLabel("Arms", arms)}</span>
               </div>
               {arms.length === 0 ? (
                 <div className="p-3 flex flex-col gap-3 flex-1 justify-start">
@@ -177,10 +193,10 @@ export function SystemStatus() {
                   {[...arms].sort((a, b) => (b.symlink ? 1 : 0) - (a.symlink ? 1 : 0)).map((arm) => (
                     <div key={arm.device} className="flex items-center gap-2 sm:gap-3 px-3 py-1.5 sm:py-2">
                       <div className="flex-1 min-w-0">
-                        <div className="text-sm text-zinc-700 dark:text-zinc-300 truncate">{arm.symlink ? symToDisplayLabel(arm.symlink) : arm.device}</div>
-                        <div className="text-sm text-zinc-400 truncate">{arm.path}{arm.serial ? ` · S/N: ${arm.serial}` : ""}</div>
+                        <div className={cn("text-sm truncate", arm.symlink ? "text-fg-body" : "text-fg-disabled")}>{arm.symlink ? symToDisplayLabel(arm.symlink) : arm.device}</div>
+                        <div className={cn("text-sm truncate", arm.symlink ? "text-fg-muted" : "text-fg-disabled")}>{arm.path}{arm.serial ? ` · S/N: ${arm.serial}` : ""}</div>
                       </div>
-                      {arm.symlink && <LinkIcon size={16} className="text-zinc-400 flex-none" />}
+                      {arm.symlink ? <LinkIcon size={16} className="text-fg-muted flex-none" /> : <UnmappedChip />}
                     </div>
                   ))}
                 </div>

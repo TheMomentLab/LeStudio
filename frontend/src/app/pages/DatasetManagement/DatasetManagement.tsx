@@ -245,14 +245,11 @@ export function DatasetManagement() {
                       className={cn(
                         "group flex items-center gap-3 px-3 py-2 cursor-pointer transition-colors",
                         selectedDataset?.id === ds.id
-                          ? "bg-blue-50/50 dark:bg-blue-900/20"
-                          : "hover:bg-zinc-50 dark:hover:bg-zinc-800/50",
+                          ? "bg-surface-selected"
+                          : "hover:bg-surface-hover",
                       )}
+                      aria-selected={selectedDataset?.id === ds.id}
                     >
-                      {selectedDataset?.id === ds.id
-                        ? <div className="w-1 h-6 rounded-full bg-blue-500 flex-none" />
-                        : <div className="w-1 h-6 rounded-full bg-transparent flex-none" />
-                      }
                       <div className="min-w-0 flex-1">
                         <div className="font-mono text-sm font-medium text-zinc-800 dark:text-zinc-200 truncate">
                           {ds.id.split("/")[1]}

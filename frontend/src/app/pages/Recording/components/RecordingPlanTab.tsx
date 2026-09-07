@@ -1,5 +1,5 @@
 import { HardDrive, Cloud } from "lucide-react";
-import { WireInput, WireToggle } from "../../../components/wireframe";
+import { SubTabs, WireInput, WireToggle } from "../../../components/wireframe";
 import { useLeStudioStore } from "../../../store";
 import { cn } from "../../../components/ui/utils";
 
@@ -75,34 +75,15 @@ export function RecordingPlanTab({
         {/* Storage mode toggle */}
         <div>
           <div className="text-sm text-zinc-500 mb-1.5">Dataset Storage</div>
-          <div className="inline-flex rounded-lg border border-zinc-200 dark:border-zinc-700 overflow-hidden">
-            <button
-              onClick={() => setDatasetStorageMode("local")}
-              aria-label="Use local dataset storage"
-              className={cn(
-                "flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium transition-all cursor-pointer",
-                isLocal
-                  ? "bg-zinc-800 dark:bg-zinc-200 text-white dark:text-zinc-900"
-                  : "bg-white dark:bg-zinc-800/50 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800",
-              )}
-            >
-              <HardDrive size={13} />
-              Local
-            </button>
-            <button
-              onClick={() => setDatasetStorageMode("hf")}
-              aria-label="Use Hugging Face Hub dataset storage"
-              className={cn(
-                "flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium transition-all cursor-pointer border-l border-zinc-200 dark:border-zinc-700",
-                !isLocal
-                  ? "bg-zinc-800 dark:bg-zinc-200 text-white dark:text-zinc-900"
-                  : "bg-white dark:bg-zinc-800/50 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800",
-              )}
-            >
-              <Cloud size={13} />
-              HF Hub
-            </button>
-          </div>
+          <SubTabs
+            size="sm"
+            tabs={[
+              { key: "local", icon: <HardDrive size={13} />, label: "Local" },
+              { key: "hf", icon: <Cloud size={13} />, label: "HF Hub" },
+            ]}
+            activeKey={isLocal ? "local" : "hf"}
+            onChange={(k) => setDatasetStorageMode(k === "hf" ? "hf" : "local")}
+          />
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

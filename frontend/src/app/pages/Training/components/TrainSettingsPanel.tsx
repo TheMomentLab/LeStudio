@@ -85,6 +85,7 @@ export function TrainSettingsPanel({
             <div className="text-sm text-zinc-500 mb-1.5">Dataset</div>
             <div className="flex items-center gap-1.5">
               <ModeToggle
+                size="sm"
                 options={["Local", "HF"]}
                 value={datasetSource === "local" ? "Local" : "HF"}
                 onChange={(v) => {
@@ -148,6 +149,7 @@ export function TrainSettingsPanel({
             <div className="text-sm text-zinc-500 mb-1.5">Training Steps</div>
             <div className="flex items-center gap-2">
               <ModeToggle
+                size="sm"
                 options={Object.values(PRESETS).map((p) => `${p.label} (${p.tag})`)}
                 value={`${PRESETS[preset].label} (${PRESETS[preset].tag})`}
                 onChange={(v) => {

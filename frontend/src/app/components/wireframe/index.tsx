@@ -454,17 +454,38 @@ export function WireToggle({
 }
 
 // ─── Mode Toggle ──────────────────────────────────────────────────────────────
+// One segmented-control look for the whole app. `md` is the page-level tab /
+// mode switch; `sm` sits inside forms next to h-9 inputs (Local/HF, presets).
+export type PillSize = "sm" | "md";
+
+const PILL_TRACK = "inline-flex gap-1 bg-surface-sunken rounded-lg w-fit";
+const PILL_TRACK_PAD: Record<PillSize, string> = { md: "p-1", sm: "p-0.5" };
+const PILL_BUTTON: Record<PillSize, string> = {
+  md: "px-3.5 py-1.5 rounded-md text-sm",
+  sm: "px-3 py-1 rounded-md text-sm",
+};
+
+function pillButtonClass(active: boolean, size: PillSize) {
+  return cn(
+    "flex items-center gap-1.5 font-medium transition-all cursor-pointer",
+    PILL_BUTTON[size],
+    active ? "bg-surface-elevated text-fg shadow-sm" : "text-fg-muted hover:text-fg-body",
+  );
+}
+
 export function ModeToggle({
   options,
   value,
   onChange,
+  size = "md",
 }: {
   options: string[];
   value: string;
   onChange?: (v: string) => void;
+  size?: PillSize;
 }) {
   return (
-    <div className="inline-flex gap-1 bg-surface-sunken p-1 rounded-lg">
+    <div className={cn(PILL_TRACK, PILL_TRACK_PAD[size])}>
       {options.map((o) => (
         <button
           type="button"
@@ -472,12 +493,7 @@ export function ModeToggle({
           aria-pressed={value === o}
           aria-label={`${o} mode`}
           onClick={() => { onChange?.(o); }}
-          className={cn(
-            "px-3.5 py-1.5 rounded-md text-sm font-medium transition-all cursor-pointer",
-            value === o
-              ? "bg-surface-elevated text-fg shadow-sm"
-              : "text-fg-muted hover:text-fg-body"
-          )}
+          className={pillButtonClass(value === o, size)}
         >
           {o}
         </button>
@@ -498,25 +514,23 @@ export function SubTabs({
   activeKey,
   onChange,
   className,
+  size = "md",
 }: {
   tabs: readonly SubTabItem[];
   activeKey: string;
   onChange: (key: string) => void;
   className?: string;
+  size?: PillSize;
 }) {
   return (
-    <div className={cn("flex gap-1 bg-surface-sunken p-1 rounded-lg w-fit", className)}>
+    <div className={cn(PILL_TRACK, PILL_TRACK_PAD[size], className)}>
       {tabs.map((tab) => (
         <button
           type="button"
           key={tab.key}
+          aria-pressed={activeKey === tab.key}
           onClick={() => onChange(tab.key)}
-          className={cn(
-            "flex items-center gap-1.5 px-3.5 py-1.5 rounded-md text-sm font-medium transition-all cursor-pointer",
-            activeKey === tab.key
-              ? "bg-surface-elevated text-fg shadow-sm"
-              : "text-fg-muted hover:text-fg-body"
-          )}
+          className={pillButtonClass(activeKey === tab.key, size)}
         >
           {tab.icon}
           {tab.label}
@@ -532,17 +546,37 @@ export function EmptyState({
   message,
   action,
   messageClassName,
+  compact,
 }: {
   icon?: React.ReactNode;
   message: React.ReactNode;
   action?: React.ReactNode;
   messageClassName?: string;
+  /** Tight variant for fixed-size regions (preview boxes, short lists). */
+  compact?: boolean;
 }) {
   return (
-    <div className="flex flex-col items-center justify-center py-8 gap-3 text-center">
-      {icon && <div className="text-3xl opacity-30">{icon}</div>}
+    <div className={cn("flex flex-col items-center justify-center text-center", compact ? "py-4 gap-1.5" : "py-8 gap-3")}>
+      {icon && <div className={cn("opacity-30", compact ? "text-xl" : "text-3xl")}>{icon}</div>}
       <p className={cn("text-sm text-fg-muted max-w-xs", messageClassName)}>{message}</p>
       {action}
+    </div>
+  );
+}
+
+// ─── Section Label ────────────────────────────────────────────────────────────
+// Uppercase eyebrow that divides groups *inside* a card. Field labels stay in
+// sentence case (see DESIGN_GUIDE §5.4) — this is not for them.
+export function SectionLabel({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={cn("text-xs font-medium uppercase tracking-wide text-fg-muted", className)}>
+      {children}
     </div>
   );
 }

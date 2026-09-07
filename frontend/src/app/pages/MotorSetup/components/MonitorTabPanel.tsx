@@ -1,7 +1,6 @@
 import type { ComponentType } from "react";
 import { AlertTriangle, Zap } from "lucide-react";
-import { buttonStyles } from "../../../components/ui/button";
-import { Card, WireSelect, WireToggle } from "../../../components/wireframe";
+import { Card, EmptyState, WireSelect, WireToggle } from "../../../components/wireframe";
 import type { ArmDevice, MotorData } from "../types";
 
 interface MonitorCardProps {
@@ -20,14 +19,10 @@ interface MonitorTabPanelProps {
   arms: ArmDevice[];
   portOptions: { value: string; label: string }[];
   setupRunning: boolean;
-  monPortLabel: string;
   monMotors: MotorData[];
   monError: string;
   MotorCardComponent: ComponentType<MonitorCardProps>;
   onHandleFreewheelToggle: () => void;
-  onHandleMonConnect: () => void;
-  onHandleEmergencyStop: () => void;
-  onHandleMonDisconnect: () => void;
   onSetMonPort: (port: string) => void;
   onHandleMoveMotor: (id: number, target: number) => void;
   onHandleClearCollision: (id: number) => void;
@@ -42,14 +37,10 @@ export function MonitorTabPanel({
   arms,
   portOptions,
   setupRunning,
-  monPortLabel,
   monMotors,
   monError,
   MotorCardComponent,
   onHandleFreewheelToggle,
-  onHandleMonConnect,
-  onHandleEmergencyStop,
-  onHandleMonDisconnect,
   onSetMonPort,
   onHandleMoveMotor,
   onHandleClearCollision,
@@ -69,51 +60,8 @@ export function MonitorTabPanel({
               onChange={(v) => { if (!monConnected) onSetMonPort(v); }}
             />
           </div>
-          {!monConnected ? (
-             <button
-               onClick={onHandleMonConnect}
-               disabled={monConnecting || !monPort || setupRunning}
-               title={setupRunning ? "Motor Setup is running - stop it first" : ""}
-               className={buttonStyles({
-                 variant: "primary",
-                 tone: "neutral",
-                 className: "h-auto px-4 py-2 whitespace-nowrap",
-               })}
-             >
-              {monConnecting ? "Connecting..." : <><Zap size={12} className="inline mr-1" />Connect</>}
-            </button>
-          ) : (
-            <>
-              <button
-                onClick={onHandleEmergencyStop}
-                className={buttonStyles({
-                  variant: "primary",
-                  tone: "danger",
-                  className: "h-auto px-3 py-2 whitespace-nowrap",
-                })}
-              >
-                ⛔ E-Stop
-              </button>
-              <button
-                onClick={onHandleMonDisconnect}
-                className={buttonStyles({
-                  variant: "secondary",
-                  tone: "neutral",
-                  className: "h-auto px-4 py-2 whitespace-nowrap",
-                })}
-              >
-                Disconnect
-              </button>
-            </>
-          )}
         </div>
 
-        {monConnected && (
-          <div className="px-3 py-2 border-t border-zinc-100 dark:border-zinc-800/50 flex items-center gap-2">
-            <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="text-sm text-zinc-400">{monPortLabel} · {monMotors.length} motors · polling 100ms</span>
-          </div>
-        )}
       </div>
 
       {monError && (
@@ -146,16 +94,12 @@ export function MonitorTabPanel({
 
       {!monConnected && !monConnecting && (
         <Card title="Real-time Motor Status">
-          <div className="flex flex-col items-center justify-center py-8 gap-3 text-center">
-            <div className="text-3xl opacity-30">
-              <Zap size={28} />
-            </div>
-            <p className="text-sm text-zinc-400">
-              {setupRunning
-                ? "Motor Setup is running. Stop it first."
-                : "Connect to port to see motor status (100ms polling)"}
-            </p>
-          </div>
+          <EmptyState
+            icon={<Zap size={28} />}
+            message={setupRunning
+              ? "Motor Setup is running. Stop it first."
+              : "Connect to port to see motor status (100ms polling)"}
+          />
         </Card>
       )}
     </div>

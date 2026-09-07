@@ -15,6 +15,7 @@ import { IdentifyArmModal } from "./components/IdentifyArmModal";
 import { SetupTabPanel } from "./components/SetupTabPanel";
 import { MonitorTabPanel } from "./components/MonitorTabPanel";
 import { CalibrationTabPanel } from "./components/CalibrationTabPanel";
+import { MotorSetupControlBar } from "./components/MotorSetupControlBar";
 import { MotorSetupHeader } from "./components/MotorSetupHeader";
 import { MotorSetupReconnectedBanner } from "./components/MotorSetupReconnectedBanner";
 import type {
@@ -1000,11 +1001,8 @@ export function MotorSetup() {
                 arms={arms}
                 armRoleMap={armRoleMap}
                 onSetArmRoleMap={setArmRoleMap}
-                hasAnyMapping={hasAnyArmMapping}
-                onClearAllMappings={handleClearAllArmMappings}
                 autoApplying={autoApplying}
                 onRoleChange={scheduleAutoApply}
-                onOpenIdentify={() => setIdentifyModalOpen(true)}
               />
             )}
 
@@ -1046,14 +1044,10 @@ export function MotorSetup() {
                 arms={arms}
                 portOptions={portOptions}
                 setupRunning={setupRunning}
-                monPortLabel={monPortLabel}
                 monMotors={monMotors}
                 monError={monError}
                 MotorCardComponent={MotorCard}
                 onHandleFreewheelToggle={() => { void handleFreewheelToggle(); }}
-                onHandleMonConnect={() => { void handleMonConnect(); }}
-                onHandleEmergencyStop={() => { void handleEmergencyStop(); }}
-                onHandleMonDisconnect={() => { void handleMonDisconnect(); }}
                 onSetMonPort={setMonPort}
                 onHandleMoveMotor={(id, target) => { void handleMoveMotor(id, target); }}
                 onHandleClearCollision={(id) => { void handleClearCollision(id); }}
@@ -1065,7 +1059,6 @@ export function MotorSetup() {
               <CalibrationTabPanel
                 arms={arms}
                 hasMappedArms={hasMappedArms}
-                calibrateRunning={calibrateRunning}
                 calibMode={calibMode}
                 calibTypeMismatch={calibTypeMismatch}
                 calibArmType={calibArmType}
@@ -1095,8 +1088,6 @@ export function MotorSetup() {
                 onSetCalibBiLeftPort={setCalibBiLeftPort}
                 onSetCalibBiRightPort={setCalibBiRightPort}
                 onSetCalibBiId={setCalibBiId}
-                onHandleCalibrationStart={() => { void handleCalibrationStart(); }}
-                onHandleCalibrationStop={() => { void handleCalibrationStop(); }}
                 onHandleCalibrationDelete={(file) => { void handleCalibrationDelete(file); }}
                 onUseSavedCalibration={() => { void handleCalibrationInput("", "finishing"); }}
                 onRunNewCalibration={() => { void handleCalibrationInput("c", "center_arm"); }}
@@ -1108,6 +1099,29 @@ export function MotorSetup() {
           </div>
         </section>
       </div>
+
+      <MotorSetupControlBar
+        tab={motorTab}
+        armCount={arms.length}
+        hasAnyMapping={hasAnyArmMapping}
+        hasMappedArms={hasMappedArms}
+        autoApplying={autoApplying}
+        onClearAllMappings={handleClearAllArmMappings}
+        onOpenIdentify={() => setIdentifyModalOpen(true)}
+        monConnected={monConnected}
+        monConnecting={monConnecting}
+        monPort={monPort}
+        monPortLabel={monPortLabel}
+        monMotorCount={monMotors.length}
+        setupRunning={setupRunning}
+        onMonConnect={() => { void handleMonConnect(); }}
+        onMonDisconnect={() => { void handleMonDisconnect(); }}
+        onEmergencyStop={() => { void handleEmergencyStop(); }}
+        calibrateRunning={calibrateRunning}
+        calibStartDisabled={calibTypeMismatch || arms.length === 0 || (calibMode === "Single Arm" && Boolean(calibFileNameError))}
+        onCalibrationStart={() => { void handleCalibrationStart(); }}
+        onCalibrationStop={() => { void handleCalibrationStop(); }}
+      />
 
       <IdentifyArmModal
         open={identifyModalOpen}

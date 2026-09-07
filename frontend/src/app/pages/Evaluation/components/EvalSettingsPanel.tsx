@@ -1,6 +1,6 @@
 import type { Dispatch, SetStateAction } from "react";
 import { ChevronDown, ChevronUp, Video } from "lucide-react";
-import { cn } from "../../../components/ui/utils";
+import { SubTabs } from "../../../components/wireframe";
 import { ArmPairSelector } from "../../../components/wireframe/ArmPairSelector";
 import type {
   CheckpointItem,
@@ -115,33 +115,16 @@ export function EvalSettingsPanel({
           <div>
             <div className="text-sm text-zinc-500 mb-1.5">Policy Source</div>
             <div className="flex flex-col md:flex-row md:items-center gap-2">
-              <div className="flex gap-1 bg-zinc-100 dark:bg-zinc-800/50 p-0.5 rounded-lg w-fit flex-none">
-                <button
-                  onClick={() => setPolicySource("local")}
-                  aria-label="Use local policy source"
-                  className={cn(
-                    "flex items-center gap-1.5 px-3.5 py-1 rounded-md text-sm font-medium transition-all cursor-pointer",
-                    policySource === "local"
-                      ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-sm"
-                      : "text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300",
-                  )}
-                >
-                  Local
-                </button>
-                <button
-                  onClick={() => setPolicySource("hf")}
-                  title="Hugging Face"
-                  aria-label="Use Hugging Face policy source"
-                  className={cn(
-                    "flex items-center gap-1.5 px-3.5 py-1 rounded-md text-sm font-medium transition-all cursor-pointer",
-                    policySource === "hf"
-                      ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-sm"
-                      : "text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300",
-                  )}
-                >
-                  HF
-                </button>
-              </div>
+              <SubTabs
+                size="sm"
+                className="flex-none"
+                tabs={[
+                  { key: "local", label: "Local" },
+                  { key: "hf", label: "HF" },
+                ]}
+                activeKey={policySource}
+                onChange={(k) => setPolicySource(k as "local" | "hf")}
+              />
               <div className="flex-1 min-w-0">
                 {policySource === "local" ? (
                   checkpoints.length === 0 ? (

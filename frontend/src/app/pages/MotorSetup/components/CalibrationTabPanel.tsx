@@ -1,4 +1,4 @@
-import { AlertTriangle, CircleAlert, Play, Ruler, Square, Trash2, Unplug } from "lucide-react";
+import { AlertTriangle, CircleAlert, Ruler, Trash2, Unplug } from "lucide-react";
 import {
   Card,
   EmptyState,
@@ -7,13 +7,11 @@ import {
   WireInput,
   WireSelect,
 } from "../../../components/wireframe";
-import { buttonStyles } from "../../../components/ui/button";
 import type { ArmDevice, CalibrationFileItem, CalibrationValidation } from "../types";
 
 interface CalibrationTabPanelProps {
   arms: ArmDevice[];
   hasMappedArms: boolean;
-  calibrateRunning: boolean;
   calibMode: string;
   calibTypeMismatch: boolean;
   calibArmType: string;
@@ -43,8 +41,6 @@ interface CalibrationTabPanelProps {
   onSetCalibBiLeftPort: (value: string) => void;
   onSetCalibBiRightPort: (value: string) => void;
   onSetCalibBiId: (value: string) => void;
-  onHandleCalibrationStart: () => void;
-  onHandleCalibrationStop: () => void;
   onHandleCalibrationDelete: (file: CalibrationFileItem) => void;
   onUseSavedCalibration?: () => void;
   onRunNewCalibration?: () => void;
@@ -56,7 +52,6 @@ interface CalibrationTabPanelProps {
 export function CalibrationTabPanel({
   arms,
   hasMappedArms,
-  calibrateRunning,
   calibMode,
   calibTypeMismatch,
   calibArmType,
@@ -82,8 +77,6 @@ export function CalibrationTabPanel({
   onSetCalibBiLeftPort,
   onSetCalibBiRightPort,
   onSetCalibBiId,
-  onHandleCalibrationStart,
-  onHandleCalibrationStop,
   onHandleCalibrationDelete,
 }: CalibrationTabPanelProps) {
   if (!hasMappedArms) {
@@ -256,34 +249,6 @@ export function CalibrationTabPanel({
         </div>
       )}
 
-      <div className="flex justify-end">
-        {!calibrateRunning ? (
-          <button
-            type="button"
-            onClick={onHandleCalibrationStart}
-            disabled={calibTypeMismatch || arms.length === 0 || (calibMode === "Single Arm" && Boolean(calibFileNameError))}
-            className={buttonStyles({
-              variant: "primary",
-              tone: "neutral",
-              className: "h-10 px-5 whitespace-nowrap gap-1.5",
-            })}
-          >
-            <Play size={13} className="fill-current" /> Start Calibration
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={onHandleCalibrationStop}
-            className={buttonStyles({
-              variant: "secondary",
-              tone: "danger",
-              className: "h-10 px-5 whitespace-nowrap gap-1.5",
-            })}
-          >
-            <Square size={11} className="fill-current" /> Stop
-          </button>
-        )}
-      </div>
     </div>
   );
 }
