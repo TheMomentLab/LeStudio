@@ -131,6 +131,26 @@ const state: MockState = {
   ],
 };
 
+// The real backend pushes `{type:"status", processes}` over the WebSocket;
+// in mock mode the pages would otherwise never see a process flip to running.
+const processStatusListeners = new Set<(processes: Record<ProcessName, boolean>) => void>();
+
+function setProcess(name: ProcessName, running: boolean): void {
+  if (state.processes[name] === running) return;
+  state.processes[name] = running;
+  const snapshot = { ...state.processes };
+  for (const listener of processStatusListeners) listener(snapshot);
+}
+
+export function subscribeMockProcessStatus(
+  listener: (processes: Record<ProcessName, boolean>) => void,
+): () => void {
+  processStatusListeners.add(listener);
+  return () => {
+    processStatusListeners.delete(listener);
+  };
+}
+
 const statusListeners = new Set<(event: TrainStatusEvent) => void>();
 const outputListeners = new Set<(event: TrainOutputEvent) => void>();
 const metricListeners = new Set<(event: TrainMetricEvent) => void>();
@@ -159,6 +179,44 @@ const MOCK_SETUP_MOTORS = [
   { name: "shoulder_pan", id: 1 },
 ];
 let motorSetupStep = 0;
+
+// ── Motor monitor (Motor Setup › Motor Monitor tab) ──────────────────────
+const MONITOR_MOTOR_IDS = [1, 2, 3, 4, 5, 6];
+const monitor = {
+  connected: false,
+  freewheel: false,
+  target: Object.fromEntries(MONITOR_MOTOR_IDS.map((id) => [id, 2048])) as Record<number, number>,
+  position: Object.fromEntries(MONITOR_MOTOR_IDS.map((id) => [id, 2048])) as Record<number, number>,
+  collision: new Set<number>(),
+  tick: 0,
+};
+function resetMonitor(): void {
+  monitor.connected = false;
+  monitor.freewheel = false;
+  monitor.collision.clear();
+  for (const id of MONITOR_MOTOR_IDS) { monitor.target[id] = 2048; monitor.position[id] = 2048; }
+}
+function monitorFrame(): Record<string, { position: number | null; load: number | null; current: number | null; collision: boolean }> {
+  monitor.tick += 1;
+  const out: Record<string, { position: number | null; load: number | null; current: number | null; collision: boolean }> = {};
+  for (const id of MONITOR_MOTOR_IDS) {
+    // ease toward the target so Move buttons visibly do something
+    const delta = monitor.target[id] - monitor.position[id];
+    monitor.position[id] += Math.abs(delta) < 4 ? delta : Math.round(delta * 0.25);
+    const busy = Math.abs(delta) > 4;
+    // motor 4 carries a heavy joint: sits in the warn band, danger while moving
+    const baseLoad = id === 4 ? 760 : 180 + id * 40;
+    const load = busy ? Math.min(1023, baseLoad + 260) : baseLoad + ((monitor.tick + id) % 5) * 6;
+    const current = id === 4 ? 590 + ((monitor.tick + id) % 4) * 5 : 140 + id * 30 + ((monitor.tick + id) % 3) * 4;
+    out[String(id)] = {
+      position: monitor.freewheel ? monitor.position[id] + (((monitor.tick * 7) % 11) - 5) : monitor.position[id],
+      load,
+      current,
+      collision: monitor.collision.has(id),
+    };
+  }
+  return out;
+}
 let motorSetupErrorInjected = false;  // set via DEV panel to inject error on next motor
 
 let trainEventSeq = 0;
@@ -216,6 +274,94 @@ function syncMockCalibrationTypes(config: Record<string, unknown>): void {
 
   updateEntry(robotId, robotType);
   updateEntry(teleopId, teleopType);
+}
+
+// ── Datasets: list, tags and background jobs (stats / derive / push) ─────
+type MockDataset = { id: string; total_episodes: number; total_frames: number; size_mb: number; fps: number; modified: string; tags: string[] };
+const mockDatasets: MockDataset[] = [
+  { id: "lerobot-user/pick_cube", total_episodes: 52, total_frames: 3640, size_mb: 1228.8, fps: 30, modified: "2026-03-01 14:30", tags: ["top_cam_1", "wrist_cam_1"] },
+  { id: "lerobot-user/place_cup", total_episodes: 30, total_frames: 2100, size_mb: 720.0, fps: 30, modified: "2026-02-28 16:00", tags: ["top_cam_1", "wrist_cam_1"] },
+  { id: "lerobot-user/stack_blocks", total_episodes: 15, total_frames: 900, size_mb: 340.0, fps: 30, modified: "2026-02-25 11:20", tags: ["top_cam_1"] },
+];
+const mockTags: Record<string, Record<string, "good" | "bad" | "review" | "untagged">> = {};
+
+function datasetKey(pathname: string): string {
+  const m = /^\/api\/datasets\/([^/]+)\/([^/]+)/.exec(pathname);
+  return m ? `${decodeURIComponent(m[1])}/${decodeURIComponent(m[2])}` : "";
+}
+function findMockDataset(pathname: string): MockDataset | undefined {
+  const key = datasetKey(pathname);
+  return mockDatasets.find((d) => d.id === key);
+}
+
+// Deterministic per-episode stats with a few episodes that trip the
+// Quality Check thresholds (frames < 30, movement < 0.01, jerk > 5).
+function mockStatsFor(totalEpisodes: number) {
+  const episodes = Array.from({ length: totalEpisodes }, (_, i) => {
+    const frames = i % 17 === 3 ? 22 : 60 + ((i * 13) % 25);
+    const movement = i % 23 === 7 ? 0.004 : 0.05 + ((i * 7) % 40) / 400;
+    const jerk_score = i % 19 === 11 ? 6.2 : 1.2 + ((i * 11) % 30) / 10;
+    return { episode_index: i, frames, movement: Number(movement.toFixed(3)), jerk_score: Number(jerk_score.toFixed(2)), jerk_ratio: Number((jerk_score / 4).toFixed(2)) };
+  });
+  const metric = (values: number[]) => {
+    const sorted = [...values].sort((a, b) => a - b);
+    const at = (p: number) => sorted[Math.min(sorted.length - 1, Math.floor(p * (sorted.length - 1)))];
+    return { min: sorted[0], max: sorted[sorted.length - 1], p25: at(0.25), median: at(0.5), p75: at(0.75) };
+  };
+  return {
+    episodes,
+    dataset_summary: {
+      frames: metric(episodes.map((e) => e.frames)),
+      movement: metric(episodes.map((e) => e.movement)),
+      jerk_score: metric(episodes.map((e) => e.jerk_score)),
+      jerk_ratio: metric(episodes.map((e) => e.jerk_ratio)),
+    },
+  };
+}
+
+type MockJob = {
+  kind: "stats" | "derive" | "push";
+  status: "queued" | "running" | "success" | "error" | "cancelled";
+  phase: string;
+  progress: number;
+  logs: string[];
+  startedAt: number;
+  durationMs: number;
+  onDone?: () => void;
+};
+const mockJobs = new Map<string, MockJob>();
+
+function startJob(kind: MockJob["kind"], durationMs: number, firstLog: string, onDone?: () => void): string {
+  const id = nextMockJobId();
+  mockJobs.set(id, { kind, status: "queued", phase: "queued", progress: 0, logs: [firstLog], startedAt: Date.now(), durationMs, onDone });
+  return id;
+}
+
+// Progress is derived from wall-clock time on each poll, so no timers are
+// left running between tests.
+function jobStatus(id: string) {
+  const job = mockJobs.get(id);
+  if (!job) return { ok: false, error: "Unknown job" };
+  if (job.status === "queued" || job.status === "running") {
+    const elapsed = Date.now() - job.startedAt;
+    const pct = Math.min(100, Math.round((elapsed / job.durationMs) * 100));
+    job.status = pct >= 100 ? "success" : "running";
+    job.phase = pct >= 100 ? "done" : pct < 20 ? "scanning" : pct < 90 ? "processing" : "finalizing";
+    job.progress = pct;
+    const stepLog = `${job.phase} ${pct}%`;
+    if (job.logs[job.logs.length - 1] !== stepLog) job.logs.push(stepLog);
+    if (job.status === "success" && job.onDone) { job.onDone(); job.onDone = undefined; }
+  }
+  return { ok: true, status: job.status, phase: job.phase, progress: job.progress, logs: job.logs.slice(-12) };
+}
+
+function cancelJob(id: string) {
+  const job = mockJobs.get(id);
+  if (!job) return { ok: false, error: "Unknown job" };
+  job.status = "cancelled";
+  job.phase = "cancelled";
+  job.logs.push("cancelled by user");
+  return { ok: true };
 }
 
 function nextMockJobId(): string {
@@ -329,7 +475,7 @@ function stopTrainStream(emitStatusEvent = true, reason = "stopped by user"): vo
     clearInterval(trainTimer);
     trainTimer = null;
   }
-  state.processes.train = false;
+  setProcess("train", false);
   if (emitStatusEvent && wasActive) {
     emitOutput(reason, "warn");
     emitStatus("stopped", reason);
@@ -338,7 +484,7 @@ function stopTrainStream(emitStatusEvent = true, reason = "stopped by user"): vo
 
 function startTrainStream(totalSteps: number): void {
   stopTrainStream(false);
-  state.processes.train = true;
+  setProcess("train", true);
   state.trainStep = 0;
   state.trainTotalSteps = totalSteps;
   emitOutput(`train preflight passed (steps=${totalSteps})`, "info");
@@ -367,7 +513,7 @@ function startTrainStream(totalSteps: number): void {
           clearInterval(trainTimer);
           trainTimer = null;
         }
-        state.processes.train = false;
+        setProcess("train", false);
         emitOutput("training completed", "info");
         emitStatus("stopped", "completed");
       }
@@ -591,6 +737,18 @@ export async function handleMockGet(path: string): Promise<unknown> {
     };
   }
 
+  if (pathname === "/api/motor/positions") {
+    if (!monitor.connected) return { ok: true, connected: false, positions: {} };
+    const motors = monitorFrame();
+    return {
+      ok: true,
+      connected: true,
+      freewheel: monitor.freewheel,
+      positions: Object.fromEntries(Object.entries(motors).map(([id, m]) => [id, m.position])),
+      motors,
+    };
+  }
+
   if (pathname === "/api/system/resources") {
     return {
       ok: true,
@@ -610,19 +768,14 @@ export async function handleMockGet(path: string): Promise<unknown> {
   }
 
   if (pathname === "/api/datasets") {
-    return {
-      datasets: [
-        { id: "lerobot-user/pick_cube", total_episodes: 52, total_frames: 3640, size_mb: 1228.8, fps: 30, modified: "2026-03-01 14:30", tags: ["top_cam_1", "wrist_cam_1"] },
-        { id: "lerobot-user/place_cup", total_episodes: 30, total_frames: 2100, size_mb: 720.0, fps: 30, modified: "2026-02-28 16:00", tags: ["top_cam_1", "wrist_cam_1"] },
-        { id: "lerobot-user/stack_blocks", total_episodes: 15, total_frames: 900, size_mb: 340.0, fps: 30, modified: "2026-02-25 11:20", tags: ["top_cam_1"] },
-      ],
-    };
+    return { datasets: mockDatasets.map((d) => ({ ...d })) };
   }
 
   // Dataset detail: /api/datasets/:user/:repo
   if (/^\/api\/datasets\/[^/]+\/[^/]+$/.test(pathname)) {
-    const cameras = pathname.includes("stack_blocks") ? ["top_cam_1"] : ["top_cam_1", "wrist_cam_1"];
-    const totalEpisodes = pathname.includes("stack_blocks") ? 15 : pathname.includes("place_cup") ? 30 : 52;
+    const ds = findMockDataset(pathname);
+    const cameras = ds?.tags ?? ["top_cam_1", "wrist_cam_1"];
+    const totalEpisodes = ds?.total_episodes ?? 52;
     const episodes = Array.from({ length: totalEpisodes }, (_, i) => ({
       episode_index: i,
       length: 70,
@@ -645,7 +798,24 @@ export async function handleMockGet(path: string): Promise<unknown> {
 
   // Dataset episode tags
   if (/^\/api\/datasets\/[^/]+\/[^/]+\/tags$/.test(pathname)) {
-    return { ok: true, tags: {} };
+    return { ok: true, tags: { ...(mockTags[datasetKey(pathname)] ?? {}) } };
+  }
+
+  // Per-episode quality stats (Quality Check tab)
+  if (/^\/api\/datasets\/[^/]+\/[^/]+\/stats$/.test(pathname)) {
+    const ds = findMockDataset(pathname);
+    if (!ds) return { ok: false, error: "Dataset not found" };
+    return { ok: true, ...mockStatsFor(ds.total_episodes) };
+  }
+
+  if (pathname.startsWith("/api/datasets/stats/status/")) {
+    return jobStatus(decodeTail(pathname));
+  }
+  if (pathname.startsWith("/api/datasets/derive/status/")) {
+    return jobStatus(decodeTail(pathname));
+  }
+  if (pathname.startsWith("/api/datasets/push/status/")) {
+    return jobStatus(decodeTail(pathname));
   }
 
   if (pathname === "/api/eval/env-types") {
@@ -875,39 +1045,106 @@ export async function handleMockPost(path: string, body?: unknown): Promise<unkn
     return result;
   }
 
+  if (pathname === "/api/motor/connect") {
+    if (state.processes.motor_setup) return { ok: false, error: "Motor Setup is running — stop it first" };
+    const payload = (body ?? {}) as { port?: string };
+    if (!payload.port) return { ok: false, error: "No port selected" };
+    resetMonitor();
+    monitor.connected = true;
+    // give the demo something to look at: motor 3 starts in collision
+    monitor.collision.add(3);
+    return { ok: true, connected_ids: [...MONITOR_MOTOR_IDS] };
+  }
+  if (pathname === "/api/motor/disconnect") {
+    resetMonitor();
+    return { ok: true };
+  }
+  if (pathname === "/api/motor/freewheel/enter" || pathname === "/api/motor/freewheel/exit") {
+    if (!monitor.connected) return { ok: false, error: "Not connected" };
+    monitor.freewheel = pathname.endsWith("/enter");
+    return { ok: true };
+  }
+  if (pathname === "/api/motor/torque_off") {
+    if (!monitor.connected) return { ok: false, error: "Not connected" };
+    monitor.freewheel = true;
+    for (const id of MONITOR_MOTOR_IDS) monitor.target[id] = monitor.position[id];
+    return { ok: true };
+  }
+  const motorAction = /^\/api\/motor\/(\d+)\/(move|clear_collision)$/.exec(pathname);
+  if (motorAction) {
+    if (!monitor.connected) return { ok: false, error: "Not connected" };
+    const id = Number(motorAction[1]);
+    if (!MONITOR_MOTOR_IDS.includes(id)) return { ok: false, error: `Unknown motor ${id}` };
+    if (motorAction[2] === "clear_collision") {
+      monitor.collision.delete(id);
+      return { ok: true };
+    }
+    if (monitor.freewheel) return { ok: false, error: "Freewheel enabled — torque is off" };
+    if (monitor.collision.has(id)) return { ok: false, error: `Motor ${id} is in collision` };
+    const payload = (body ?? {}) as { position?: number };
+    monitor.target[id] = Math.max(0, Math.min(4095, Number(payload.position ?? monitor.target[id])));
+    return { ok: true };
+  }
+
   if (pathname === "/api/teleop/start") {
     const conflicting = conflictProcess("teleop");
     if (conflicting) return { ok: false, error: `${conflicting} is running` };
-    state.processes.teleop = true;
+    setProcess("teleop", true);
     stopNonTrainTimers("teleop");
     emitNonTrainOutput("teleop", "teleop preflight passed", "info");
-    emitNonTrainOutput("teleop", "teleop loop started", "info");
+    // Same phrases lerobot prints; Teleop.tsx advances its loading steps on them.
+    const script = [
+      "OpenCVCamera(/dev/top_cam_1) connected.",
+      "OpenCVCamera(/dev/wrist_cam_1) connected.",
+      "SO101Follower connected.",
+      "SO101Leader connected.",
+      "Teleop loop time: 12.4ms",
+    ];
+    let i = 0;
     teleopTimer = setInterval(() => {
       if (!state.processes.teleop) return;
-      emitNonTrainOutput("teleop", `teleop loop ${10 + Math.floor(Math.random() * 8)}ms`, "info");
-    }, 1800);
+      if (i < script.length) {
+        emitNonTrainOutput("teleop", script[i], "info");
+        i += 1;
+        return;
+      }
+      emitNonTrainOutput("teleop", `Teleop loop time: ${(10 + Math.random() * 8).toFixed(1)}ms`, "info");
+    }, 600);
     return { ok: true };
   }
 
   if (pathname === "/api/record/start") {
     const conflicting = conflictProcess("record");
     if (conflicting) return { ok: false, error: `${conflicting} is running` };
-    state.processes.record = true;
+    setProcess("record", true);
     state.episodesDone = 0;
     stopNonTrainTimers("record");
     emitNonTrainOutput("record", "record preflight passed", "info");
-    emitNonTrainOutput("record", "recording started", "info");
+    // Recording.tsx advances on "OpenCVCamera … connected." / "… connected." and
+    // tracks the counter from "Recording episode N".
+    const script = [
+      "OpenCVCamera(/dev/top_cam_1) connected.",
+      "SO101Follower connected.",
+      "Recording episode 0",
+    ];
+    let i = 0;
     recordTimer = setInterval(() => {
       if (!state.processes.record) return;
-      emitNonTrainOutput("record", `episode ${state.episodesDone + 1} recording...`, "info");
-    }, 2000);
+      if (i < script.length) {
+        emitNonTrainOutput("record", script[i], "info");
+        i += 1;
+        return;
+      }
+      state.episodesDone += 1;
+      emitNonTrainOutput("record", `Recording episode ${state.episodesDone}`, "info");
+    }, 900);
     return { ok: true, episode: state.episodesDone };
   }
 
   if (pathname === "/api/calibrate/start") {
     const conflicting = conflictProcess("calibrate");
     if (conflicting) return { ok: false, error: `${conflicting} is running` };
-    state.processes.calibrate = true;
+    setProcess("calibrate", true);
     stopNonTrainTimers("calibrate");
     emitNonTrainOutput("calibrate", "calibration started", "info");
     calibrateTimer = setInterval(() => {
@@ -920,7 +1157,7 @@ export async function handleMockPost(path: string, body?: unknown): Promise<unkn
   if (pathname === "/api/motor_setup/start") {
     const conflicting = conflictProcess("motor_setup");
     if (conflicting) return { ok: false, error: `${conflicting} is running` };
-    state.processes.motor_setup = true;
+    setProcess("motor_setup", true);
     motorSetupStep = 0;
     motorSetupErrorInjected = false;
     stopNonTrainTimers("motor_setup");
@@ -988,7 +1225,7 @@ export async function handleMockPost(path: string, body?: unknown): Promise<unkn
         } else {
           // All done — stop process
           setTimeout(() => {
-            state.processes.motor_setup = false;
+            setProcess("motor_setup", false);
             emitNonTrainOutput("motor_setup", "Motor setup completed successfully.", "info");
           }, 300);
         }
@@ -1019,9 +1256,9 @@ export async function handleMockPost(path: string, body?: unknown): Promise<unkn
   }
 
   if (pathname === "/api/train/install_pytorch") {
-    state.processes.train_install = true;
+    setProcess("train_install", true);
     state.cudaInstalled = true;
-    state.processes.train_install = false;
+    setProcess("train_install", false);
     return { ok: true };
   }
 
@@ -1042,7 +1279,7 @@ export async function handleMockPost(path: string, body?: unknown): Promise<unkn
   if (pathname === "/api/eval/start") {
     const conflicting = conflictProcess("eval" as ProcessName);
     if (conflicting) return { ok: false, error: `${conflicting} is running` };
-    state.processes.eval = true;
+    setProcess("eval", true);
     stopNonTrainTimers("eval");
     emitNonTrainOutput("eval", "evaluation started", "info");
     emitNonTrainOutput("eval", "episode 0 / 10", "info");
@@ -1053,6 +1290,65 @@ export async function handleMockPost(path: string, body?: unknown): Promise<unkn
       emitNonTrainOutput("eval", `episode ${done} / 10 reward=${reward}`, "info");
     }, 2600);
     return { ok: true };
+  }
+
+  // ── Datasets ───────────────────────────────────────────────────────────
+  if (/^\/api\/datasets\/[^/]+\/[^/]+\/tags$/.test(pathname)) {
+    const key = datasetKey(pathname);
+    const payload = (body ?? {}) as { episode_index?: number; tag?: "good" | "bad" | "review" | "untagged" };
+    if (payload.episode_index === undefined || !payload.tag) return { ok: false, error: "episode_index and tag are required" };
+    const tags = (mockTags[key] ??= {});
+    if (payload.tag === "untagged") delete tags[String(payload.episode_index)];
+    else tags[String(payload.episode_index)] = payload.tag;
+    return { ok: true };
+  }
+  if (/^\/api\/datasets\/[^/]+\/[^/]+\/tags\/bulk$/.test(pathname)) {
+    const key = datasetKey(pathname);
+    const payload = (body ?? {}) as { updates?: Array<{ episode_index: number; tag: "good" | "bad" | "review" | "untagged" }> };
+    const tags = (mockTags[key] ??= {});
+    let applied = 0;
+    for (const u of payload.updates ?? []) {
+      if (u.tag === "untagged") delete tags[String(u.episode_index)];
+      else tags[String(u.episode_index)] = u.tag;
+      applied += 1;
+    }
+    return { ok: true, applied };
+  }
+  if (/^\/api\/datasets\/[^/]+\/[^/]+\/stats\/recompute$/.test(pathname)) {
+    if (!findMockDataset(pathname)) return { ok: false, error: "Dataset not found" };
+    return { ok: true, status: "queued", cached: false, job_id: startJob("stats", 2400, "Computing per-episode stats…") };
+  }
+  if (/^\/api\/datasets\/[^/]+\/[^/]+\/derive$/.test(pathname)) {
+    const source = findMockDataset(pathname);
+    if (!source) return { ok: false, error: "Dataset not found" };
+    const payload = (body ?? {}) as { new_repo_id?: string; keep_indices?: number[] };
+    const target = String(payload.new_repo_id ?? "").trim();
+    const keep = Array.isArray(payload.keep_indices) ? payload.keep_indices : [];
+    if (!target) return { ok: false, error: "new_repo_id is required" };
+    if (keep.length === 0) return { ok: false, error: "No episodes to keep" };
+    if (mockDatasets.some((d) => d.id === target)) return { ok: false, error: `${target} already exists` };
+    const jobId = startJob("derive", 3000, `Deriving ${target} (${keep.length} of ${source.total_episodes} episodes)`, () => {
+      const perEp = source.total_frames / source.total_episodes;
+      mockDatasets.unshift({
+        id: target,
+        total_episodes: keep.length,
+        total_frames: Math.round(perEp * keep.length),
+        size_mb: Number(((source.size_mb / source.total_episodes) * keep.length).toFixed(1)),
+        fps: source.fps,
+        modified: new Date().toISOString().slice(0, 16).replace("T", " "),
+        tags: [...source.tags],
+      });
+    });
+    return { ok: true, job_id: jobId };
+  }
+  if (/^\/api\/datasets\/[^/]+\/[^/]+\/push$/.test(pathname)) {
+    const ds = findMockDataset(pathname);
+    if (!ds) return { ok: false, error: "Dataset not found" };
+    if (!hfToken) return { ok: false, error: "Hugging Face token required" };
+    return { ok: true, job_id: startJob("push", 3500, `Uploading ${ds.id} to the Hub…`) };
+  }
+  if (pathname.startsWith("/api/datasets/stats/cancel/") || pathname.startsWith("/api/datasets/derive/cancel/")) {
+    return cancelJob(decodeTail(pathname));
   }
 
   if (pathname === "/api/history/clear") {
@@ -1073,7 +1369,7 @@ export async function handleMockPost(path: string, body?: unknown): Promise<unkn
       return { ok: true, currentEp: state.episodesDone, event: `discarded episode ${state.episodesDone}` };
     }
     if (text === "escape") {
-      state.processes.record = false;
+      setProcess("record", false);
       stopNonTrainTimers("record");
       emitNonTrainOutput("record", "recording ended", "info");
       return { ok: true, currentEp: state.episodesDone, event: "recording ended" };
@@ -1103,7 +1399,7 @@ export async function handleMockPost(path: string, body?: unknown): Promise<unkn
         stopTrainStream();
         return { ok: true };
       }
-      state.processes[name] = false;
+      setProcess(name, false);
       if (name !== "train_install") {
         stopNonTrainTimers(name as NonTrainProcessName);
         emitNonTrainOutput(name as NonTrainProcessName, "process stopped", "warn");
@@ -1119,6 +1415,16 @@ export async function handleMockPost(path: string, body?: unknown): Promise<unkn
 export async function handleMockDelete(path: string): Promise<unknown> {
   const pathname = getPathname(path);
   const query = getQuery(path);
+
+  if (/^\/api\/datasets\/[^/]+\/[^/]+$/.test(pathname)) {
+    const key = datasetKey(pathname);
+    const idx = mockDatasets.findIndex((d) => d.id === key);
+    if (idx < 0) return { ok: false, detail: "Dataset not found" };
+    mockDatasets.splice(idx, 1);
+    delete mockTags[key];
+    return { ok: true };
+  }
+
 
   if (pathname === "/api/hf/token") {
     hfToken = "";

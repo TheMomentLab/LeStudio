@@ -2,6 +2,7 @@ import {
   handleMockGet,
   handleMockDelete,
   handleMockPost,
+  subscribeMockProcessStatus,
   subscribeNonTrainChannel as subscribeMockNonTrainChannel,
   subscribeTrainChannel as subscribeMockTrainChannel,
 } from "../../mock-api/handlers";
@@ -689,3 +690,10 @@ export function subscribeTrainChannel<C extends TrainStreamChannel>(
     wsListeners.metric.delete(typed);
   };
 }
+
+// In mock mode there is no WebSocket, so the mock publishes process flips
+// itself; mirror them into the store exactly like the `status` WS frame.
+subscribeMockProcessStatus((processes) => {
+  if (transportMode === "passthrough") return;
+  setLeStudioState({ procStatus: { ...processes } });
+});

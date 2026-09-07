@@ -5,6 +5,7 @@ vi.mock("../../mock-api/handlers", () => ({
   handleMockPost: vi.fn(),
   handleMockDelete: vi.fn(),
   subscribeNonTrainChannel: vi.fn(() => () => {}),
+  subscribeMockProcessStatus: vi.fn(() => () => {}),
   subscribeTrainChannel: vi.fn(() => () => {}),
 }));
 
