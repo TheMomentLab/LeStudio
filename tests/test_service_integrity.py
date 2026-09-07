@@ -5,13 +5,15 @@ from __future__ import annotations
 import inspect
 from pathlib import Path
 
-from lestudio.capabilities import get_capability
+from _routing import iter_routes
+
 import lestudio.routes.process as process_routes
 import lestudio.routes.training as training_routes
-from lestudio.server import create_app
 import lestudio.services.dataset_service as dataset_service
 import lestudio.services.process_service as process_service
 import lestudio.services.training_service as training_service
+from lestudio.capabilities import get_capability
+from lestudio.server import create_app
 
 
 def test_process_service_exports_expected_entrypoints():
@@ -94,7 +96,7 @@ def test_all_mutating_routes_are_capability_protected(tmp_path: Path):
     mutating_methods = {"POST", "PUT", "DELETE"}
     missing: list[str] = []
 
-    for route in app.routes:
+    for route in iter_routes(app):
         path = getattr(route, "path", "")
         methods = set(getattr(route, "methods", set()) or set())
         if not path.startswith("/api/"):

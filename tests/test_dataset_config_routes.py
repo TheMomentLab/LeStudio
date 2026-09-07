@@ -5,6 +5,8 @@ import asyncio
 import json
 from pathlib import Path
 
+from _routing import find_endpoint as _find_endpoint
+
 from lestudio.routes.models import CameraSettingsRequest
 from lestudio.server import create_app
 
@@ -16,17 +18,6 @@ def _make_app(tmp_path: Path):
     config_dir.mkdir()
     rules_path = tmp_path / "99-lerobot.rules"
     return create_app(lerobot_src=lerobot_src, config_dir=config_dir, rules_path=rules_path)
-
-
-def _find_endpoint(app, path: str, method: str):
-    method = method.upper()
-    for route in app.routes:
-        if getattr(route, "path", None) != path:
-            continue
-        methods = getattr(route, "methods", set()) or set()
-        if method in methods:
-            return route.endpoint
-    raise AssertionError(f"Route not found: {method} {path}")
 
 
 # ─── Dataset listing ───────────────────────────────────────────────────────

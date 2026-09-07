@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from _routing import iter_routes
+
 from lestudio.server import create_app
 
 
@@ -15,7 +17,7 @@ def test_server_route_inventory_contains_expected_contract(tmp_path: Path):
     app = create_app(lerobot_src=lerobot_src, config_dir=config_dir, rules_path=rules_path)
     paths = {
         route.path
-        for route in app.routes
+        for route in iter_routes(app)
         if hasattr(route, "path") and (route.path.startswith("/api/") or route.path in {"/ws", "/stream/{video_name}"})
     }
 
