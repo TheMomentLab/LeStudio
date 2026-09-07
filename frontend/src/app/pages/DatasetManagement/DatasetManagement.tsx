@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 
 import { buttonStyles } from "../../components/ui/button";
-import { PageHeader, RefreshButton, SubTabs } from "../../components/wireframe";
+import { Card, EmptyState, PageHeader, RefreshButton, SubTabs } from "../../components/wireframe";
 import { useHfAuth } from "../../hf-auth-context";
 import { cn } from "../../components/ui/utils";
 import { apiDelete, apiGet, apiPost } from "../../services/apiClient";
@@ -232,12 +232,13 @@ export function DatasetManagement() {
 
             {/* Left Column: List (Fixed 320px) */}
             <div className="flex w-full flex-col gap-4 xl:sticky xl:top-6">
-              <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden">
-                <div className="flex items-center justify-between px-4 py-3 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800">
-                  <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Local Datasets</span>
-                  <span className="text-sm text-zinc-400">{localDatasets.length} items</span>
-                </div>
-                <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
+              <Card
+                title="Local Datasets"
+                action={<span className="text-sm text-fg-muted">{localDatasets.length} items</span>}
+                className="overflow-hidden"
+                bodyClassName="p-0"
+              >
+                <div className="divide-y divide-line">
                   {localDatasets.map((ds) => (
                     <div
                       key={ds.id}
@@ -251,10 +252,10 @@ export function DatasetManagement() {
                       aria-selected={selectedDataset?.id === ds.id}
                     >
                       <div className="min-w-0 flex-1">
-                        <div className="font-mono text-sm font-medium text-zinc-800 dark:text-zinc-200 truncate">
+                        <div className="font-mono text-sm font-medium text-fg-heading truncate">
                           {ds.id.split("/")[1]}
                         </div>
-                        <div className="text-sm text-zinc-400 mt-0.5">
+                        <div className="text-sm text-fg-muted mt-0.5">
                           {ds.episodes} eps · {ds.frames} frames · {ds.size}
                         </div>
                       </div>
@@ -265,7 +266,7 @@ export function DatasetManagement() {
                           void handleDeleteDataset(ds.id);
                         }}
                         disabled={deletingDatasetId === ds.id}
-                        className="p-1 rounded text-zinc-400 hover:text-red-500 opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 transition-all flex-none disabled:opacity-40 disabled:cursor-not-allowed"
+                        className="p-1 rounded text-fg-muted hover:text-danger opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 transition-all flex-none disabled:opacity-40 disabled:cursor-not-allowed"
                         title="Delete"
                         aria-label={`Delete ${ds.id}`}
                       >
@@ -275,30 +276,29 @@ export function DatasetManagement() {
                   ))}
                 </div>
                 {/* Add link */}
-                <div className="px-3 py-2.5 border-t border-zinc-200 dark:border-zinc-800 text-center">
-                  <Link to="/record" className="text-sm text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 hover:underline">
+                <div className="px-3 py-2.5 border-t border-line text-center">
+                  <Link to="/record" className="text-sm text-fg-muted hover:text-fg-body hover:underline">
                     + Record new dataset
                   </Link>
                 </div>
-              </div>
+              </Card>
             </div>
 
             {/* Right Column: Detail (Fluid) */}
             <div className="flex flex-col gap-6">
 
               {/* Dataset Header / Actions */}
-              <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden">
-                {!selectedDataset ? (
-                  <div className="flex flex-col items-center justify-center py-12 gap-3 text-center">
-                    <Search size={28} className="text-zinc-300 dark:text-zinc-600" />
-                    <p className="text-sm text-zinc-400">Select a dataset to view details.</p>
-                  </div>
-                ) : (<>
-                {/* Header bar: title + actions */}
-                <div className="flex items-center justify-between px-4 py-3 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="text-sm font-medium font-mono text-zinc-700 dark:text-zinc-200 truncate">{selectedDataset?.id}</span>
-                  </div>
+              {!selectedDataset ? (
+                <Card className="overflow-hidden">
+                  <EmptyState icon={<Search size={28} />} message="Select a dataset to view details." />
+                </Card>
+              ) : (
+              <Card
+                title={selectedDataset.id}
+                titleClassName="font-mono truncate"
+                className="overflow-hidden"
+                bodyClassName="p-0"
+                action={(
                   <div className="flex items-center gap-1.5 flex-none">
                     {hfAuth === "ready" ? (
                       <button
@@ -324,14 +324,15 @@ export function DatasetManagement() {
                         }
                       }}
                       disabled={!selectedDataset}
-                      className="p-1 rounded text-zinc-400 hover:text-red-500 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-zinc-400 transition-colors"
+                      className="p-1 rounded text-fg-muted hover:text-danger disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-fg-muted transition-colors"
                       title="Delete dataset"
                       aria-label="Delete dataset"
                     >
                       <Trash2 size={14} />
                     </button>
                   </div>
-                </div>
+                )}
+              >
                 {/* Sub-tabs */}
                 <div className="px-2 pt-2">
                   <SubTabs
@@ -345,46 +346,46 @@ export function DatasetManagement() {
                   />
                 </div>
                 {/* Info row */}
-                <div className="px-3 py-2.5 flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5 border-b border-zinc-200 dark:border-zinc-800">
-                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-zinc-500 [&>span]:whitespace-nowrap">
+                <div className="px-3 py-2.5 flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5 border-b border-line">
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-fg-muted [&>span]:whitespace-nowrap">
                     <span className="flex items-center gap-1"><MonitorPlay size={12} /> {formatMetric(selectedDataset?.episodes, "eps")}</span>
                     <span>{formatMetric(selectedDataset?.frames, "frames")}</span>
                     <span>{formatMetric(detailData?.fps, "FPS")}</span>
                     <span>{selectedDataset?.size}</span>
-                    <span className="text-zinc-400">{selectedDataset?.modified}</span>
+                    <span className="text-fg-muted">{selectedDataset?.modified}</span>
                   </div>
                   <div className="flex gap-1.5">
                     {(selectedDataset?.tags ?? []).map((t) => (
-                      <span key={t} className="px-2 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-sm text-zinc-500 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700">{t}</span>
+                      <span key={t} className="px-2 py-0.5 rounded bg-surface-sunken text-sm text-fg-muted border border-line-control">{t}</span>
                     ))}
                   </div>
                 </div>
 
                 {/* Recording environment metadata */}
                 {detailData && (detailData.robot_type || detailData.camera_details?.length || detailData.joint_names?.length) && (
-                  <div className="px-3 py-2 border-b border-zinc-200 dark:border-zinc-800">
+                  <div className="px-3 py-2 border-b border-line">
                     <button
                       onClick={() => setEnvMetaOpen(!envMetaOpen)}
-                      className="flex items-center gap-1 text-sm text-zinc-400 hover:text-zinc-600 cursor-pointer"
+                      className="flex items-center gap-1 text-sm text-fg-muted hover:text-fg-body cursor-pointer"
                     >
                       Recording Environment
                       {envMetaOpen ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
                     </button>
                     {envMetaOpen && (
-                      <div className="mt-2 pl-2 border-l-2 border-zinc-100 dark:border-zinc-800 flex flex-col gap-2 text-xs text-zinc-500 dark:text-zinc-400">
+                      <div className="mt-2 pl-2 border-l-2 border-line-subtle flex flex-col gap-2 text-xs text-fg-muted">
                         {detailData.robot_type && (
                           <div>
-                            <span className="text-zinc-400">Robot Type:</span>{" "}
-                            <span className="font-mono text-zinc-600 dark:text-zinc-300">{detailData.robot_type}</span>
+                            <span className="text-fg-muted">Robot Type:</span>{" "}
+                            <span className="font-mono text-fg-body">{detailData.robot_type}</span>
                           </div>
                         )}
                         {detailData.camera_details && detailData.camera_details.length > 0 && (
                           <div className="flex flex-col gap-1">
-                            <span className="text-zinc-400">Cameras:</span>
+                            <span className="text-fg-muted">Cameras:</span>
                             {detailData.camera_details.map((cam) => (
-                              <div key={cam.name} className="ml-2 font-mono text-zinc-600 dark:text-zinc-300">
+                              <div key={cam.name} className="ml-2 font-mono text-fg-body">
                                 {cam.name}
-                                <span className="text-zinc-400 ml-1">
+                                <span className="text-fg-muted ml-1">
                                   {cam.width && cam.height ? `${cam.width}×${cam.height}` : ""}
                                   {cam.fps ? ` ${cam.fps}fps` : ""}
                                   {cam.codec ? ` ${cam.codec}` : ""}
@@ -395,8 +396,8 @@ export function DatasetManagement() {
                         )}
                         {detailData.joint_names && detailData.joint_names.length > 0 && (
                           <div className="flex flex-col gap-1">
-                            <span className="text-zinc-400">Joints ({detailData.joint_names.length}):</span>
-                            <div className="ml-2 font-mono text-zinc-600 dark:text-zinc-300">
+                            <span className="text-fg-muted">Joints ({detailData.joint_names.length}):</span>
+                            <div className="ml-2 font-mono text-fg-body">
                               {detailData.joint_names.join(", ")}
                             </div>
                           </div>
@@ -408,29 +409,29 @@ export function DatasetManagement() {
 
                 {/* Hub Push Status */}
                 {pushStatus && (
-                  <div className="px-3 py-2.5 border-t border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/30 animate-in slide-in-from-top-2">
+                  <div className="px-3 py-2.5 border-t border-line bg-surface-muted animate-in slide-in-from-top-2">
                     <div className="flex justify-between text-sm mb-2">
-                      <span className="font-medium text-zinc-700 dark:text-zinc-300 flex items-center gap-2">
+                      <span className="font-medium text-fg-body flex items-center gap-2">
                         {String(pushStatus.status ?? "running") === "success" ? <CheckCircle2 size={12} /> : <Upload size={12} className="animate-bounce" />}
                         {String(pushStatus.status ?? "running") === "success" ? "Upload Complete" : `Pushing to Hugging Face Hub... (${pushStatus.phase ?? "running"})`}
                       </span>
-                      <span className="text-zinc-500">{Math.max(0, Math.min(100, Number(pushStatus.progress ?? 0)))}%</span>
+                      <span className="text-fg-muted">{Math.max(0, Math.min(100, Number(pushStatus.progress ?? 0)))}%</span>
                     </div>
-                    <div className="h-2 w-full bg-zinc-200 dark:bg-zinc-700 rounded-full overflow-hidden">
+                    <div className="h-2 w-full bg-surface-raised rounded-full overflow-hidden">
                       <div
-                        className="h-full bg-emerald-500 transition-all duration-300 ease-out"
+                        className="h-full bg-ok-solid transition-all duration-300 ease-out"
                         style={{ width: `${Math.max(0, Math.min(100, Number(pushStatus.progress ?? 0)))}%` }}
                       />
                     </div>
                     {pushStatus.error && (
-                      <div className="text-xs text-red-500 mt-2">{pushStatus.error}</div>
+                      <div className="text-xs text-danger mt-2">{pushStatus.error}</div>
                     )}
                   </div>
                 )}
 
                 {detailTab === "player" && selectedDataset && (
                   detailLoading ? (
-                    <div className="p-8 flex items-center justify-center gap-2 text-sm text-zinc-400">
+                    <div className="p-8 flex items-center justify-center gap-2 text-sm text-fg-muted">
                       <Loader2 size={14} className="animate-spin" /> Loading episode data...
                     </div>
                   ) : detailData ? (
@@ -441,12 +442,7 @@ export function DatasetManagement() {
                       initialEpisode={jumpEpisode}
                     />
                   ) : (
-                    <div className="flex flex-col items-center justify-center py-8 gap-3 text-center">
-                      <div className="text-3xl opacity-30">
-                        <AlertTriangle size={28} />
-                      </div>
-                      <p className="text-sm text-zinc-400 max-w-xs">Unable to load data.</p>
-                    </div>
+                    <EmptyState icon={<AlertTriangle size={28} />} message="Unable to load data." />
                   )
                 )}
                 {detailTab === "quality" && selectedDataset && (
@@ -477,8 +473,8 @@ export function DatasetManagement() {
                     }}
                   />
                 )}
-                </>)}
-              </div>
+              </Card>
+              )}
 
             </div>
           </div>

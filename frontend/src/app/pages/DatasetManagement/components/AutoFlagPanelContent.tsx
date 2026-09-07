@@ -170,14 +170,14 @@ export function AutoFlagPanelContent({
       {/* Loading / computing state */}
       {(initialLoading || jobId) && (
         <div className="flex flex-col items-center justify-center py-8 gap-3">
-          <RefreshCw size={20} className="text-zinc-400 animate-spin" />
-          <span className="text-sm text-zinc-500">
+          <RefreshCw size={20} className="text-fg-muted animate-spin" />
+          <span className="text-sm text-fg-muted">
             {jobId ? `${jobPhase}... ${jobProgress}%` : "Loading stats..."}
           </span>
           {jobId && (
             <button
               onClick={() => { void handleCancelJob(); }}
-              className="px-3 py-1.5 text-xs rounded border border-red-500/30 text-red-500 hover:bg-red-500/10"
+              className={buttonStyles({ variant: "secondary", tone: "danger", size: "sm" })}
             >
               Cancel
             </button>
@@ -190,14 +190,14 @@ export function AutoFlagPanelContent({
         <>
           {/* Criteria pills */}
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-sm text-zinc-500">Criteria</span>
-            <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700"><Film size={10} /> frames &lt; 30</span>
-            <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700"><Activity size={10} /> motion &lt; 0.01</span>
-            <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700"><Zap size={10} /> jerk &gt; 5.0</span>
+            <span className="text-sm text-fg-muted">Criteria</span>
+            <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs bg-surface-sunken text-fg-muted border border-line-control"><Film size={10} /> frames &lt; 30</span>
+            <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs bg-surface-sunken text-fg-muted border border-line-control"><Activity size={10} /> motion &lt; 0.01</span>
+            <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs bg-surface-sunken text-fg-muted border border-line-control"><Zap size={10} /> jerk &gt; 5.0</span>
             <div className="flex-1" />
             <button
               onClick={() => { void handleRecompute(); }}
-              className="p-1.5 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+              className="p-1.5 text-fg-muted hover:text-fg-body transition-colors"
               title="Recompute Stats"
             >
               <RefreshCw size={14} />
@@ -205,7 +205,7 @@ export function AutoFlagPanelContent({
           </div>
 
           {flagged.length === 0 ? (
-            <div className="flex items-center gap-2 text-sm text-emerald-600 dark:text-emerald-400">
+            <div className="flex items-center gap-2 text-sm text-ok">
               <CheckCircle2 size={14} />
               All {totalEpisodes} episodes passed
             </div>
@@ -214,49 +214,49 @@ export function AutoFlagPanelContent({
               {/* Progress bar */}
               <div>
                 <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">{flagged.length} / {totalEpisodes} flagged</span>
-                  <span className="text-sm text-zinc-400">{pendingFlagged.length} unreviewed</span>
+                  <span className="text-sm font-medium text-fg-body">{flagged.length} / {totalEpisodes} flagged</span>
+                  <span className="text-sm text-fg-muted">{pendingFlagged.length} unreviewed</span>
                 </div>
-                <div className="h-1.5 rounded-full bg-zinc-100 dark:bg-zinc-800 overflow-hidden">
-                  <div className="h-full rounded-full bg-emerald-400 dark:bg-emerald-500 transition-all" style={{ width: `${((flagged.length - pendingFlagged.length) / flagged.length) * 100}%` }} />
+                <div className="h-1.5 rounded-full bg-surface-sunken overflow-hidden">
+                  <div className="h-full rounded-full bg-ok-solid transition-all" style={{ width: `${((flagged.length - pendingFlagged.length) / flagged.length) * 100}%` }} />
                 </div>
               </div>
 
               {/* Episode cards */}
               <div className="max-h-64 overflow-auto space-y-2">
                 {flagged.map((ep) => (
-                  <div key={ep.episode_index} className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-2.5 flex items-center gap-3">
+                  <div key={ep.episode_index} className="rounded-lg border border-line p-2.5 flex items-center gap-3">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
-                        <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Ep {ep.episode_index}</span>
+                        <span className="text-sm font-medium text-fg-body">Ep {ep.episode_index}</span>
                         {getViolations(ep).map((v) => (
-                          <span key={v} className="text-amber-500 dark:text-amber-400" title={v}>
+                          <span key={v} className="text-warn" title={v}>
                             {v === "frames" && <Film size={12} />}
                             {v === "motion" && <Activity size={12} />}
                             {v === "jerk" && <Zap size={12} />}
                           </span>
                         ))}
                         {tags[String(ep.episode_index)] === "bad" && (
-                          <ThumbsDown size={12} className="text-zinc-400" />
+                          <ThumbsDown size={12} className="text-fg-muted" />
                         )}
                         {tags[String(ep.episode_index)] === "good" && (
-                          <ThumbsUp size={12} className="text-emerald-500" />
+                          <ThumbsUp size={12} className="text-ok" />
                         )}
                       </div>
-                      <div className="text-xs text-zinc-400">{ep.frames} frames · motion {ep.movement.toFixed(3)} · jerk {ep.jerk_score.toFixed(3)}</div>
+                      <div className="text-xs text-fg-muted">{ep.frames} frames · motion {ep.movement.toFixed(3)} · jerk {ep.jerk_score.toFixed(3)}</div>
                     </div>
                     <div className="flex items-center gap-1 flex-none">
                       {onPreviewEpisode && (
-                        <button onClick={() => onPreviewEpisode(ep.episode_index)} className="p-1.5 rounded text-zinc-400 hover:text-blue-500 hover:bg-blue-500/10 transition-colors cursor-pointer" title="Preview in Playback">
+                        <button onClick={() => onPreviewEpisode(ep.episode_index)} className="p-1.5 rounded text-fg-muted hover:text-info hover:bg-info-bg transition-colors cursor-pointer" title="Preview in Playback">
                           <Play size={12} />
                         </button>
                       )}
                       {tags[String(ep.episode_index)] !== "bad" && tags[String(ep.episode_index)] !== "good" && (
                         <>
-                          <button onClick={() => { void handleSingleTag(ep.episode_index, "bad"); }} className="p-1.5 rounded text-zinc-400 hover:text-zinc-600 hover:bg-zinc-500/10 transition-colors cursor-pointer" title="Tag as Bad">
+                          <button onClick={() => { void handleSingleTag(ep.episode_index, "bad"); }} className="p-1.5 rounded text-fg-muted hover:text-fg-body hover:bg-surface-hover transition-colors cursor-pointer" title="Tag as Bad">
                             <ThumbsDown size={12} />
                           </button>
-                          <button onClick={() => { void handleDismiss(ep.episode_index); }} className="p-1.5 rounded text-zinc-400 hover:text-emerald-500 hover:bg-emerald-500/10 transition-colors cursor-pointer" title="Dismiss (not bad)">
+                          <button onClick={() => { void handleDismiss(ep.episode_index); }} className="p-1.5 rounded text-fg-muted hover:text-ok hover:bg-ok-bg transition-colors cursor-pointer" title="Dismiss (not bad)">
                             <ThumbsUp size={12} />
                           </button>
                         </>
@@ -268,7 +268,7 @@ export function AutoFlagPanelContent({
 
               {/* Bottom action / completion signal */}
               {pendingFlagged.length === 0 ? (
-                <div className="flex items-center gap-2 text-sm text-emerald-600 dark:text-emerald-400 py-2">
+                <div className="flex items-center gap-2 text-sm text-ok py-2">
                   <CheckCircle2 size={14} />
                   All flagged episodes reviewed
                 </div>

@@ -12,7 +12,7 @@ import {
   Eraser,
 } from "lucide-react";
 
-import { WireToggle } from "../../../components/wireframe";
+import { ModeToggle, WireToggle, inputClassName, selectClassName } from "../../../components/wireframe";
 import { cn } from "../../../components/ui/utils";
 import { apiGet, apiPost } from "../../../services/apiClient";
 import { useLeStudioStore } from "../../../store";
@@ -256,32 +256,32 @@ export function VideoPlayerPanel({
   return (
     <div>
       {/* Player Info Bar */}
-      <div className="px-3 py-2 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
+      <div className="px-3 py-2 border-b border-line flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1 text-sm font-mono text-zinc-500">
-            Episode <span className="text-zinc-900 dark:text-zinc-100 font-bold">{selectedEpisode}</span>
-            <span className="text-zinc-400">/ {Math.max(0, searchedEpisodes.length - 1)}</span>
+          <div className="flex items-center gap-1 text-sm font-mono text-fg-muted">
+            Episode <span className="text-fg font-bold">{selectedEpisode}</span>
+            <span className="text-fg-muted">/ {Math.max(0, searchedEpisodes.length - 1)}</span>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
           <div className="relative">
-            <Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-zinc-400" />
+            <Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-fg-muted" />
             <input
               value={episodeQuery}
               onChange={(e) => setEpisodeQuery(e.target.value)}
               placeholder="Find episode..."
               aria-label="Find episode"
-              className="pl-6 pr-2 py-1 h-7 w-36 text-sm rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-300 placeholder:text-zinc-400 outline-none hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
+              className={cn(inputClassName, "h-7 w-36 pl-6 pr-2 py-1 rounded")}
             />
           </div>
           <div className="relative">
-            <Filter size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-zinc-400" />
+            <Filter size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-fg-muted" />
             <select
               value={tagFilter}
               onChange={(e) => setTagFilter(e.target.value)}
               aria-label="Filter episodes by tag"
-              className="pl-6 pr-2 py-1 h-7 text-sm rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-300 outline-none cursor-pointer hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
+              className={cn(selectClassName, "h-7 w-auto pl-6 pr-2 py-1 rounded")}
             >
               <option>All</option>
               <option>good</option>
@@ -290,11 +290,11 @@ export function VideoPlayerPanel({
               <option>untagged</option>
             </select>
           </div>
-          <div className="h-4 w-px bg-zinc-200 dark:bg-zinc-700 mx-1" />
+          <div className="h-4 w-px bg-surface-raised mx-1" />
           <button
             onClick={() => { if (epIndex > 0) setSelectedEpisode(searchedEpisodes[epIndex - 1].episode_index); }}
             disabled={epIndex <= 0}
-            className="p-1 text-zinc-400 hover:text-zinc-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="p-1 text-fg-muted hover:text-fg-body disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             aria-label="Previous episode"
           >
             <SkipBack size={16} />
@@ -302,7 +302,7 @@ export function VideoPlayerPanel({
           <button
             onClick={() => { if (epIndex < searchedEpisodes.length - 1) setSelectedEpisode(searchedEpisodes[epIndex + 1].episode_index); }}
             disabled={epIndex >= searchedEpisodes.length - 1}
-            className="p-1 text-zinc-400 hover:text-zinc-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="p-1 text-fg-muted hover:text-fg-body disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             aria-label="Next episode"
           >
             <SkipForward size={16} />
@@ -315,7 +315,7 @@ export function VideoPlayerPanel({
         <div
           ref={videoContainerRef}
           className={cn(
-            "gap-2 bg-zinc-100 dark:bg-zinc-950 rounded-lg p-2 grid",
+            "gap-2 bg-surface-sunken rounded-lg p-2 grid",
             detail.cameras.length === 1
               ? "grid-cols-1"
               : detail.cameras.length === 2
@@ -326,7 +326,7 @@ export function VideoPlayerPanel({
           )}
         >
           {detail.cameras.length === 0 ? (
-            <div className="col-span-full text-center text-sm text-zinc-400 py-8">
+            <div className="col-span-full text-center text-sm text-fg-muted py-8">
               No video data in this dataset.
             </div>
           ) : detail.cameras.map((cam) => {
@@ -336,7 +336,7 @@ export function VideoPlayerPanel({
             const file = `file-${String(Math.max(0, Number(videoMeta?.file_index ?? 0))).padStart(3, "0")}.mp4`;
             const src = `/api/datasets/${encodeURIComponent(parsedId.user)}/${encodeURIComponent(parsedId.repo)}/videos/${encodeURIComponent(cam)}/${encodeURIComponent(chunk)}/${encodeURIComponent(file)}`;
             return (
-              <div key={cam} className="relative bg-zinc-800 rounded border border-zinc-700 overflow-hidden aspect-video">
+              <div key={cam} className="relative bg-black rounded border border-line-strong overflow-hidden aspect-video">
                 <div className="absolute top-2 left-2 z-10 px-1.5 py-0.5 bg-black/50 backdrop-blur rounded text-3xs font-mono text-fg-inverted">
                   {cam}
                 </div>
@@ -356,13 +356,13 @@ export function VideoPlayerPanel({
         <div className="flex flex-col gap-2">
           {/* Scrubber */}
           <div className="flex items-center gap-3">
-            <span className="text-sm font-mono text-zinc-400 w-12 text-right">{formatTime(currentTime)}</span>
+            <span className="text-sm font-mono text-fg-muted w-12 text-right">{formatTime(currentTime)}</span>
             {/* Custom styled track with overlay range input for interaction */}
             <div className="relative flex-1 h-3 flex items-center group">
               <div className="absolute inset-0 flex items-center">
-                <div className="w-full h-1.5 rounded-full bg-zinc-200 dark:bg-zinc-700 overflow-hidden">
+                <div className="w-full h-1.5 rounded-full bg-surface-raised overflow-hidden">
                   <div
-                    className="h-full rounded-full bg-zinc-900 dark:bg-zinc-100 transition-none"
+                    className="h-full rounded-full bg-fg transition-none"
                     style={{ width: `${duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0}%` }}
                   />
                 </div>
@@ -378,7 +378,7 @@ export function VideoPlayerPanel({
                 className="absolute inset-0 w-full opacity-0 cursor-pointer"
               />
             </div>
-            <span className="text-sm font-mono text-zinc-400 w-12">{formatTime(duration)}</span>
+            <span className="text-sm font-mono text-fg-muted w-12">{formatTime(duration)}</span>
           </div>
 
           {/* Action Buttons Row */}
@@ -386,35 +386,24 @@ export function VideoPlayerPanel({
             <div className="flex items-center gap-1">
               <button
                 onClick={togglePlay}
-                className="p-2 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 transition-colors"
+                className="p-2 rounded hover:bg-surface-hover text-fg-body transition-colors"
                 aria-label={isPlaying ? "Pause playback" : "Play playback"}
               >
                 {isPlaying ? <Pause size={18} /> : <Play size={18} />}
               </button>
-              <div className="h-4 w-px bg-zinc-200 dark:bg-zinc-700 mx-2" />
-              <div className="flex gap-1 bg-zinc-100 dark:bg-zinc-800 p-0.5 rounded-md">
-                {[0.5, 1, 2].map((speed) => (
-                  <button
-                    key={speed}
-                    onClick={() => handleSpeedChange(speed)}
-                    aria-label={`Set playback speed to ${speed}x`}
-                    className={cn(
-                      "px-2 py-0.5 text-sm font-medium rounded transition-all",
-                      playbackSpeed === speed
-                        ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-sm"
-                        : "text-zinc-400 hover:text-zinc-600",
-                    )}
-                  >
-                    {speed}x
-                  </button>
-                ))}
-              </div>
+              <div className="h-4 w-px bg-surface-raised mx-2" />
+              <ModeToggle
+                size="sm"
+                options={["0.5x", "1x", "2x"]}
+                value={`${playbackSpeed}x`}
+                onChange={(v) => handleSpeedChange(Number(v.replace("x", "")))}
+              />
             </div>
 
             <div className="flex items-center gap-1">
               <button
                 onClick={() => { void tagEpisode("good"); }}
-                className={cn("p-1.5 rounded transition-colors", currentTag === "good" ? "text-emerald-500 dark:text-emerald-400" : "text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300")}
+                className={cn("p-1.5 rounded transition-colors", currentTag === "good" ? "text-ok" : "text-fg-muted hover:text-fg-body")}
                 title="Good"
                 aria-label="Tag episode as good"
               >
@@ -422,7 +411,7 @@ export function VideoPlayerPanel({
               </button>
               <button
                 onClick={() => { void tagEpisode("bad"); }}
-                className={cn("p-1.5 rounded transition-colors", currentTag === "bad" ? "text-red-500 dark:text-red-400" : "text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300")}
+                className={cn("p-1.5 rounded transition-colors", currentTag === "bad" ? "text-danger" : "text-fg-muted hover:text-fg-body")}
                 title="Bad"
                 aria-label="Tag episode as bad"
               >
@@ -430,18 +419,18 @@ export function VideoPlayerPanel({
               </button>
               <button
                 onClick={() => { void tagEpisode("review"); }}
-                className={cn("p-1.5 rounded transition-colors", currentTag === "review" ? "text-amber-500 dark:text-amber-400" : "text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300")}
+                className={cn("p-1.5 rounded transition-colors", currentTag === "review" ? "text-warn" : "text-fg-muted hover:text-fg-body")}
                 title="Review"
                 aria-label="Tag episode for review"
               >
                 <FileWarning size={14} />
               </button>
               {currentTag !== "untagged" && (
-                <button onClick={() => { void tagEpisode("untagged"); }} className="p-1.5 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors" title="Clear Tag" aria-label="Clear episode tag">
+                <button onClick={() => { void tagEpisode("untagged"); }} className="p-1.5 text-fg-muted hover:text-fg-body transition-colors" title="Clear Tag" aria-label="Clear episode tag">
                   <Eraser size={14} />
                 </button>
               )}
-              <div className="h-4 w-px bg-zinc-200 dark:bg-zinc-700 mx-1" />
+              <div className="h-4 w-px bg-surface-raised mx-1" />
               <WireToggle label="Auto-next" checked={autoNext} onChange={setAutoNext} />
             </div>
           </div>

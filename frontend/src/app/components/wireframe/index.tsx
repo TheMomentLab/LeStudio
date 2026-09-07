@@ -79,6 +79,7 @@ export function Card({
   action,
   className,
   bodyClassName,
+  titleClassName,
   children,
   badge,
 }: {
@@ -87,6 +88,8 @@ export function Card({
   titleSub?: string;
   action?: React.ReactNode;
   className?: string;
+  /** e.g. `font-mono` when the title is a path / repo id. */
+  titleClassName?: string;
   /** Overrides the default `p-4` body, e.g. `p-0` for flush lists/charts. */
   bodyClassName?: string;
   children?: React.ReactNode;
@@ -119,7 +122,7 @@ export function Card({
                   </span>
                 </>
               ) : (
-                <span className="text-sm font-medium text-fg-body">{title}</span>
+                <span className={cn("text-sm font-medium text-fg-body", titleClassName)}>{title}</span>
               )}
               {badge}
             </div>

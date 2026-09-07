@@ -53,6 +53,7 @@ export default tseslint.config(
       'src/app/pages/Evaluation/**/*.{ts,tsx}',
       'src/app/pages/Training/**/*.{ts,tsx}',
       'src/app/pages/MotorSetup/**/*.{ts,tsx}',
+      'src/app/pages/DatasetManagement/**/*.{ts,tsx}',
     ],
     plugins: { design: designSystem },
     rules: {
