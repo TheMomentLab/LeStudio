@@ -36,15 +36,15 @@ export function ColabPanel({
   device,
 }: ColabPanelProps) {
   return (
-    <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden">
+    <div className="rounded-lg border border-line bg-surface overflow-hidden">
       <button
         onClick={() => setColabOpen(!colabOpen)}
-        className="w-full flex items-center justify-between px-4 py-3 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800 gap-2 cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-800/50 transition-colors"
+        className="w-full flex items-center justify-between px-4 py-3 bg-surface-muted border-b border-line gap-2 cursor-pointer hover:bg-surface-hover transition-colors"
       >
         <img src="/colab-logo.png" alt="" aria-hidden="true" className="size-3.5 object-contain" />
-        <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Colab Training</span>
-        <span className="text-sm text-zinc-400 ml-1">Train on Google Colab when you don't have a GPU</span>
-        {colabOpen ? <ChevronUp size={10} className="ml-auto text-zinc-400" /> : <ChevronDown size={10} className="ml-auto text-zinc-400" />}
+        <span className="text-sm font-medium text-fg-body">Colab Training</span>
+        <span className="text-sm text-fg-muted ml-1">Train on Google Colab when you don't have a GPU</span>
+        {colabOpen ? <ChevronUp size={10} className="ml-auto text-fg-muted" /> : <ChevronDown size={10} className="ml-auto text-fg-muted" />}
       </button>
       {colabOpen && (
         <div className="px-4 py-4 flex flex-col gap-4">
@@ -54,7 +54,7 @@ export function ColabPanel({
 
           <div className="flex items-center gap-3 flex-wrap">
             <span className="flex-none size-5 rounded-full bg-ok-bg text-ok text-3xs font-bold grid place-items-center leading-[0]">1</span>
-            <p className="text-sm text-zinc-600 dark:text-zinc-300 font-medium">Upload dataset to HF Hub</p>
+            <p className="text-sm text-fg-body font-medium">Upload dataset to HF Hub</p>
             <code className="text-2xs text-fg-muted bg-surface-sunken px-1.5 py-0.5 rounded truncate">
               {colabRepoId || selectedRepoId || "lerobot-user/pick_cube"}
             </code>
@@ -83,23 +83,23 @@ export function ColabPanel({
           <div className="flex items-start gap-3">
             <span className="flex-none size-5 rounded-full bg-ok-bg text-ok text-3xs font-bold grid place-items-center leading-[0] mt-0.5">2</span>
             <div className="flex-1 min-w-0">
-              <p className="text-sm text-zinc-600 dark:text-zinc-300 font-medium mb-1.5">Paste config snippet into Colab</p>
-              <div className="relative rounded border border-zinc-200 dark:border-zinc-700 bg-zinc-900 overflow-hidden">
-                <div className="flex items-center justify-between px-4 py-2 bg-zinc-800 border-b border-zinc-700">
-                  <span className="text-sm text-zinc-400 font-mono">python</span>
+              <p className="text-sm text-fg-body font-medium mb-1.5">Paste config snippet into Colab</p>
+              <div className="relative rounded border border-line-control bg-surface-sunken overflow-hidden">
+                <div className="flex items-center justify-between px-4 py-2 bg-surface-raised border-b border-line-control">
+                  <span className="text-sm text-fg-muted font-mono">python</span>
                   <button
                     onClick={handleCopySnippet}
                     disabled={hfAuth !== "ready"}
                     className={cn(
                       "flex items-center gap-1 text-sm transition-colors",
-                      hfAuth !== "ready" ? "text-zinc-600 cursor-not-allowed" : "text-zinc-400 hover:text-zinc-200 cursor-pointer"
+                      hfAuth !== "ready" ? "text-fg-disabled cursor-not-allowed" : "text-fg-muted hover:text-fg-body cursor-pointer"
                     )}
                   >
                     <Copy size={10} />
                     {colabCopied ? "Copied!" : "Copy"}
                   </button>
                 </div>
-                <pre className="p-3 text-sm text-zinc-300 font-mono overflow-auto leading-relaxed whitespace-pre max-h-48">
+                <pre className="p-3 text-sm text-fg-body font-mono overflow-auto leading-relaxed whitespace-pre max-h-48">
                   {colabSnippet}
                 </pre>
               </div>
@@ -108,7 +108,7 @@ export function ColabPanel({
 
           <div className="flex items-center gap-3 flex-wrap">
             <span className="flex-none size-5 rounded-full bg-ok-bg text-ok text-3xs font-bold grid place-items-center leading-[0]">3</span>
-            <p className="text-sm text-zinc-600 dark:text-zinc-300 font-medium">Open and run Colab notebook</p>
+            <p className="text-sm text-fg-body font-medium">Open and run Colab notebook</p>
             <button
               type="button"
               onClick={handleOpenColab}
@@ -130,7 +130,7 @@ export function ColabPanel({
           </div>
 
           {device === "MPS (Apple Silicon)" && (
-            <p className="text-sm text-amber-600 dark:text-amber-400">
+            <p className="text-sm text-warn">
               ⚠ Colab automatically uses CUDA instead of MPS.
             </p>
           )}

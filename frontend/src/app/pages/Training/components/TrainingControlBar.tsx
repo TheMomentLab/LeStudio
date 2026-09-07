@@ -47,13 +47,13 @@ export function TrainingControlBar({
           }
           pulse={trainStatus === "running"}
         />
-        <span className="text-sm text-zinc-400 truncate min-w-0">
+        <span className="text-sm text-fg-muted truncate min-w-0">
           {trainStatus === "running" ? (
             <span className="font-mono">Step {currentStep.toLocaleString()} · Loss {latestLoss?.toFixed(5) ?? "—"} · ETA {eta}</span>
           ) : trainStatus === "starting" ? (
             "Starting training..."
           ) : completed ? (
-            <span className="text-emerald-600 dark:text-emerald-400">Training complete</span>
+            <span className="text-ok">Training complete</span>
           ) : trainStatus === "blocked" || cudaState === "fail" ? (
             preflightReason || "Preflight failed"
           ) : (

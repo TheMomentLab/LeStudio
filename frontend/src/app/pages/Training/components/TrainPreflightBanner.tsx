@@ -27,13 +27,13 @@ export function TrainPreflightBanner({
   if (cudaState === "ok") return null;
 
   return (
-    <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-amber-500/30 bg-amber-500/5">
-      <AlertTriangle size={13} className="text-amber-600 dark:text-amber-400 flex-none" />
-      <span className="text-sm text-amber-600 dark:text-amber-400 flex-1 truncate">{preflightReason || "Environment check failed."}</span>
+    <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-warn-line bg-warn-bg">
+      <AlertTriangle size={13} className="text-warn flex-none" />
+      <span className="text-sm text-warn flex-1 truncate">{preflightReason || "Environment check failed."}</span>
       <div className="flex items-center gap-2 flex-none">
         {cudaFixRunning ? (
           <>
-            <span className="flex items-center gap-1.5 text-sm text-zinc-400">
+            <span className="flex items-center gap-1.5 text-sm text-fg-muted">
               <Loader2 size={12} className="animate-spin" /> Installing…
             </span>
             <button

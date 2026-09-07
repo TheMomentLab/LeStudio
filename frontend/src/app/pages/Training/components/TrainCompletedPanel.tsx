@@ -1,8 +1,9 @@
 import { Link } from "react-router";
-import { ArrowRight, CheckCircle2, HardDrive, RefreshCw, RotateCcw } from "lucide-react";
+import { ArrowRight, CheckCircle2, HardDrive, RotateCcw } from "lucide-react";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import { buttonStyles } from "../../../components/ui/button";
+import { Card, RefreshButton } from "../../../components/wireframe";
 import type { CheckpointItem } from "../types";
 import { CustomTooltip } from "./CustomTooltip";
 import { useChartTokens } from "../../../hooks/useChartTokens";
@@ -29,80 +30,68 @@ export function TrainCompletedPanel({
   const chart = useChartTokens();
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center gap-3 px-4 py-3 rounded-lg border border-emerald-500/30 bg-emerald-500/5">
-        <CheckCircle2 size={16} className="text-emerald-600 dark:text-emerald-400 flex-none" />
+      <div className="flex items-center gap-3 px-4 py-3 rounded-lg border border-ok-line bg-ok-bg">
+        <CheckCircle2 size={16} className="text-ok flex-none" />
         <div>
-          <span className="text-sm text-emerald-600 dark:text-emerald-400 font-medium">Training Complete</span>
-          <span className="text-sm text-zinc-400 ml-3">
+          <span className="text-sm text-ok font-medium">Training Complete</span>
+          <span className="text-sm text-fg-muted ml-3">
             {policyType} · {totalSteps.toLocaleString()} steps · Loss {latestLoss?.toFixed(5) ?? "—"}
           </span>
         </div>
       </div>
 
       {lossData.length > 1 && (
-        <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-3 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800">
-            <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Loss Trend (Final)</span>
-          </div>
-          <div className="h-48 p-3">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={lossData} margin={{ top: 8, right: 12, bottom: 4, left: -8 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke={chart["chart-grid"]} vertical={false} />
-                <XAxis
-                  dataKey="step"
-                  tick={{ fontSize: 10, fill: chart["chart-axis"] }}
-                  tickLine={false}
-                  axisLine={false}
-                  tickFormatter={(v) => v >= 1000 ? `${(v / 1000).toFixed(0)}K` : String(v)}
-                />
-                <YAxis
-                  tick={{ fontSize: 10, fill: chart["chart-axis"] }}
-                  tickLine={false}
-                  axisLine={false}
-                  tickFormatter={(v) => v.toFixed(3)}
-                  width={46}
-                />
-                <Tooltip content={<CustomTooltip />} />
-                <Line
-                  type="monotone"
-                  dataKey="loss"
-                  stroke={chart["chart-series-1"]}
-                  strokeWidth={2}
-                  dot={false}
-                  isAnimationActive={false}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
+        <Card title="Loss Trend (Final)" bodyClassName="h-48 p-3">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={lossData} margin={{ top: 8, right: 12, bottom: 4, left: -8 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke={chart["chart-grid"]} vertical={false} />
+              <XAxis
+                dataKey="step"
+                tick={{ fontSize: 10, fill: chart["chart-axis"] }}
+                tickLine={false}
+                axisLine={false}
+                tickFormatter={(v) => v >= 1000 ? `${(v / 1000).toFixed(0)}K` : String(v)}
+              />
+              <YAxis
+                tick={{ fontSize: 10, fill: chart["chart-axis"] }}
+                tickLine={false}
+                axisLine={false}
+                tickFormatter={(v) => v.toFixed(3)}
+                width={46}
+              />
+              <Tooltip content={<CustomTooltip />} />
+              <Line
+                type="monotone"
+                dataKey="loss"
+                stroke={chart["chart-series-1"]}
+                strokeWidth={2}
+                dot={false}
+                isAnimationActive={false}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </Card>
       )}
 
-      <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden">
-        <div className="flex items-center justify-between px-4 py-3 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800">
-          <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Checkpoints ({checkpointList.length})</span>
-          <button
-            onClick={onRefreshCheckpoints}
-            className="text-zinc-400 hover:text-zinc-300 cursor-pointer p-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded"
-            title="Refresh"
-          >
-            <RefreshCw size={12} />
-          </button>
-        </div>
-        <div className="divide-y divide-zinc-100 dark:divide-zinc-800/50">
-          {checkpointList.map((cp) => (
-            <div key={cp.name} className="flex items-center gap-3 px-4 py-2.5 hover:bg-zinc-50 dark:hover:bg-zinc-800/20 transition-colors">
-              <HardDrive size={12} className="text-zinc-400 flex-none" />
-              <div className="min-w-0 flex-1">
-                <span className="text-sm text-zinc-700 dark:text-zinc-300 font-mono">{cp.name}</span>
-                <span className="text-sm text-zinc-400 font-mono ml-3">{cp.path}</span>
-              </div>
-              <span className="text-sm text-zinc-500 font-mono flex-none">
-                step {cp.step !== null ? cp.step.toLocaleString() : "—"}
-              </span>
+      <Card
+        title={`Checkpoints (${checkpointList.length})`}
+        action={<RefreshButton onClick={onRefreshCheckpoints} />}
+        className="overflow-hidden"
+        bodyClassName="p-0 divide-y divide-line-subtle"
+      >
+        {checkpointList.map((cp) => (
+          <div key={cp.name} className="flex items-center gap-3 px-4 py-2.5 hover:bg-surface-hover transition-colors">
+            <HardDrive size={12} className="text-fg-muted flex-none" />
+            <div className="min-w-0 flex-1">
+              <span className="text-sm text-fg-body font-mono">{cp.name}</span>
+              <span className="text-sm text-fg-muted font-mono ml-3">{cp.path}</span>
             </div>
-          ))}
-        </div>
-      </div>
+            <span className="text-sm text-fg-muted font-mono flex-none">
+              step {cp.step !== null ? cp.step.toLocaleString() : "—"}
+            </span>
+          </div>
+        ))}
+      </Card>
 
       <div className="flex items-center gap-3 justify-end">
         <Link

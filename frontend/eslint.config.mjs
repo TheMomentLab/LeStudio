@@ -51,6 +51,7 @@ export default tseslint.config(
       // Pages fully migrated to tokens — add each one here as it lands so it
       // cannot regress. Pages still in the ratchet are covered by design:audit.
       'src/app/pages/Evaluation/**/*.{ts,tsx}',
+      'src/app/pages/Training/**/*.{ts,tsx}',
     ],
     plugins: { design: designSystem },
     rules: {
