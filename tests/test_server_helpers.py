@@ -13,6 +13,7 @@ from lestudio._train_helpers import (
     _cuda_tag_to_toolkit_version,
     _format_cmd,
 )
+import lestudio._device_helpers as _device_mod
 from lestudio._device_helpers import get_usb_bus_for_camera
 import lestudio._udev_helpers as _udev_mod
 
@@ -20,7 +21,6 @@ import lestudio._udev_helpers as _udev_mod
 def test_parse_cors_origins_handles_empty_and_csv():
     assert _parse_cors_origins(None) == []
     assert _parse_cors_origins("https://a.com, http://b.local ") == ["https://a.com", "http://b.local"]
-
 
 
 def test_build_rules_contains_camera_and_arm_rules(tmp_path: Path):
@@ -124,3 +124,24 @@ def test_format_cmd_quotes():
 def test_get_usb_bus_for_camera_fallback():
     result = get_usb_bus_for_camera("no-such-video")
     assert result == {"bus": "?", "port": "?", "max_mbps": 480}
+
+
+def test_find_single_arm_calibration_path_uses_type_policy_sources(monkeypatch, tmp_path: Path):
+    target = tmp_path / "resolved.json"
+    target.write_text("{}", encoding="utf-8")
+
+    monkeypatch.setattr(_device_mod, "_single_arm_calibration_candidates", lambda port: ["arm_a"])
+    monkeypatch.setattr(
+        _device_mod.type_policy, "get_calibration_source_types", lambda device_type: ["custom_a", "custom_b"]
+    )
+    monkeypatch.setattr(
+        _device_mod,
+        "get_calibration_file_path",
+        lambda device_type, device_id: (
+            target if device_type == "custom_b" else tmp_path / f"{device_type}-{device_id}.json"
+        ),
+    )
+
+    result = _device_mod._find_single_arm_calibration_path("bi_custom_follower", "/dev/ttyUSB0")
+
+    assert result == target

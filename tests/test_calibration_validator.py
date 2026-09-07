@@ -144,6 +144,40 @@ def test_validate_calibration_file_empty_file_reports_error(tmp_path: Path):
     assert len(result.errors) > 0
 
 
+def test_validate_calibration_file_omx_bypasses_so_joint_schema(tmp_path: Path):
+    file_path = _write_calibration(tmp_path / "omx.json", {"custom_joint": {"anything": 1}})
+
+    result = validate_calibration_file(file_path, device_type="omx_follower")
+
+    assert result.ok is True
+    assert result.errors == []
+
+
+def test_validate_calibration_file_generic_json_still_requires_parseable_dict(tmp_path: Path):
+    file_path = _write_calibration(tmp_path / "generic.json", {"custom_joint": {"value": 1}})
+
+    result = validate_calibration_file(file_path, device_type="custom_unknown")
+
+    assert result.ok is True
+    assert result.errors == []
+
+
+def test_validate_and_cross_validate_omx_pair_skips_so_cross_checks(tmp_path: Path):
+    leader_path = _write_calibration(tmp_path / "omx_leader.json", {"leader_joint": {"anything": 1}})
+    follower_path = _write_calibration(tmp_path / "omx_follower.json", {"follower_joint": {"anything": 2}})
+
+    result = validate_and_cross_validate(
+        leader_path,
+        follower_path,
+        leader_type="omx_leader",
+        follower_type="omx_follower",
+    )
+
+    assert result["leader"]["ok"] is True
+    assert result["follower"]["ok"] is True
+    assert result["cross"]["warnings"] == []
+
+
 def test_validate_and_cross_validate_matching_pair_has_no_cross_warnings(tmp_path: Path):
     valid = _valid_so_calibration()
     leader_path = _write_calibration(tmp_path / "leader.json", valid)

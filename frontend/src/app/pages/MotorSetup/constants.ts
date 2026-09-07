@@ -1,3 +1,6 @@
+import type { TypePolicyCatalogResponse } from "../../store/types";
+import { supportsMotorSetup } from "../../services/robotPolicy";
+
 export const SETUP_MOTORS = [
   { name: "gripper", id: 6 },
   { name: "wrist_roll", id: 5 },
@@ -6,8 +9,6 @@ export const SETUP_MOTORS = [
   { name: "shoulder_lift", id: 2 },
   { name: "shoulder_pan", id: 1 },
 ];
-
-export const ARM_TYPES = ["so101_follower", "so100_follower", "so101_leader", "so100_leader"];
 
 export const MOTOR_SETUP_TYPES = [
   "so101_follower",
@@ -20,6 +21,22 @@ export const MOTOR_SETUP_TYPES = [
   "omx_leader",
   "lekiwi",
 ];
+
+export function deriveSingleArmTypes(armTypes: string[], typeCatalog: TypePolicyCatalogResponse): string[] {
+  const dynamic = armTypes.filter((type) => !type.startsWith("bi_") && (type.includes("_leader") || type.includes("_follower")));
+  const catalogTypes = Object.entries(typeCatalog.types)
+    .filter(([type, policy]) => !policy.bimanual.supported && (type.includes("_leader") || type.includes("_follower")))
+    .map(([type]) => type);
+  const defaults = [typeCatalog.defaults.single.robot_type, typeCatalog.defaults.single.teleop_type];
+  const combined = Array.from(new Set([...defaults, ...catalogTypes, ...dynamic]));
+  return combined.length > 0 ? combined : defaults;
+}
+
+export function deriveSetupArmTypes(armTypes: string[], typeCatalog: TypePolicyCatalogResponse): string[] {
+  const source = Array.from(new Set([...MOTOR_SETUP_TYPES, ...armTypes]));
+  const filtered = source.filter((type) => supportsMotorSetup(type, typeCatalog));
+  return filtered.length > 0 ? filtered : MOTOR_SETUP_TYPES;
+}
 
 export function toArmSymlink(roleLabel: string): string {
   if (roleLabel === "Follower Arm 1") return "follower_arm_1";

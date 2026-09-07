@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { resetLeStudioState, setLeStudioState } from "../store";
 import type { LeStudioConfig } from "../store/types";
 import {
   toBackendEvalPayload,
@@ -8,7 +9,81 @@ import {
   toBackendTrainPayload,
 } from "./contracts";
 
+const CUSTOM_DEFAULTS = {
+  version: 1,
+  defaults: {
+    single: { robot_type: "custom_single_follower", teleop_type: "custom_single_leader" },
+    bi: { robot_type: "custom_bi_follower", teleop_type: "custom_bi_leader" },
+  },
+  types: {},
+  lerobot_available: true,
+} as const;
+
 describe("contracts payload builders", () => {
+  it("preserves explicit OMX single-arm types in teleop payloads", () => {
+    const payload = toBackendTeleopPayload({
+      modeLabel: "single",
+      speedLabel: "1.0x",
+      cameras: [],
+      config: {
+        robot_type: "omx_follower",
+        teleop_type: "omx_leader",
+        follower_port: "/dev/omx_follower",
+        leader_port: "/dev/omx_leader",
+        robot_id: "omx_follower",
+        teleop_id: "omx_leader",
+      },
+    });
+
+    expect(payload).toMatchObject({
+      robot_mode: "single",
+      robot_type: "omx_follower",
+      teleop_type: "omx_leader",
+      follower_port: "/dev/omx_follower",
+      leader_port: "/dev/omx_leader",
+      robot_id: "omx_follower",
+      teleop_id: "omx_leader",
+    });
+  });
+
+  it("uses policy catalog defaults when single-mode types are missing", () => {
+    resetLeStudioState();
+    setLeStudioState({ typeCatalog: CUSTOM_DEFAULTS, typeCatalogVersion: 1, typeCatalogLoaded: true });
+
+    const payload = toBackendTeleopPayload({
+      modeLabel: "single",
+      speedLabel: "1.0x",
+      cameras: [],
+      config: {},
+    });
+
+    expect(payload).toMatchObject({
+      robot_mode: "single",
+      robot_type: "custom_single_follower",
+      teleop_type: "custom_single_leader",
+    });
+
+    resetLeStudioState();
+  });
+
+  it("falls back to SO single-arm defaults when bi types leak into single mode", () => {
+    const payload = toBackendTeleopPayload({
+      modeLabel: "single",
+      speedLabel: "0.5x",
+      cameras: [],
+      config: {
+        robot_type: "bi_so_follower",
+        teleop_type: "bi_so_leader",
+      },
+    });
+
+    expect(payload).toMatchObject({
+      robot_mode: "single",
+      robot_type: "so101_follower",
+      teleop_type: "so101_leader",
+    });
+  });
+
   it("builds teleop payload with normalized speed and mapped cameras", () => {
     const config: LeStudioConfig = { robot_type: "bi_so_follower", teleop_type: "bi_so_leader" };
     const payload = toBackendTeleopPayload({
@@ -51,6 +126,52 @@ describe("contracts payload builders", () => {
       record_push_to_hub: false,
       record_dataset_root: "/tmp/datasets",
     });
+  });
+
+  it("falls back to bimanual SO defaults when single-arm types are used in bi mode", () => {
+    const payload = toBackendRecordPayload({
+      modeLabel: "bimanual",
+      totalEpisodes: 2,
+      repoId: "user/bi-ds",
+      task: "handover",
+      resume: false,
+      pushToHub: false,
+      cameras: [],
+      config: {
+        robot_type: "so101_follower",
+        teleop_type: "so101_leader",
+      },
+    });
+
+    expect(payload).toMatchObject({
+      robot_mode: "bi",
+      robot_type: "bi_so_follower",
+      teleop_type: "bi_so_leader",
+    });
+  });
+
+  it("uses policy catalog defaults when bi-mode types are missing", () => {
+    resetLeStudioState();
+    setLeStudioState({ typeCatalog: CUSTOM_DEFAULTS, typeCatalogVersion: 1, typeCatalogLoaded: true });
+
+    const payload = toBackendRecordPayload({
+      modeLabel: "bimanual",
+      totalEpisodes: 1,
+      repoId: "user/bi-ds",
+      task: "handover",
+      resume: false,
+      pushToHub: false,
+      cameras: [],
+      config: {},
+    });
+
+    expect(payload).toMatchObject({
+      robot_mode: "bi",
+      robot_type: "custom_bi_follower",
+      teleop_type: "custom_bi_leader",
+    });
+
+    resetLeStudioState();
   });
 
   it("builds train payload using policy mapping and dataset source", () => {
@@ -106,5 +227,59 @@ describe("contracts payload builders", () => {
         image_wrist: "/dev/video1",
       },
     });
+  });
+
+  it("preserves explicit OMX eval types while keeping single-arm payload normalization", () => {
+    const payload = toBackendEvalPayload({
+      envType: "gym_manipulator",
+      policyPath: "outputs/train/act/checkpoints/last/pretrained_model",
+      datasetRepo: "org/base",
+      episodes: 1,
+      deviceLabel: "CPU",
+      task: "real_robot",
+      cameraMapping: {},
+      cameraCatalog: [],
+      config: {
+        robot_mode: "single",
+        robot_type: "omx_follower",
+        teleop_type: "omx_leader",
+        eval_robot_type: "omx_follower",
+        eval_teleop_type: "omx_leader",
+      },
+    });
+
+    expect(payload).toMatchObject({
+      robot_mode: "single",
+      robot_type: "omx_follower",
+      teleop_type: "omx_leader",
+      eval_robot_type: "omx_follower",
+      eval_teleop_type: "omx_leader",
+    });
+  });
+
+  it("uses policy defaults for eval fallback types", () => {
+    resetLeStudioState();
+    setLeStudioState({ typeCatalog: CUSTOM_DEFAULTS, typeCatalogVersion: 1, typeCatalogLoaded: true });
+
+    const payload = toBackendEvalPayload({
+      envType: "gym_manipulator",
+      policyPath: "outputs/train/act/checkpoints/last/pretrained_model",
+      datasetRepo: "org/base",
+      episodes: 1,
+      deviceLabel: "CPU",
+      task: "real_robot",
+      cameraMapping: {},
+      cameraCatalog: [],
+      config: { robot_mode: "single" },
+    });
+
+    expect(payload).toMatchObject({
+      robot_type: "custom_single_follower",
+      teleop_type: "custom_single_leader",
+      eval_robot_type: "custom_single_follower",
+      eval_teleop_type: "custom_single_leader",
+    });
+
+    resetLeStudioState();
   });
 });

@@ -5,9 +5,10 @@ import {
 import { apiDelete, apiGet, apiPost } from "../../services/apiClient";
 import { buildCalibrationListEntries } from "../../services/calibrationProfiles";
 import { symToDisplayLabel, buildPortOptions } from "../../services/portLabels";
+import { getCanonicalPair, getDefaults } from "../../services/robotPolicy";
 import { useLeStudioStore } from "../../store";
 import type { LogLine } from "../../store/types";
-import { SETUP_MOTORS, ARM_TYPES, MOTOR_SETUP_TYPES, toArmSymlink } from "./constants";
+import { deriveSetupArmTypes, deriveSingleArmTypes, SETUP_MOTORS, toArmSymlink } from "./constants";
 import { MotorCard } from "./components/MotorCard";
 import { MappingTabPanel } from "./components/MappingTabPanel";
 import { IdentifyArmModal } from "./components/IdentifyArmModal";
@@ -180,9 +181,13 @@ export function MotorSetup() {
   const appendLog = useLeStudioStore((s) => s.appendLog);
   const clearLog = useLeStudioStore((s) => s.clearLog);
   const addToast = useLeStudioStore((s) => s.addToast);
+  const updateConfig = useLeStudioStore((s) => s.updateConfig);
   const motorSetupLogLines = useLeStudioStore((s) => s.logLines.motor_setup);
   const globalDevices = useLeStudioStore((s) => s.devices);
+  const typeCatalog = useLeStudioStore((s) => s.typeCatalog);
   const prevDeviceCountRef = useRef({ cameras: -1, arms: -1 });
+  const singleDefaults = useMemo(() => getDefaults("single", typeCatalog), [typeCatalog]);
+  const biDefaults = useMemo(() => getDefaults("bi", typeCatalog), [typeCatalog]);
 
   // ── Device data ──────────────────────────────────────────────────────────
   const [arms, setArms] = useState<ArmDevice[]>([]);
@@ -192,9 +197,9 @@ export function MotorSetup() {
   const calibrateRunning = Boolean(procStatus.calibrate);
   const setupReconnected = useLeStudioStore((s) => !!s.procReconnected.motor_setup);
   const calibrateReconnected = useLeStudioStore((s) => !!s.procReconnected.calibrate);
-  const [setupArmType, setSetupArmType] = useState("so101_follower");
+  const [setupArmType, setSetupArmType] = useState(singleDefaults.robot_type);
   const [setupPort, setSetupPort] = useState("");
-  const [armTypes, setArmTypes] = useState<string[]>(ARM_TYPES);
+  const [armTypes, setArmTypes] = useState<string[]>(() => deriveSingleArmTypes([], typeCatalog));
 
   // ── Motor Monitor ─────────────────────────────────────────────────────────
   const [monConnected, setMonConnected] = useState(false);
@@ -207,16 +212,33 @@ export function MotorSetup() {
 
   // ── Calibration (mock UI only — real API in Calibration page) ────────────
   const [calibMode, setCalibMode] = useState("Single Arm");
-  const [calibArmType, setCalibArmType] = useState("so101_follower");
+  const [calibArmType, setCalibArmType] = useState(singleDefaults.robot_type);
   const [calibPort, setCalibPort] = useState("");
   const [calibArmId, setCalibArmId] = useState("");
-  const [calibBiType, setCalibBiType] = useState("bi_so_follower");
+  const [calibBiType, setCalibBiType] = useState(biDefaults.robot_type);
   const [calibBiId, setCalibBiId] = useState("bimanual_follower");
   const [calibBiLeftPort, setCalibBiLeftPort] = useState("");
   const [calibBiRightPort, setCalibBiRightPort] = useState("");
   const [calibFiles, setCalibFiles] = useState<CalibrationFileItem[]>([]);
   const [calibFileScope, setCalibFileScope] = useState<(typeof CALIBRATION_FILE_SCOPE_OPTIONS)[number]>("Single");
   const [calibSelectedFileStatus, setCalibSelectedFileStatus] = useState<CalibrationFileStatusResponse | null>(null);
+
+  const persistCanonicalPair = useCallback((typeName: string) => {
+    const pair = getCanonicalPair(typeName, typeCatalog);
+    if (!pair.robotType || !pair.teleopType) return;
+    const patch = { robot_type: pair.robotType, teleop_type: pair.teleopType };
+    updateConfig(patch);
+    void apiPost<Record<string, unknown>>("/api/config", patch).catch(() => undefined);
+  }, [typeCatalog, updateConfig]);
+
+  useEffect(() => {
+    persistCanonicalPair(setupArmType);
+  }, [persistCanonicalPair, setupArmType]);
+
+  useEffect(() => {
+    if (calibMode !== "Single Arm") return;
+    persistCanonicalPair(calibArmType);
+  }, [calibArmType, calibMode, persistCanonicalPair]);
   const [calibrationAssistantStage, setCalibrationAssistantStage] = useState<"idle" | "choose_file" | "center_arm" | "record_range" | "finishing">("idle");
 
   // ── Setup Wizard ──────────────────────────────────────────────────────────
@@ -305,13 +327,18 @@ export function MotorSetup() {
         const dynamicTypes = res.types
           .filter((type): type is string => typeof type === "string")
           .filter((type) => type.includes("_leader") || type.includes("_follower") || type === "lekiwi");
-        const merged = Array.from(new Set([...ARM_TYPES, ...dynamicTypes]));
-        setArmTypes(merged);
+        setArmTypes(deriveSingleArmTypes(dynamicTypes, typeCatalog));
       }
     } catch {
       // keep defaults
     }
-  }, []);
+  }, [typeCatalog]);
+
+  useEffect(() => {
+    if (armTypes.length === 0) {
+      setArmTypes(deriveSingleArmTypes([], typeCatalog));
+    }
+  }, [armTypes.length, typeCatalog]);
 
   useEffect(() => {
     void loadDevices();
@@ -856,13 +883,11 @@ export function MotorSetup() {
     return "";
   }, [calibArmIdTrimmed]);
   const singleArmCalibTypes = useMemo(() => {
-    const filtered = armTypes.filter((type) => !type.startsWith("bi_") && (type.includes("_leader") || type.includes("_follower")));
-    return filtered.length > 0 ? filtered : ARM_TYPES;
-  }, [armTypes]);
+    return deriveSingleArmTypes(armTypes, typeCatalog);
+  }, [armTypes, typeCatalog]);
   const setupArmTypes = useMemo(() => {
-    const filtered = armTypes.filter((type) => MOTOR_SETUP_TYPES.includes(type));
-    return filtered.length > 0 ? filtered : MOTOR_SETUP_TYPES;
-  }, [armTypes]);
+    return deriveSetupArmTypes(armTypes, typeCatalog);
+  }, [armTypes, typeCatalog]);
 
   useEffect(() => {
     if (setupProcessActive && !wizardRunning) {
@@ -894,14 +919,14 @@ export function MotorSetup() {
   }, [setupProcessActive, wizardAllDone, wizardError, wizardRunning]);
   useEffect(() => {
     if (!setupArmTypes.includes(setupArmType)) {
-      setSetupArmType(setupArmTypes[0] ?? "so101_follower");
+      setSetupArmType(setupArmTypes[0] ?? singleDefaults.robot_type);
     }
-  }, [setupArmType, setupArmTypes]);
+  }, [setupArmType, setupArmTypes, singleDefaults.robot_type]);
   const biArmCalibTypes = useMemo(() => {
-    const defaults = ["bi_so_follower", "bi_so_leader"];
+    const defaults = [biDefaults.robot_type, biDefaults.teleop_type];
     const dynamic = armTypes.filter((type) => type.startsWith("bi_"));
     return Array.from(new Set([...defaults, ...dynamic]));
-  }, [armTypes]);
+  }, [armTypes, biDefaults.robot_type, biDefaults.teleop_type]);
 
   useEffect(() => {
     if (calibMode !== "Single Arm") return;
@@ -932,15 +957,15 @@ export function MotorSetup() {
 
   useEffect(() => {
     if (!singleArmCalibTypes.includes(calibArmType)) {
-      setCalibArmType(singleArmCalibTypes[0] ?? "so101_follower");
+      setCalibArmType(singleArmCalibTypes[0] ?? singleDefaults.robot_type);
     }
-  }, [calibArmType, singleArmCalibTypes]);
+  }, [calibArmType, singleArmCalibTypes, singleDefaults.robot_type]);
 
   useEffect(() => {
     if (!biArmCalibTypes.includes(calibBiType)) {
-      setCalibBiType(biArmCalibTypes[0] ?? "bi_so_follower");
+      setCalibBiType(biArmCalibTypes[0] ?? biDefaults.robot_type);
     }
-  }, [biArmCalibTypes, calibBiType]);
+  }, [biArmCalibTypes, biDefaults.robot_type, calibBiType]);
 
   return (
     <div className="flex flex-col h-full">

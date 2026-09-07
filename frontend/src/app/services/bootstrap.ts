@@ -1,17 +1,20 @@
 import { apiGet } from "./apiClient";
 import {
   DEFAULT_SIDEBAR_SIGNALS,
+  DEFAULT_TYPE_CATALOG_RESPONSE,
   type DepsStatusResponse,
   type DevicesResponse,
   type HfWhoamiResponse,
   type LeStudioConfig,
   type SidebarSignals,
+  type TypePolicyCatalogResponse,
   type TrainPreflightResponse,
 } from "../store/types";
 
 type BootstrapErrorKey =
   | "config"
   | "devices"
+  | "typeCatalog"
   | "depsStatus"
   | "hfWhoami"
   | "trainPreflight";
@@ -19,6 +22,7 @@ type BootstrapErrorKey =
 export type BootstrapResult = {
   config: LeStudioConfig;
   devices: DevicesResponse;
+  typeCatalog: TypePolicyCatalogResponse;
   sidebarSignals: SidebarSignals;
   hfUsername: string | null;
   prefillPatch: Partial<LeStudioConfig>;
@@ -91,6 +95,38 @@ function normalizeDevices(payload: unknown): DevicesResponse {
   };
 }
 
+function normalizeTypeCatalog(payload: unknown): TypePolicyCatalogResponse {
+  if (!isRecord(payload)) return DEFAULT_TYPE_CATALOG_RESPONSE;
+  const defaults = isRecord(payload.defaults) ? payload.defaults : {};
+  const single = isRecord(defaults.single) ? defaults.single : {};
+  const bi = isRecord(defaults.bi) ? defaults.bi : {};
+  const rawTypes = isRecord(payload.types) ? payload.types : {};
+
+  const types = Object.fromEntries(
+    Object.entries(rawTypes)
+      .filter(([, value]) => isRecord(value))
+      .map(([key, value]) => [key, value]),
+  ) as TypePolicyCatalogResponse["types"];
+
+  return {
+    version: typeof payload.version === "number" ? payload.version : DEFAULT_TYPE_CATALOG_RESPONSE.version,
+    defaults: {
+      single: {
+        robot_type: typeof single.robot_type === "string" ? single.robot_type : DEFAULT_TYPE_CATALOG_RESPONSE.defaults.single.robot_type,
+        teleop_type: typeof single.teleop_type === "string" ? single.teleop_type : DEFAULT_TYPE_CATALOG_RESPONSE.defaults.single.teleop_type,
+      },
+      bi: {
+        robot_type: typeof bi.robot_type === "string" ? bi.robot_type : DEFAULT_TYPE_CATALOG_RESPONSE.defaults.bi.robot_type,
+        teleop_type: typeof bi.teleop_type === "string" ? bi.teleop_type : DEFAULT_TYPE_CATALOG_RESPONSE.defaults.bi.teleop_type,
+      },
+    },
+    types,
+    lerobot_available: typeof payload.lerobot_available === "boolean"
+      ? payload.lerobot_available
+      : DEFAULT_TYPE_CATALOG_RESPONSE.lerobot_available,
+  };
+}
+
 function extractHfUsername(payload: unknown): string | null {
   if (!isRecord(payload)) return null;
   if (payload.ok === false) return null;
@@ -146,12 +182,14 @@ export async function runBootstrap(): Promise<BootstrapResult> {
   const [
     configResult,
     devicesResult,
+    typeCatalogResult,
     depsResult,
     whoamiResult,
     preflightResult,
   ] = await Promise.allSettled([
     apiGet<LeStudioConfig>("/api/config"),
     apiGet<DevicesResponse>("/api/devices"),
+    apiGet<TypePolicyCatalogResponse>("/api/policy/type-catalog"),
     apiGet<DepsStatusResponse>("/api/deps/status"),
     apiGet<HfWhoamiResponse>("/api/hf/whoami"),
     apiGet<TrainPreflightResponse>("/api/train/preflight?device=cuda"),
@@ -163,6 +201,10 @@ export async function runBootstrap(): Promise<BootstrapResult> {
 
   if (devicesResult.status === "rejected") {
     errors.devices = String(devicesResult.reason ?? "failed to load devices");
+  }
+
+  if (typeCatalogResult.status === "rejected") {
+    errors.typeCatalog = String(typeCatalogResult.reason ?? "failed to load type catalog");
   }
 
   if (depsResult.status === "rejected") {
@@ -179,6 +221,7 @@ export async function runBootstrap(): Promise<BootstrapResult> {
 
   const config = normalizeConfig(configResult.status === "fulfilled" ? configResult.value : null);
   const devices = normalizeDevices(devicesResult.status === "fulfilled" ? devicesResult.value : null);
+  const typeCatalog = normalizeTypeCatalog(typeCatalogResult.status === "fulfilled" ? typeCatalogResult.value : null);
   const depsStatus = depsResult.status === "fulfilled" ? depsResult.value : null;
   const hfWhoami = whoamiResult.status === "fulfilled" ? whoamiResult.value : null;
   const hfUsername = extractHfUsername(hfWhoami);
@@ -191,6 +234,7 @@ export async function runBootstrap(): Promise<BootstrapResult> {
   return {
     config,
     devices,
+    typeCatalog,
     sidebarSignals,
     hfUsername,
     prefillPatch,

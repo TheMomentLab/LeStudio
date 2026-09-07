@@ -8,12 +8,13 @@
 
 import type { CalibrationListFile } from "./calibrationProfiles";
 import { isBiCalibrationFile } from "./calibrationProfiles";
+import { getCalibrationUiMode, getDefaults } from "./robotPolicy";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
 export interface DetectedArm {
   device: string;
-  path: string;
+  path?: string;
   symlink?: string | null;
   serial?: string;
 }
@@ -26,6 +27,7 @@ export interface MappedArm {
   calibrationId: string;
   calibrationType: string;
   calibrationExists: boolean;
+  typeSource: "calibration" | "symlink" | "default";
   label: string;
 }
 
@@ -56,6 +58,11 @@ export interface ResolvedArmConfig {
   rightTeleopId: string;
 }
 
+export interface PreferredArmTypes {
+  robotType?: string;
+  teleopType?: string;
+}
+
 export interface MappedArmLists {
   followers: MappedArm[];
   leaders: MappedArm[];
@@ -63,12 +70,24 @@ export interface MappedArmLists {
 
 // ── Parsing ────────────────────────────────────────────────────────────────
 
-const ARM_SYMLINK_RE = /^(follower|leader)_arm_(\d+)$/i;
+const NUMBERED_ARM_SYMLINK_RE = /^(follower|leader)_arm_(\d+)$/i;
+const OMX_ARM_SYMLINK_RE = /^omx_(follower|leader)$/i;
 
-function parseArmSymlink(symlink: string): { role: "follower" | "leader"; number: number } | null {
-  const m = ARM_SYMLINK_RE.exec(symlink);
-  if (!m) return null;
-  return { role: m[1].toLowerCase() as "follower" | "leader", number: parseInt(m[2], 10) };
+function parseArmSymlink(
+  symlink: string,
+): { role: "follower" | "leader"; number: number; inferredType?: string } | null {
+  const numbered = NUMBERED_ARM_SYMLINK_RE.exec(symlink);
+  if (numbered) {
+    return { role: numbered[1].toLowerCase() as "follower" | "leader", number: parseInt(numbered[2], 10) };
+  }
+
+  const omx = OMX_ARM_SYMLINK_RE.exec(symlink);
+  if (omx) {
+    const role = omx[1].toLowerCase() as "follower" | "leader";
+    return { role, number: 1, inferredType: `omx_${role}` };
+  }
+
+  return null;
 }
 
 // ── Type inference from calibration files ───────────────────────────────────
@@ -78,22 +97,36 @@ const TYPE_FROM_GUESSED: Record<string, { robotType: string; teleopType: string 
   so101_leader: { robotType: "so101_follower", teleopType: "so101_leader" },
   so100_follower: { robotType: "so100_follower", teleopType: "so100_leader" },
   so100_leader: { robotType: "so100_follower", teleopType: "so100_leader" },
+  omx_follower: { robotType: "omx_follower", teleopType: "omx_leader" },
+  omx_leader: { robotType: "omx_follower", teleopType: "omx_leader" },
   bi_so_follower: { robotType: "bi_so_follower", teleopType: "bi_so_leader" },
   bi_so_leader: { robotType: "bi_so_follower", teleopType: "bi_so_leader" },
 };
 
-function inferTypesFromCalibration(
-  calibrationId: string,
-  calibFiles: CalibrationListFile[],
+function normalizePreferredTypes(
+  preferredTypes: PreferredArmTypes | undefined,
   bimanual: boolean,
-): { robotType: string; teleopType: string } {
-  const defaults = bimanual
-    ? { robotType: "bi_so_follower", teleopType: "bi_so_leader" }
-    : { robotType: "so101_follower", teleopType: "so101_leader" };
+): { robotType: string; teleopType: string } | null {
+  const robotType = preferredTypes?.robotType?.trim() ?? "";
+  const teleopType = preferredTypes?.teleopType?.trim() ?? "";
+  if (!robotType || !teleopType) return null;
+  if (bimanual) {
+    return robotType.startsWith("bi_") && teleopType.startsWith("bi_")
+      ? { robotType, teleopType }
+      : null;
+  }
+  return robotType.startsWith("bi_") || teleopType.startsWith("bi_")
+    ? null
+    : { robotType, teleopType };
+}
 
-  const file = calibFiles.find((f) => f.id === calibrationId);
-  if (!file?.guessed_type) return defaults;
-  return TYPE_FROM_GUESSED[file.guessed_type] ?? defaults;
+function inferTypesFromArm(arm: MappedArm | undefined): { robotType: string; teleopType: string } | null {
+  if (!arm || arm.typeSource === "default") return null;
+  return TYPE_FROM_GUESSED[arm.calibrationType] ?? null;
+}
+
+export function isCalibrationOptionalType(typeName: string): boolean {
+  return getCalibrationUiMode((typeName || "").trim()) === "optional";
 }
 
 // ── Build mapped arm lists ─────────────────────────────────────────────────
@@ -104,6 +137,7 @@ export function buildMappedArmLists(
 ): MappedArmLists {
   const followers: MappedArm[] = [];
   const leaders: MappedArm[] = [];
+  const singleDefaults = getDefaults("single");
 
   for (const arm of arms) {
     if (!arm.symlink) continue;
@@ -115,16 +149,17 @@ export function buildMappedArmLists(
       (f) => f.id === calibId && !isBiCalibrationFile(f),
     );
 
-    const mapped: MappedArm = {
-      role: parsed.role,
-      number: parsed.number,
-      symlink: arm.symlink,
-      port: `/dev/${arm.symlink}`,
-      calibrationId: calibId,
-      calibrationType: calibFile?.guessed_type ?? (parsed.role === "follower" ? "so101_follower" : "so101_leader"),
-      calibrationExists: !!calibFile,
-      label: arm.symlink,
-    };
+      const mapped: MappedArm = {
+        role: parsed.role,
+        number: parsed.number,
+        symlink: arm.symlink,
+        port: arm.symlink ? `/dev/${arm.symlink}` : (arm.path ?? ""),
+        calibrationId: calibId,
+        calibrationType: calibFile?.guessed_type ?? parsed.inferredType ?? (parsed.role === "follower" ? singleDefaults.robot_type : singleDefaults.teleop_type),
+        calibrationExists: !!calibFile,
+        typeSource: calibFile?.guessed_type ? "calibration" : parsed.inferredType ? "symlink" : "default",
+        label: arm.symlink,
+      };
 
     if (parsed.role === "follower") {
       followers.push(mapped);
@@ -170,14 +205,20 @@ export function resolveArmConfig(
   selection: ArmSelection,
   lists: MappedArmLists,
   calibFiles: CalibrationListFile[],
+  preferredTypes?: PreferredArmTypes,
 ): ResolvedArmConfig {
+  void calibFiles;
   const findArm = (symlink: string): MappedArm | undefined =>
     [...lists.followers, ...lists.leaders].find((a) => a.symlink === symlink);
 
   if (mode === "Single Arm") {
     const f = findArm(selection.follower);
     const l = findArm(selection.leader);
-    const types = inferTypesFromCalibration(f?.calibrationId ?? "", calibFiles, false);
+    const singleDefaults = getDefaults("single");
+    const types = inferTypesFromArm(f)
+      ?? inferTypesFromArm(l)
+      ?? normalizePreferredTypes(preferredTypes, false)
+      ?? { robotType: singleDefaults.robot_type, teleopType: singleDefaults.teleop_type };
 
     return {
       robotType: types.robotType,
@@ -202,8 +243,12 @@ export function resolveArmConfig(
   const rf = findArm(selection.rightFollower ?? selection.follower);
   const ll = findArm(selection.leftLeader ?? selection.leader);
   const rl = findArm(selection.rightLeader ?? selection.leader);
+  const biDefaults = getDefaults("bi");
 
-  const biTypes = inferTypesFromCalibration(lf?.calibrationId ?? "", calibFiles, true);
+  const biTypes = inferTypesFromArm(lf)
+    ?? inferTypesFromArm(ll)
+    ?? normalizePreferredTypes(preferredTypes, true)
+    ?? { robotType: biDefaults.robot_type, teleopType: biDefaults.teleop_type };
   const sharedFollowerBase = (lf?.symlink ?? "follower_arm").replace(/_\d+$/, "");
   const sharedLeaderBase = (ll?.symlink ?? "leader_arm").replace(/_\d+$/, "");
 

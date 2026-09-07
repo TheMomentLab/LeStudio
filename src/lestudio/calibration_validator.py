@@ -15,6 +15,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from lestudio import type_policy
+
 logger = logging.getLogger(__name__)
 
 # ── STS3215 physical constants ──────────────────────────────────────────────
@@ -313,26 +315,65 @@ def cross_validate(
 # ── File-level convenience ───────────────────────────────────────────────────
 
 
-def validate_calibration_file(path: Path) -> CalibrationValidationResult:
-    """Load and validate a calibration JSON file."""
+def _load_calibration_data(path: Path) -> tuple[CalibrationValidationResult | None, dict[str, Any] | None]:
     str_path = str(path)
     if not path.exists():
         r = CalibrationValidationResult(path=str_path)
         r.errors.append(CalibrationIssue("error", "", "FILE_NOT_FOUND", f"File not found: {str_path}"))
-        return r
+        return r, None
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError) as exc:
         r = CalibrationValidationResult(path=str_path)
         r.errors.append(CalibrationIssue("error", "", "PARSE_ERROR", f"Cannot parse calibration file: {exc}"))
-        return r
+        return r, None
 
-    return validate_calibration_data(data, path=str_path)
+    if not isinstance(data, dict):
+        r = CalibrationValidationResult(path=str_path)
+        r.errors.append(
+            CalibrationIssue(
+                "error",
+                "",
+                "INVALID_FORMAT",
+                f"Calibration file must contain a JSON object (got {type(data).__name__}).",
+            )
+        )
+        return r, None
+
+    return None, data
+
+
+def _validate_calibration_file_with_type(
+    path: Path,
+    *,
+    device_type: str = "",
+    path_display: str | None = None,
+) -> CalibrationValidationResult:
+    str_path = path_display or str(path)
+    error_result, data = _load_calibration_data(path)
+    if error_result is not None:
+        return error_result
+
+    validator_id = type_policy.get_calibration_validator(device_type) if device_type else "feetech_sts3215"
+    if validator_id == "none":
+        return CalibrationValidationResult(path=str_path)
+    if validator_id == "generic_json":
+        return CalibrationValidationResult(path=str_path)
+    return validate_calibration_data(data or {}, path=str_path)
+
+
+def validate_calibration_file(path: Path, *, device_type: str = "") -> CalibrationValidationResult:
+    """Load and validate a calibration JSON file."""
+    str_path = str(path)
+    return _validate_calibration_file_with_type(path, device_type=device_type, path_display=str_path)
 
 
 def validate_and_cross_validate(
     leader_path: Path,
     follower_path: Path,
+    *,
+    leader_type: str = "",
+    follower_type: str = "",
 ) -> dict[str, Any]:
     """Validate both files individually and cross-validate as a pair.
 
@@ -341,8 +382,8 @@ def validate_and_cross_validate(
       - follower: CalibrationValidationResult.to_dict()
       - cross: CrossValidationResult.to_dict()
     """
-    leader_result = validate_calibration_file(leader_path)
-    follower_result = validate_calibration_file(follower_path)
+    leader_result = validate_calibration_file(leader_path, device_type=leader_type)
+    follower_result = validate_calibration_file(follower_path, device_type=follower_type)
 
     cross_result = CrossValidationResult(
         leader_path=str(leader_path),
@@ -350,7 +391,10 @@ def validate_and_cross_validate(
     )
 
     # Only cross-validate if both files parsed successfully
-    if leader_result.ok and follower_result.ok:
+    leader_validator = type_policy.get_calibration_validator(leader_type) if leader_type else "feetech_sts3215"
+    follower_validator = type_policy.get_calibration_validator(follower_type) if follower_type else "feetech_sts3215"
+
+    if leader_result.ok and follower_result.ok and leader_validator == follower_validator == "feetech_sts3215":
         try:
             leader_data = json.loads(leader_path.read_text(encoding="utf-8"))
             follower_data = json.loads(follower_path.read_text(encoding="utf-8"))

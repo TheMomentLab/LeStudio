@@ -24,6 +24,8 @@ import {
   type ArmSelection,
   type ResolvedArmConfig,
 } from "../../services/armSets";
+import { getResolvedConfigSignature } from "../../components/wireframe/armPairSelectorState";
+import { getDefaults } from "../../services/robotPolicy";
 import { useHfAuth } from "../../hf-auth-context";
 import {
   notifyError,
@@ -65,6 +67,7 @@ const LOADING_STEPS = [
 
 export function Recording() {
   const config = useLeStudioStore((s) => s.config);
+  const typeCatalog = useLeStudioStore((s) => s.typeCatalog);
   const updateConfig = useLeStudioStore((s) => s.updateConfig);
   const recordRunningOnBackend = useLeStudioStore((s) => !!s.procStatus.record);
   const recordReconnected = useLeStudioStore((s) => !!s.procReconnected.record);
@@ -112,6 +115,9 @@ export function Recording() {
   const [selectedRightLeaderPort, setSelectedRightLeaderPort] = useState("");
   const [selectedFollowerId, setSelectedFollowerId] = useState("");
   const [selectedLeaderId, setSelectedLeaderId] = useState("");
+  const lastResolvedConfigSignatureRef = useRef<string | null>(null);
+  const singleDefaults = useMemo(() => getDefaults("single", typeCatalog), [typeCatalog]);
+  const biDefaults = useMemo(() => getDefaults("bi", typeCatalog), [typeCatalog]);
 
   const progress = Math.round((currentEp / totalEps) * 100);
   const running = phase === "running";
@@ -146,6 +152,11 @@ export function Recording() {
     void apiPost<Record<string, unknown>>("/api/config", patch).catch(() => undefined);
   }, [updateConfig]);
   const handleArmSetConfigResolved = useCallback((resolved: ResolvedArmConfig) => {
+    const signature = getResolvedConfigSignature(resolved);
+    if (lastResolvedConfigSignatureRef.current === signature) {
+      return;
+    }
+    lastResolvedConfigSignatureRef.current = signature;
     setSelectedFollowerPort(resolved.followerPort);
     setSelectedLeaderPort(resolved.leaderPort);
     setSelectedLeftFollowerPort(resolved.leftFollowerPort);
@@ -408,10 +419,14 @@ export function Recording() {
     const lists = buildMappedArmLists(result.arms ?? [], files);
     setArmLists(lists);
     const sel = defaultArmSelection(lists, mode as "Single Arm" | "Bi-Arm");
+    const modeDefaults = mode === "Bi-Arm" ? biDefaults : singleDefaults;
     setArmSelection(sel);
-    const resolved = resolveArmConfig(mode as "Single Arm" | "Bi-Arm", sel, lists, files);
+    const resolved = resolveArmConfig(mode as "Single Arm" | "Bi-Arm", sel, lists, files, {
+      robotType: getConfigString(config, "robot_type", modeDefaults.robot_type),
+      teleopType: getConfigString(config, "teleop_type", modeDefaults.teleop_type),
+    });
     handleArmSetConfigResolved(resolved);
-  }, [handleArmSetConfigResolved, mode]);
+  }, [biDefaults, handleArmSetConfigResolved, mode, singleDefaults]);
 
   useEffect(() => {
     void loadDevicesAndCalibration();
@@ -421,12 +436,16 @@ export function Recording() {
     if (armLists.followers.length === 0 && armLists.leaders.length === 0) return;
     const timer = window.setTimeout(() => {
       const sel = defaultArmSelection(armLists, mode as "Single Arm" | "Bi-Arm");
+      const modeDefaults = mode === "Bi-Arm" ? biDefaults : singleDefaults;
       setArmSelection(sel);
-      const resolved = resolveArmConfig(mode as "Single Arm" | "Bi-Arm", sel, armLists, calibFilesRaw);
+      const resolved = resolveArmConfig(mode as "Single Arm" | "Bi-Arm", sel, armLists, calibFilesRaw, {
+        robotType: getConfigString(config, "robot_type", modeDefaults.robot_type),
+        teleopType: getConfigString(config, "teleop_type", modeDefaults.teleop_type),
+      });
       handleArmSetConfigResolved(resolved);
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [armLists, calibFilesRaw, handleArmSetConfigResolved, mode]);
+  }, [armLists, biDefaults, calibFilesRaw, config, handleArmSetConfigResolved, mode, singleDefaults]);
 
   useEffect(() => {
     const wasRunning = prevRunningRef.current;
@@ -513,6 +532,10 @@ export function Recording() {
                   armLists={armLists}
                   calibFiles={calibFilesRaw}
                   armSelection={armSelection}
+                  preferredTypes={{
+                    robotType: getConfigString(config, "robot_type", (mode === "Bi-Arm" ? biDefaults : singleDefaults).robot_type),
+                    teleopType: getConfigString(config, "teleop_type", (mode === "Bi-Arm" ? biDefaults : singleDefaults).teleop_type),
+                  }}
                   onSelectionChange={setArmSelection}
                   onArmSetConfigResolved={handleArmSetConfigResolved}
                 />
