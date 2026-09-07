@@ -33,6 +33,7 @@ theme:
 
 nav:
   - Home: index.md
+  - Direction: direction.md
   - Getting Started:
     - Installation: installation.md
     - Quick Start: getting-started.md

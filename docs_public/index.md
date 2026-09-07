@@ -1,8 +1,8 @@
 # LeStudio
 
-**LeStudio** is a web-based GUI workbench for [Hugging Face LeRobot](https://github.com/huggingface/lerobot) — covering the full robot pipeline from hardware setup to policy evaluation.
+**LeStudio** is hardware setup and diagnostics for [Hugging Face LeRobot](https://github.com/huggingface/lerobot) — stable USB port mapping, motor-ID setup, a live motor monitor and calibration validation — inside a web workbench that also runs the full loop from teleop to policy evaluation.
 
-It replaces the CLI-heavy LeRobot workflow with a browser-based interface that runs locally on your machine.
+[LeLab](https://github.com/huggingface/leLab) is the official LeRobot GUI for the record → train → evaluate loop. LeStudio focuses on the step before that: getting hardware attached, identified and healthy. The hardware layer is being split into a standalone package; see [Direction](direction.md).
 
 Start with installation and quick start if you're new to LeStudio. Use the architecture pages when you want to understand how the app is assembled internally.
 
@@ -11,17 +11,18 @@ Start with installation and quick start if you're new to LeStudio. Use the archi
 ### Workbench & Runtime Foundation
 - **Workbench Layout** — Sidebar-driven workflow from hardware setup to training and evaluation.
 - **Global Console Drawer** — Unified stdout/stderr stream, process input routing, and log copy actions.
-- **Responsive Navigation** — Desktop sidebar, tablet icon rail, and mobile drawer layout.
+- **Layout** — Desktop sidebar and a tablet drawer. Mobile widths are not supported.
 - **Config Profiles** — Save, load, import, export, and delete working configurations.
 - **Session History** — Track run-related events across recording, training, and evaluation flows.
 
 ### Hardware Setup & Validation
 - **Status Dashboard** — Live device and process overview with CPU/RAM/Disk/GPU monitoring.
 - **Camera Preview** — MJPEG and snapshot-based camera visibility from the UI.
-- **Mapping** — Camera and arm udev rule management, including Arm Identify Wizard.
+- **Mapping** — Camera and arm udev rules with stable symlinks, and an Identify Arm wizard.
 - **USB Bandwidth Monitoring** — Per-camera FPS, bandwidth, and bus utilization feedback.
-- **Motor Setup** — Motor connectivity and setup via `lerobot_setup_motors`.
-- **Calibration** — Calibration execution, file management, and delete.
+- **Motor Setup wizard** — Write motor IDs one servo at a time with progress, error recovery and retry.
+- **Motor Monitor** — Live position / load / current per motor, collision detection, freewheel, E-Stop.
+- **Calibration** — Calibration execution, file management, and range / offset validation.
 - **Preflight Checks** — Validate devices, calibration, cameras, and CUDA before launch.
 
 ### Operation: Teleop & Record
@@ -50,6 +51,7 @@ Start with installation and quick start if you're new to LeStudio. Use the archi
 
 ## Quick Links
 
+- [Direction](direction.md) — Where LeStudio fits next to LeLab, and the plan for the hardware package.
 - [Installation](installation.md) — Set up your environment and install LeStudio.
 - [Quick Start](getting-started.md) — Run your first session.
 - [Architecture](architecture.md) — Understand the current system structure.

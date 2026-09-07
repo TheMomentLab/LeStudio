@@ -11,7 +11,7 @@ This document describes how LeStudio is built and operates today.
 
 It is intentionally different from:
 
-- `docs/roadmap.md` - feature and delivery roadmap
+- `direction.md` - where LeStudio fits in the ecosystem and what is planned next
 - `docs/ecosystem-integration-plan.md` - future-facing expansion and multi-robot redesign
 
 This document focuses on the implemented runtime architecture: frontend/backend boundaries, subprocess orchestration, streaming, shared state, and the current LeRobot coupling boundary.
@@ -396,6 +396,10 @@ The codebase already contains a dynamic registry layer in `device_registry.py`, 
 
 This is important context when reading `docs/ecosystem-integration-plan.md`: that document is not detached theory, but an extension of work already underway in the current codebase.
 
+### 10.6 Planned Package Boundary
+
+The hardware layer — `device_registry.py`, `routes/udev.py`, `routes/devices.py`, `motor_setup_bridge.py`, `motor_monitor_bridge.py`, `routes/motor.py`, `calibrate_bridge.py`, `calibration_validator.py`, the camera stats / snapshot routes, and the Status / Motor Setup / Camera Setup pages — is being split into a standalone package (working name `lerobot-doctor`) that the workbench depends on. The route-factory pattern in §4.1 and the `components/wireframe` primitives are what make that split mechanical rather than a rewrite. Nothing in this document changes until the split ships; see `direction.md` for the plan.
+
 ---
 
 ## 11. Known Architectural Tensions
@@ -415,7 +419,7 @@ Contributors should preserve existing patterns unless they are deliberately payi
 
 - Read this document first to understand how LeStudio works today.
 - Read `docs/api-and-streaming.md` for transport-level details about REST, WebSocket, and camera delivery.
-- Read `docs/roadmap.md` to understand what the team plans to build next.
+- Read `direction.md` to understand where LeStudio sits in the LeRobot ecosystem and what is planned next.
 - Read `docs/ecosystem-integration-plan.md` to understand how the current architecture is expected to evolve toward broader LeRobot ecosystem support.
 
 Together, the three documents answer:

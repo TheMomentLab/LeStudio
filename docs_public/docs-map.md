@@ -2,12 +2,18 @@
 
 이 디렉토리는 LeStudio의 내부 기준 문서와 작업 문서를 보관한다.
 
-## 기준 문서
+## 공개 문서 (`docs_public/`)
+
+- `direction.md` - 제품 방향. LeLab 등장 이후 LeStudio의 자리, 하드웨어 층의 패키지 분리 결정과 계획
+- `feature-spec.md` - 현재 기능 목록과 제품 범위 기준 문서
+- `current-architecture.md` - 현재 구현 기준 아키텍처
+- `api-and-streaming.md` - REST, WebSocket, 카메라 스트리밍 구조
+
+## 내부 기준 문서 (`docs/`, 저장소에 포함되지 않음)
+
+`docs/`는 `.gitignore`에 있어 공개 저장소에는 없다. 아래는 로컬 작업 문서 목록이다.
 
 - `roadmap.md` - 현재 우선순위와 단계별 계획
-- `current-architecture.md` - 현재 구현 기준 아키텍처
-- `feature-spec.md` - 현재 기능 목록과 제품 범위 기준 문서
-- `api-and-streaming.md` - REST, WebSocket, 카메라 스트리밍 구조
 - `ecosystem-current-gaps.md` - 생태계 확장을 막는 현재 제약 인벤토리
 - `ecosystem-integration-plan.md` - 다중 로봇/플러그인 확장 설계
 - `release-checklist.md` - 릴리스 전 검증 체크리스트

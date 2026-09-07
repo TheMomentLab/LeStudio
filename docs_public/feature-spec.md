@@ -1,6 +1,6 @@
 # LeStudio - 기능 명세
 
-최종 업데이트: 2026-03-14
+최종 업데이트: 2026-09-08
 상태: 현재 구현 범위
 
 ---
@@ -11,7 +11,7 @@
 
 이 문서는 의도적으로 다음 문서들과 구분됩니다.
 
-- `roadmap.md` - 다음에 무엇을 만들 예정인지
+- `direction.md` - 제품 방향과 다음에 무엇을 만들 예정인지
 - `current-architecture.md` - 시스템이 어떻게 구성되어 있는지
 - `api-and-streaming.md` - 프론트엔드와 백엔드 사이에서 데이터가 어떻게 이동하는지
 
@@ -39,6 +39,8 @@
 
 ## 3. 제품 범위 요약
 
+> **방향 (2026-09).** LeLab이 LeRobot 공식 GUI가 되면서 LeStudio의 무게 중심은 **하드웨어 설정·진단**(장치 매핑, 모터 설정 위저드, 모터 모니터, 캘리브레이션 검증, 카메라 설정)으로 옮겨졌습니다. 이 층은 독립 패키지(가칭 `lerobot-doctor`)로 분리될 예정이며, 아래 §4.2와 §4.6의 모터 모니터 항목이 그 대상입니다. 나머지 섹션은 워크벤치입니다. 자세한 내용은 `direction.md`.
+
 LeStudio는 LeRobot 워크플로를 위한 로컬 우선 GUI 워크벤치입니다.
 
 현재의 엔드투엔드 제품 범위는 다음과 같습니다.
@@ -59,7 +61,7 @@ LeStudio는 LeRobot 워크플로를 위한 로컬 우선 GUI 워크벤치입니�
 |---|---|---|---|---|
 | Workbench layout | 설정부터 ML까지 이어지는 사이드바 기반 워크플로 | `frontend/src/app/components/layout/` | `server.py`에서 서빙되는 정적 SPA | implemented |
 | Global console drawer | 공용 프로세스 출력 보기와 로그 복사 동작 | `RuntimeConsoleDrawer` 및 앱 셸 | `/ws`, `ProcessManager` | implemented |
-| Responsive navigation | 데스크톱 사이드바, 태블릿 레일, 모바일 드로어 | 앱 셸 및 반응형 레이아웃 컴포넌트 | n/a | implemented |
+| Layout | 데스크톱 사이드바, 태블릿 드로어. 모바일 폭은 지원 대상이 아님 | 앱 셸 레이아웃 컴포넌트 | n/a | implemented |
 | Status badges | 실행 중 / 성능 저하 / 의존성 누락 상태 피드백 | 헤더, 사이드바, 페이지 단위 상태 UI | bootstrap + 프로세스 상태 API | implemented |
 | Desktop notifications | 프로세스 완료 및 실패에 대한 브라우저 알림 | `services/notifications.ts` | `/ws` 및 상태 폴링을 통한 프로세스 완료 신호 | implemented |
 | Theme toggle | 라이트 / 다크 모드 전환 | 테마 컨텍스트 및 공용 레이아웃 | n/a | implemented |

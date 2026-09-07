@@ -5,47 +5,59 @@
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
 
-A web-based GUI workbench for [Hugging Face LeRobot](https://github.com/huggingface/lerobot) — covering the full pipeline from hardware setup to policy evaluation. Replaces the CLI-heavy LeRobot workflow with a browser-based interface.
+Hardware setup and diagnostics for [Hugging Face LeRobot](https://github.com/huggingface/lerobot) — stable USB port mapping, motor-ID setup, a live motor monitor and calibration validation — inside a web workbench that also runs the full loop from teleop to policy evaluation.
 
-**[Documentation](https://themomentlab.github.io/lestudio/)** · **[Contributing](CONTRIBUTING.md)** · **[Changelog](CHANGELOG.md)** · **[한국어](README.ko.md)**
+**[Documentation](https://themomentlab.github.io/lestudio/)** · **[Direction](docs_public/direction.md)** · **[Contributing](CONTRIBUTING.md)** · **[Changelog](CHANGELOG.md)** · **[한국어](README.ko.md)**
 
-Architecture docs:
+## Where LeStudio fits
 
-- [Internal Docs Map](docs_public/docs-map.md)
-- [Current Architecture](docs_public/current-architecture.md)
-- [API and Streaming](docs_public/api-and-streaming.md)
+[LeLab](https://github.com/huggingface/leLab) is the official LeRobot GUI: calibrate, teleoperate, record, train and replay for the SO-101, with cloud training on HF Jobs. LeStudio does not try to replace it. What LeStudio adds is the part that comes before any of that works: getting hardware attached, identified and healthy.
+
+| Need | Where to look |
+|---|---|
+| USB ports that change after every replug, arms you cannot tell apart | LeStudio **Mapping** — udev symlinks, Identify Arm wizard |
+| Writing motor IDs one servo at a time | LeStudio **Motor Setup** wizard |
+| Is this joint overloaded, in collision, or drawing too much current? | LeStudio **Motor Monitor** |
+| Calibration file looks wrong | LeStudio **Calibration** — range / offset validation |
+| Cameras: which is which, what FPS, what bus load | LeStudio **Camera Setup** |
+| Record → train → evaluate on an SO-101 with one install | LeLab, or the LeStudio workbench pages |
+| Live plots during teleop / eval | Foxglove (built into LeRobot 0.6.0) |
+| Episode quality scoring at scale | LeRobot dataset visualizer, `score_lerobot_episodes` |
+
+The hardware layer is being split into a standalone package (working name `lerobot-doctor`) that the workbench will depend on. Read [Direction](docs_public/direction.md) for the reasoning, the plan and what stays.
 
 ## Screenshots
 
-| Status | Motor Setup |
+| Motor Setup | Status |
 |---|---|
-| <img src="docs_public/assets/screenshot-status.png" width="400"> | <img src="docs_public/assets/screenshot-motor-setup.png" width="400"> |
+| <img src="docs_public/assets/screenshot-motor-setup.png" width="400"> | <img src="docs_public/assets/screenshot-status.png" width="400"> |
 
-| Camera Setup | Teleop |
+| Camera Setup | Dataset |
 |---|---|
-| <img src="docs_public/assets/screenshot-camera.png" width="400"> | <img src="docs_public/assets/screenshot-teleop.png" width="400"> |
+| <img src="docs_public/assets/screenshot-camera.png" width="400"> | <img src="docs_public/assets/screenshot-dataset.png" width="400"> |
 
-| Dataset | Train |
+| Teleop | Train |
 |---|---|
-| <img src="docs_public/assets/screenshot-dataset.png" width="400"> | <img src="docs_public/assets/screenshot-train.png" width="400"> |
+| <img src="docs_public/assets/screenshot-teleop.png" width="400"> | <img src="docs_public/assets/screenshot-train.png" width="400"> |
 
 ## Features
+
+### Hardware Setup & Diagnostics
+- **Mapping**: Camera and arm udev rules with stable symlinks, and an Identify Arm wizard (unplug, replug, assign).
+- **Motor Setup wizard**: Write motor IDs one servo at a time with per-motor progress, error recovery and retry.
+- **Motor Monitor**: Live position / load / current per motor, collision detection and clear, freewheel, E-Stop.
+- **Calibration**: Run calibration, manage files, and validate ranges / homing offsets with errors and warnings.
+- **Camera Setup**: Per-camera preview (MJPEG and snapshot), role assignment, FPS / bandwidth / bus utilization.
+- **Status Dashboard**: Devices with mapped / unmapped state, prerequisites with a fix path, CPU/RAM/Disk/GPU.
+- **Preflight Checks**: Validate devices, calibration, cameras, and CUDA before launch.
 
 ### Workbench & Runtime Foundation
 - **Workbench Layout**: Sidebar-driven workflow from hardware setup to training and evaluation.
 - **Global Console Drawer**: Unified stdout/stderr stream, process input routing, and log copy actions.
-- **Responsive Navigation**: Desktop sidebar, tablet icon rail, and mobile drawer layout.
+- **Layout**: Desktop sidebar and a tablet drawer. Mobile widths are not supported.
 - **Config Profiles**: Save, load, import, export, and delete working configurations.
 - **Session History**: Track run-related events across recording, training, and evaluation flows.
-
-### Hardware Setup & Validation
-- **Status Dashboard**: Live device and process overview with CPU/RAM/Disk/GPU monitoring.
-- **Camera Preview**: MJPEG and snapshot-based camera visibility from the UI.
-- **Mapping**: Camera and arm udev rule management, including Arm Identify Wizard.
-- **USB Bandwidth Monitoring**: Per-camera FPS, bandwidth, and bus utilization feedback.
-- **Motor Setup**: Motor connectivity and setup via `lerobot_setup_motors`.
-- **Calibration**: Calibration execution, file management, and delete.
-- **Preflight Checks**: Validate devices, calibration, cameras, and CUDA before launch.
+- **Design system**: Semantic color tokens for both themes, enforced by a custom ESLint rule and a CI audit (see `frontend/DESIGN_GUIDE.md`).
 
 ### Operation: Teleop & Record
 - **Teleop**: Multi-camera teleoperation with preflight checks and live SHM-shared camera feeds.
@@ -97,6 +109,8 @@ make install
 ```
 
 The [custom lerobot fork](https://github.com/TheMomentLab/lerobot) is tracked as a git submodule. `--recursive` pulls it automatically; `make install` installs both packages in editable mode.
+
+> **Planned change.** The submodule will be replaced by a version-range dependency on upstream `lerobot`, and the hardware layer will ship as a `pip install`-able package. See [Direction](docs_public/direction.md). Until then, install from source as above.
 
 ## Usage
 
@@ -202,6 +216,10 @@ make test-hw
 ```
 
 When a pull request changes user-visible capabilities or top-level product messaging, update `docs_public/feature-spec.md`, `README.md`, and `README.ko.md` as part of the same change.
+
+## Direction
+
+LeStudio began in February 2026 when LeRobot had no GUI. Hugging Face has since made LeLab the official one. The repository is therefore being reorganised around what remains open — hardware setup and diagnostics — as a standalone package, with the workbench kept on top of it. The full reasoning, the survey it rests on, and the step-by-step plan are in [docs_public/direction.md](docs_public/direction.md).
 
 ## Workflow Guide
 

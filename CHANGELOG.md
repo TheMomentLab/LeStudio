@@ -7,14 +7,53 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Direction
+- LeLab became the official LeRobot GUI (April–June 2026). LeStudio is being
+  reorganised around hardware setup and diagnostics as a standalone package
+  (working name `lerobot-doctor`) with the workbench kept on top. See
+  `docs_public/direction.md`. No code has moved yet.
+
 ### Added
-- Pending.
+- OMX (OpenManipulator-X) support, a robot-family policy catalog and
+  centralized calibration-source resolution (merged from `dev`).
+- Semantic design tokens for both themes (`frontend/src/styles/theme.css`),
+  a custom ESLint plugin (`design/prefer-design-token` and friends) and a
+  `design:audit` ratchet script wired into CI.
+- Shared UI primitives: `Card` (`icon`, `action`, `bodyClassName`,
+  `titleClassName`), `SectionLabel`, `EmptyState compact`, `SubTabs` /
+  `ModeToggle` `size`, shared `inputClassName` / `selectClassName`.
+- `MotorSetupControlBar`: Motor Setup's four tabs use the same bottom
+  control bar as Teleop / Record / Train / Eval.
+- Status prerequisites are actions: the Hugging Face row opens the token
+  popover, Device Mapping links to Motor Setup.
+- Mock transport now covers the Motor Monitor, dataset stats / tags /
+  derive / push / delete, and process-status flips, so every screen state
+  is reachable offline.
+- `tests/_routing.py` helper for route introspection across FastAPI versions.
 
 ### Changed
-- Pending.
+- Every page migrated from raw Tailwind palette classes to design tokens
+  (1,948 → 0); the ESLint rule is enforced on all of `src/app`.
+- One look per role: green only on process-start buttons, one segmented
+  control style, one selection style, one empty-state component, one
+  keyboard-focus outline for pressable controls.
+- Sidebar docks at 1024px instead of 768px; the stepper bar is sticky.
+- Toaster sits below the header instead of over its controls.
+- Session History timestamps and console tab emphasis toned to match.
+- Dependencies: react-router 7.18.3, vite 6.4.3 (npm audit clean),
+  pyarrow ≥ 23.0.1.
 
 ### Fixed
-- Pending.
+- Backend tests passed vacuously / failed on FastAPI ≥ 0.13x because
+  `include_router` no longer flattens `app.routes`.
+- Card bodies with a fixed height collapsed inside the column flex
+  container, hiding the evaluation reward chart.
+- Motor Setup wizard colours were dark-only and unreadable on the light
+  theme; Colab snippet and debug snapshot blocks were forced dark.
+- Calibration tab showed the Single / Bi-Arm selector twice.
+- Dataset list rows were not reachable from the keyboard.
+- Two React `exhaustive-deps` warnings and three token-rule violations
+  introduced by the `dev` merge.
 
 ## [0.1.0] - 2026-03-03
 

@@ -5,47 +5,59 @@
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
 
-[Hugging Face LeRobot](https://github.com/huggingface/lerobot)을 위한 웹 기반 GUI 워크벤치 — 하드웨어 설정부터 정책 평가까지 전체 파이프라인을 지원합니다. CLI 중심의 LeRobot 워크플로우를 브라우저 인터페이스로 대체합니다.
+[Hugging Face LeRobot](https://github.com/huggingface/lerobot)을 위한 하드웨어 설정·진단 도구 — USB 포트 고정 매핑, 모터 ID 설정, 실시간 모터 모니터, 캘리브레이션 검증 — 그리고 텔레옵부터 정책 평가까지 전체 루프를 도는 웹 워크벤치입니다.
 
-**[문서](https://themomentlab.github.io/lestudio/)** · **[기여 가이드](CONTRIBUTING.md)** · **[변경 이력](CHANGELOG.md)** · **[English](README.md)**
+**[문서](https://themomentlab.github.io/lestudio/)** · **[방향](docs_public/direction.md)** · **[기여 가이드](CONTRIBUTING.md)** · **[변경 이력](CHANGELOG.md)** · **[English](README.md)**
 
-내부 구조 문서:
+## LeStudio의 자리
 
-- [내부 문서 맵](docs_public/docs-map.md)
-- [현재 아키텍처](docs_public/current-architecture.md)
-- [API 및 스트리밍](docs_public/api-and-streaming.md)
+[LeLab](https://github.com/huggingface/leLab)은 LeRobot의 공식 GUI입니다. SO-101 기준으로 캘리브레이션, 텔레옵, 녹화, 학습, 리플레이를 제공하고 HF Jobs로 클라우드 학습도 됩니다. LeStudio는 그걸 대체하려는 도구가 아닙니다. LeStudio가 더하는 것은 그 모든 것이 돌아가기 **전** 단계, 하드웨어를 붙이고 식별하고 건강한지 확인하는 부분입니다.
+
+| 필요한 것 | 어디서 |
+|---|---|
+| 다시 꽂을 때마다 바뀌는 USB 포트, 구분이 안 되는 팔 | LeStudio **Mapping** — udev 심링크, Identify Arm 위저드 |
+| 서보 하나씩 모터 ID 쓰기 | LeStudio **Motor Setup** 위저드 |
+| 이 관절이 과부하인지, 충돌인지, 전류가 과한지 | LeStudio **Motor Monitor** |
+| 캘리브레이션 파일이 이상함 | LeStudio **Calibration** — 범위·오프셋 검증 |
+| 카메라가 어느 것인지, FPS와 버스 부하 | LeStudio **Camera Setup** |
+| SO-101로 한 번 설치해서 녹화 → 학습 → 평가 | LeLab, 또는 LeStudio 워크벤치 페이지 |
+| 텔레옵·평가 중 실시간 플롯 | Foxglove (LeRobot 0.6.0 내장) |
+| 대규모 에피소드 품질 점수 | LeRobot dataset visualizer, `score_lerobot_episodes` |
+
+하드웨어 층은 워크벤치가 의존하는 독립 패키지(가칭 `lerobot-doctor`)로 분리할 예정입니다. 이유와 계획, 남는 것은 [방향](docs_public/direction.md) 문서에 있습니다.
 
 ## 스크린샷
 
-| 상태 | 모터 셋업 |
+| 모터 셋업 | 상태 |
 |---|---|
-| <img src="docs_public/assets/screenshot-status.png" width="400"> | <img src="docs_public/assets/screenshot-motor-setup.png" width="400"> |
+| <img src="docs_public/assets/screenshot-motor-setup.png" width="400"> | <img src="docs_public/assets/screenshot-status.png" width="400"> |
 
-| 카메라 설정 | 텔레옵 |
+| 카메라 설정 | 데이터셋 |
 |---|---|
-| <img src="docs_public/assets/screenshot-camera.png" width="400"> | <img src="docs_public/assets/screenshot-teleop.png" width="400"> |
+| <img src="docs_public/assets/screenshot-camera.png" width="400"> | <img src="docs_public/assets/screenshot-dataset.png" width="400"> |
 
-| 데이터셋 | 학습 |
+| 텔레옵 | 학습 |
 |---|---|
-| <img src="docs_public/assets/screenshot-dataset.png" width="400"> | <img src="docs_public/assets/screenshot-train.png" width="400"> |
+| <img src="docs_public/assets/screenshot-teleop.png" width="400"> | <img src="docs_public/assets/screenshot-train.png" width="400"> |
 
 ## 기능
+
+### 하드웨어 설정 및 진단
+- **장치 매핑**: 카메라/팔 udev 규칙과 안정 심링크, 뽑았다 꽂아 팔을 식별하는 Identify Arm 위저드.
+- **모터 설정 위저드**: 서보 하나씩 모터 ID 기록. 모터별 진행 표시, 오류 복구, 재시도.
+- **모터 모니터**: 모터별 위치·부하·전류 실시간 표시, 충돌 감지와 해제, 프리휠, E-Stop.
+- **캘리브레이션**: 실행, 파일 관리, 범위·호밍 오프셋 검증(오류와 경고).
+- **카메라 설정**: 카메라별 미리보기(MJPEG·스냅샷), 역할 지정, FPS·대역폭·버스 사용률.
+- **상태 대시보드**: 매핑 여부가 표시되는 장치 목록, 해결 경로가 붙은 사전 조건, CPU/RAM/Disk/GPU.
+- **사전 점검**: 실행 전 장치, 캘리브레이션, 카메라, CUDA 상태 검증.
 
 ### 워크벤치 및 런타임 기반
 - **워크벤치 레이아웃**: 하드웨어 설정부터 학습/평가까지 이어지는 사이드바 중심 워크플로우.
 - **전역 콘솔 서랍**: stdout/stderr 통합 스트림, 프로세스 입력 라우팅, 로그 복사 액션 제공.
-- **반응형 내비게이션**: 데스크톱 사이드바, 태블릿 아이콘 레일, 모바일 서랍 레이아웃.
+- **레이아웃**: 데스크톱 사이드바와 태블릿 드로어. 모바일 폭은 지원하지 않습니다.
 - **설정 프로필**: 작업 설정 저장, 불러오기, 가져오기, 내보내기, 삭제.
 - **세션 히스토리**: 녹화, 학습, 평가 흐름의 실행 이벤트 추적.
-
-### 하드웨어 설정 및 검증
-- **상태 대시보드**: CPU/RAM/Disk/GPU와 함께 장치 및 프로세스 상태를 실시간으로 표시.
-- **카메라 미리보기**: UI에서 MJPEG 및 snapshot 기반 카메라 미리보기 제공.
-- **장치 매핑**: 카메라/팔 udev 규칙 관리와 Arm Identify Wizard 제공.
-- **USB 대역폭 모니터링**: 카메라별 FPS, 대역폭, 버스 사용률 피드백 제공.
-- **모터 설정**: `lerobot_setup_motors` 기반 모터 연결 및 설정.
-- **캘리브레이션**: 캘리브레이션 실행, 파일 관리, 삭제.
-- **사전 점검**: 실행 전 장치, 캘리브레이션, 카메라, CUDA 상태 검증.
+- **디자인 시스템**: 두 테마를 함께 다루는 시맨틱 색 토큰. 커스텀 ESLint 룰과 CI 감사로 강제 (`frontend/DESIGN_GUIDE.md`).
 
 ### 조작: 텔레옵 및 녹화
 - **텔레옵**: 멀티카메라 원격 조작, 사전 점검, SHM 기반 실시간 카메라 피드 유지.
@@ -97,6 +109,8 @@ make install
 ```
 
 [커스텀 lerobot 포크](https://github.com/TheMomentLab/lerobot)는 git 서브모듈로 관리됩니다. `--recursive`로 자동으로 가져오며, `make install`이 두 패키지를 편집 가능 모드로 설치합니다.
+
+> **예정된 변경.** 서브모듈은 upstream `lerobot`에 대한 버전 범위 의존성으로 바뀌고, 하드웨어 층은 `pip install`로 설치하는 패키지로 배포될 예정입니다. [방향](docs_public/direction.md) 문서를 참고하세요. 그전까지는 위와 같이 소스에서 설치합니다.
 
 ## 실행
 
@@ -202,6 +216,10 @@ make test-hw
 ```
 
 PR에서 사용자에게 보이는 기능이나 상위 소개 문서를 바꾸면 `docs_public/feature-spec.md`, `README.md`, `README.ko.md`를 같은 변경에서 함께 갱신하세요.
+
+## 방향
+
+LeStudio는 2026년 2월, LeRobot에 GUI가 없던 시점에 시작했습니다. 그 뒤 Hugging Face가 LeLab을 공식 GUI로 삼았습니다. 그래서 이 저장소는 아직 비어 있는 자리, 즉 하드웨어 설정·진단을 독립 패키지로 떼어 내고 그 위에 워크벤치를 유지하는 쪽으로 재편합니다. 근거가 된 조사와 단계별 계획은 [docs_public/direction.md](docs_public/direction.md)에 있습니다.
 
 ## 워크플로우 가이드
 
