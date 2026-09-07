@@ -78,6 +78,7 @@ export function Card({
   titleSub,
   action,
   className,
+  bodyClassName,
   children,
   badge,
 }: {
@@ -86,6 +87,8 @@ export function Card({
   titleSub?: string;
   action?: React.ReactNode;
   className?: string;
+  /** Overrides the default `p-4` body, e.g. `p-0` for flush lists/charts. */
+  bodyClassName?: string;
   children?: React.ReactNode;
   badge?: React.ReactNode;
 }) {
@@ -127,7 +130,8 @@ export function Card({
           {action && <div className="ml-4 flex-none">{action}</div>}
         </div>
       )}
-      {!!children && <div className="p-4 flex-1">{children}</div>}
+      {/* `grow` (not `flex-1`): flex-basis stays auto, so a fixed body height like `h-56` is honoured. */}
+      {!!children && <div className={cn("p-4 grow", bodyClassName)}>{children}</div>}
     </div>
   );
 }
@@ -312,6 +316,14 @@ export function FieldRow({
     </div>
   );
 }
+
+// ─── Form control classes ─────────────────────────────────────────────────────
+// Native <input>/<select> that cannot go through WireInput/WireSelect (number
+// inputs, extra attributes) should use these so they look identical.
+export const inputClassName =
+  "w-full h-9 px-3 py-2 rounded-lg border border-line-control bg-surface-input text-fg-heading text-sm outline-none placeholder:text-fg-muted hover:border-line-strong focus:border-focus-ring focus:ring-2 focus:ring-focus-ring-alpha transition-all disabled:opacity-50 disabled:cursor-not-allowed";
+export const selectClassName =
+  "w-full h-9 px-3 py-2 rounded-lg border border-line-control bg-surface-input text-fg-heading text-sm outline-none cursor-pointer hover:border-line-strong focus:border-focus-ring focus:ring-2 focus:ring-focus-ring-alpha transition-all disabled:opacity-50 disabled:cursor-not-allowed";
 
 // ─── WireSelect ───────────────────────────────────────────────────────────────
 type WireSelectOption = string | { value: string; label: string; disabled?: boolean };

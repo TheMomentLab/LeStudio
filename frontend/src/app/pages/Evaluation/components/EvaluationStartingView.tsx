@@ -19,25 +19,25 @@ export function EvaluationStartingView({
 }: EvaluationStartingViewProps) {
   return (
     <div className="flex-1 flex flex-col items-center justify-center py-16 gap-6">
-      <Loader2 size={32} className="text-zinc-400 animate-spin" />
+      <Loader2 size={32} className="text-fg-muted animate-spin" />
       <div className="flex flex-col gap-2">
         {steps.map((step, index) => (
           <div key={step.label} className="flex items-center gap-2.5">
             {index < startingStep ? (
-              <CheckCircle2 size={14} className="text-emerald-600 dark:text-emerald-400 flex-none" />
+              <CheckCircle2 size={14} className="text-ok flex-none" />
             ) : index === startingStep ? (
-              <Loader2 size={14} className="text-zinc-400 animate-spin flex-none" />
+              <Loader2 size={14} className="text-fg-muted animate-spin flex-none" />
             ) : (
-              <div className="size-3.5 rounded-full border border-zinc-600 flex-none" />
+              <div className="size-3.5 rounded-full border border-line-strong flex-none" />
             )}
             <span
               className={cn(
                 "text-sm",
                 index < startingStep
-                  ? "text-zinc-400"
+                  ? "text-fg-muted"
                   : index === startingStep
-                    ? "text-zinc-800 dark:text-zinc-200"
-                    : "text-zinc-500 dark:text-zinc-600",
+                    ? "text-fg-heading"
+                    : "text-fg-disabled",
               )}
             >
               {step.label}
@@ -45,7 +45,7 @@ export function EvaluationStartingView({
           </div>
         ))}
       </div>
-      <p className="text-sm text-zinc-500">
+      <p className="text-sm text-fg-muted">
         {envLabel} · {numEpisodes} episodes · {policyPath.split("/").pop() || policyPath}
       </p>
     </div>

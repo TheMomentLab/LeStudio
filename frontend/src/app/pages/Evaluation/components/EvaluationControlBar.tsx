@@ -59,22 +59,22 @@ export function EvaluationControlBar({
           }
           pulse={isRunning}
         />
-        <span className="text-sm text-zinc-400 truncate">
+        <span className="text-sm text-fg-muted truncate">
           {showStarting ? (
             "Starting evaluation..."
           ) : isRunning ? (
             <span className="font-mono">Episode {doneEpisodes} / {progressTotal ?? numEpisodes}</span>
           ) : (progressStatus === "completed" || progressStatus === "stopped") && avgReward !== null ? (
             <>
-              Avg Reward: <span className={cn("font-mono", (avgReward ?? 0) >= 0.6 ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400")}>{avgReward.toFixed(3)}</span>
-              {" "}· Success: <span className={cn("font-mono", (computedSuccessRate ?? 0) >= 60 ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400")}>{computedSuccessRate ?? "-"}%</span>
+              Avg Reward: <span className={cn("font-mono", (avgReward ?? 0) >= 0.6 ? "text-ok" : "text-warn")}>{avgReward.toFixed(3)}</span>
+              {" "}· Success: <span className={cn("font-mono", (computedSuccessRate ?? 0) >= 60 ? "text-ok" : "text-warn")}>{computedSuccessRate ?? "-"}%</span>
             </>
           ) : progressStatus === "error" ? (
-            <span className="text-red-500 dark:text-red-400">Evaluation failed - check logs</span>
+            <span className="text-danger">Evaluation failed - check logs</span>
           ) : !preflightOk ? (
-            <span className="text-amber-600 dark:text-amber-400">{preflightReason || "Device preflight failed"}</span>
+            <span className="text-warn">{preflightReason || "Device preflight failed"}</span>
           ) : showBlockers && configBlockers.length > 0 ? (
-            <span className="text-amber-600 dark:text-amber-400">{configBlockers[0]}</span>
+            <span className="text-warn">{configBlockers[0]}</span>
           ) : (
             "Evaluation ready"
           )}

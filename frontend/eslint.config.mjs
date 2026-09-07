@@ -48,6 +48,9 @@ export default tseslint.config(
     files: [
       'src/app/components/wireframe/**/*.{ts,tsx}',
       'src/app/components/ui/**/*.{ts,tsx}',
+      // Pages fully migrated to tokens — add each one here as it lands so it
+      // cannot regress. Pages still in the ratchet are covered by design:audit.
+      'src/app/pages/Evaluation/**/*.{ts,tsx}',
     ],
     plugins: { design: designSystem },
     rules: {
