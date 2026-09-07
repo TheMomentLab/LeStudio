@@ -3,7 +3,7 @@ import { Camera, Eye, EyeOff, X, AlertCircle, Loader2 } from "lucide-react";
 import { apiGet, apiPost } from "../services/apiClient";
 import { useLeStudioStore } from "../store";
 import {
-  PageHeader, WireSelect, EmptyState, RefreshButton,
+  Card, PageHeader, WireSelect, EmptyState, RefreshButton,
 } from "../components/wireframe";
 import { toVideoName, useCameraFeeds } from "../hooks/useCameraFeeds";
 
@@ -209,23 +209,22 @@ export function CameraSetup() {
           />
 
           {error && (
-            <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-red-500/30 bg-red-500/5">
-              <AlertCircle size={13} className="text-red-600 dark:text-red-400 flex-none" />
-              <span className="text-sm text-red-600 dark:text-red-400 flex-1">{error}</span>
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-danger-line bg-danger-bg">
+              <AlertCircle size={13} className="text-danger flex-none" />
+              <span className="text-sm text-danger flex-1">{error}</span>
             </div>
           )}
           {/* Camera list */}
-          <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex flex-col">
-            <div className="flex items-center justify-between px-4 py-3 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800">
-              <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Cameras ({cameras.length})</span>
-              {autoApplying && (
-                <span className="flex items-center gap-1.5 text-xs text-zinc-400">
-                  <Loader2 size={12} className="animate-spin" /> Applying…
-                </span>
-              )}
-            </div>
-            <div className="px-4 flex-1">
-              <div className="flex flex-col divide-y divide-zinc-100 dark:divide-zinc-800/50 border-b border-zinc-100 dark:border-zinc-800/50">
+          <Card
+            title={`Cameras (${cameras.length})`}
+            bodyClassName="py-0"
+            action={autoApplying ? (
+              <span className="flex items-center gap-1.5 text-xs text-fg-muted">
+                <Loader2 size={12} className="animate-spin" /> Applying…
+              </span>
+            ) : undefined}
+          >
+              <div className="flex flex-col divide-y divide-line-subtle border-b border-line-subtle">
                 {cameras.map((cam) => {
                   const role = cameraAssignments[cam.device] ?? "(none)";
                   const dimmed = role === "(none)";
@@ -234,19 +233,19 @@ export function CameraSetup() {
                       <div className={`flex items-center gap-3 py-2.5${dimmed ? " opacity-40" : ""}`}>
                         <button
                           onClick={() => togglePreview(cam.device)}
-                          className="size-7 rounded bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors group"
+                          className="size-7 rounded bg-surface-sunken flex items-center justify-center cursor-pointer hover:bg-info-bg transition-colors group"
                           title={activePreviews[cam.device] ? "Close preview" : "Preview camera"}
                           aria-label={activePreviews[cam.device] ? `Close preview for ${cam.path}` : `Preview ${cam.path}`}
                         >
                           {activePreviews[cam.device] ? (
-                            <EyeOff size={14} className="text-blue-500" />
+                            <EyeOff size={14} className="text-info" />
                           ) : (
-                            <Eye size={14} className="text-zinc-400 group-hover:text-blue-500 transition-colors" />
+                            <Eye size={14} className="text-fg-muted group-hover:text-info transition-colors" />
                           )}
                         </button>
                         <div className="flex-1 min-w-0">
-                          <div className="text-sm text-zinc-700 dark:text-zinc-300 font-mono truncate">{cam.path}</div>
-                          <div className="text-sm text-zinc-400">Port: {cam.kernels ?? "?"} · {cam.model ?? "Unknown"}</div>
+                          <div className="text-sm text-fg-body font-mono truncate">{cam.path}</div>
+                          <div className="text-sm text-fg-muted">Port: {cam.kernels ?? "?"} · {cam.model ?? "Unknown"}</div>
                         </div>
                         <div className="w-44 flex-none" onClick={(e) => e.stopPropagation()}>
                           <WireSelect
@@ -269,8 +268,8 @@ export function CameraSetup() {
                       </div>
                       {activePreviews[cam.device] && (
                         <div className="pb-3">
-                          <div className="relative rounded border border-zinc-200 dark:border-zinc-700 overflow-hidden bg-zinc-100 dark:bg-zinc-800 max-w-lg mx-auto">
-                            <div className="aspect-video bg-zinc-950">
+                          <div className="relative rounded border border-line-control overflow-hidden bg-surface-sunken max-w-lg mx-auto">
+                            <div className="aspect-video bg-black">
                               {previewFrames[cam.device] ? (
                                 <img
                                   src={previewFrames[cam.device]}
@@ -279,7 +278,7 @@ export function CameraSetup() {
                                 />
                               ) : (
                                 <div className="w-full h-full flex items-center justify-center">
-                                  <span className="text-sm text-zinc-500">Connecting...</span>
+                                  <span className="text-sm text-fg-muted">Connecting…</span>
                                 </div>
                               )}
                             </div>
@@ -304,8 +303,7 @@ export function CameraSetup() {
                   />
                 )}
               </div>
-            </div>
-          </div>
+          </Card>
         </section>
       </div>
     </div>

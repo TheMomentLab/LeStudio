@@ -15,13 +15,13 @@ export function Sidebar({ collapsed, onClose }: { collapsed: boolean; onClose?: 
   return (
     <nav
       className={cn(
-        "h-full flex flex-col bg-zinc-50 dark:bg-zinc-950 border-r border-zinc-200 dark:border-zinc-800 overflow-y-auto flex-none transition-all duration-200",
+        "h-full flex flex-col bg-canvas border-r border-line overflow-y-auto flex-none transition-all duration-200",
         collapsed ? "w-12" : "w-52"
       )}
     >
       {onClose && (
         <div className="flex justify-end p-2 lg:hidden">
-          <button onClick={onClose} className="p-1 text-zinc-400 hover:text-zinc-600">
+          <button onClick={onClose} className="p-1 text-fg-muted hover:text-fg-body">
             <span className="sr-only">Close sidebar</span>
             <X size={16} />
           </button>
@@ -30,11 +30,11 @@ export function Sidebar({ collapsed, onClose }: { collapsed: boolean; onClose?: 
 
       <div className="p-2 flex flex-col gap-0.5 flex-1">
         {NAV_GROUPS.map((group, idx) => (
-          <div key={group.id} className={cn("mb-1", idx > 0 && "mt-1 pt-1 border-t border-zinc-200/60 dark:border-zinc-800/60")}>
+          <div key={group.id} className={cn("mb-1", idx > 0 && "mt-1 pt-1 border-t border-line-subtle")}>
             {!collapsed && (
               <button
                 onClick={() => toggle(group.id)}
-                className="w-full flex items-center justify-between px-2 py-1 text-sm text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 rounded cursor-pointer"
+                className="w-full flex items-center justify-between px-2 py-1 text-sm text-fg-muted hover:text-fg-body rounded cursor-pointer"
                 aria-expanded={openGroups[group.id]}
                 aria-label={`${group.label} navigation group`}
               >
@@ -60,8 +60,8 @@ export function Sidebar({ collapsed, onClose }: { collapsed: boolean; onClose?: 
                           "flex items-center gap-2 px-2 py-1.5 rounded text-sm transition-colors",
                           collapsed ? "justify-center" : "",
                           isActive
-                            ? "bg-zinc-200 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100"
-                            : "text-zinc-500 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-900 hover:text-zinc-700 dark:hover:text-zinc-300"
+                            ? "bg-surface-raised text-fg"
+                            : "text-fg-muted hover:bg-surface-hover hover:text-fg-body"
                         )
                       }
                       title={collapsed ? item.label : undefined}

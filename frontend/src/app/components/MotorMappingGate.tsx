@@ -54,7 +54,7 @@ export function MotorMappingGate({ children, skip, onSkip, skipLabel }: MotorMap
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-20 text-zinc-400">
+      <div className="flex items-center justify-center py-20 text-fg-muted">
         <Loader2 size={20} className="animate-spin mr-2" />
         Checking arm mapping…
       </div>
@@ -67,15 +67,15 @@ export function MotorMappingGate({ children, skip, onSkip, skipLabel }: MotorMap
 
   return (
     <div className="flex flex-col items-center gap-6 py-16 px-4 max-w-lg mx-auto text-center">
-      <div className="size-14 rounded-full bg-amber-500/10 flex items-center justify-center">
-        <Unplug size={28} className="text-amber-500" />
+      <div className="size-14 rounded-full bg-warn-bg flex items-center justify-center">
+        <Unplug size={28} className="text-warn" />
       </div>
 
       <div className="flex flex-col gap-2">
-        <h2 className="text-lg font-semibold text-zinc-800 dark:text-zinc-200">
+        <h2 className="text-lg font-semibold text-fg-heading">
           Arm Mapping Required
         </h2>
-        <p className="text-sm text-zinc-500 dark:text-zinc-400 leading-relaxed">
+        <p className="text-sm text-fg-muted leading-relaxed">
           At least one follower and leader arm must be mapped before using this page.
           Go to Motor Setup to assign arm roles.
         </p>

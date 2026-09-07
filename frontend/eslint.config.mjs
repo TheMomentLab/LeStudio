@@ -45,19 +45,9 @@ export default tseslint.config(
   // the shared component layer is fully migrated and must stay that way — every
   // page composes from it, so a raw shade here leaks everywhere.
   {
-    files: [
-      'src/app/components/wireframe/**/*.{ts,tsx}',
-      'src/app/components/ui/**/*.{ts,tsx}',
-      // Pages fully migrated to tokens — add each one here as it lands so it
-      // cannot regress. Pages still in the ratchet are covered by design:audit.
-      'src/app/pages/Evaluation/**/*.{ts,tsx}',
-      'src/app/pages/Training/**/*.{ts,tsx}',
-      'src/app/pages/MotorSetup/**/*.{ts,tsx}',
-      'src/app/pages/DatasetManagement/**/*.{ts,tsx}',
-      'src/app/pages/Teleop.tsx',
-      'src/app/pages/Teleop/**/*.{ts,tsx}',
-      'src/app/pages/Recording/**/*.{ts,tsx}',
-    ],
+    // Every file under src/app is migrated to tokens; new raw palette shades
+    // are a regression, not a backlog item.
+    files: ['src/app/**/*.{ts,tsx}'],
     plugins: { design: designSystem },
     rules: {
       'design/prefer-design-token': 'error',

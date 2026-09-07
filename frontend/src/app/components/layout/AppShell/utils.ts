@@ -54,8 +54,8 @@ export function mapOutputLevelToKind(level: "info" | "warn" | "error"): "stdout"
 }
 
 export function logLineClass(kind: string): string {
-  if (kind === "stderr" || kind === "error") return "text-red-600 dark:text-red-400";
-  if (kind === "warn") return "text-amber-600 dark:text-amber-400";
-  if (kind === "info") return "text-zinc-500 dark:text-zinc-300";
-  return "text-zinc-500 dark:text-zinc-400";
+  if (kind === "stderr" || kind === "error") return "text-danger";
+  if (kind === "warn") return "text-warn";
+  if (kind === "info") return "text-fg-body";
+  return "text-fg-muted";
 }

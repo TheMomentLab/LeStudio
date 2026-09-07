@@ -35,7 +35,7 @@ export function AppShell() {
 
   return (
     <HfAuthProvider>
-      <div className="h-screen flex flex-col bg-zinc-50 dark:bg-zinc-950 overflow-hidden">
+      <div className="h-screen flex flex-col bg-canvas overflow-hidden">
         <Header
           onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
           onMobileToggle={() => setMobileSidebarOpen(true)}

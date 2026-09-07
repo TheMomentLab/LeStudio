@@ -343,8 +343,18 @@ Lucide React 기준.
 헤더: px-4 py-3 bg-surface-muted border-b border-line
   → 제목: text-sm font-medium text-fg-body
   → step 뱃지: size-5 rounded bg-surface-raised text-fg-muted font-mono
-바디: p-4
+바디: p-4  (`grow` — 고정 높이 바디도 접히지 않음)
 ```
+
+| prop | 용도 |
+|---|---|
+| `title`, `titleSub`, `badge` | 헤더 텍스트. `titleClassName="font-mono"`로 경로·저장소 ID 제목 |
+| `icon` | 제목 앞 13px 아이콘 (Status 페이지 카드) |
+| `action` | 헤더 오른쪽 슬롯 — 토글, 새로고침, 범례, 닫기 |
+| `bodyClassName` | 기본 `p-4`를 덮어씀. 목록·차트는 `p-0`, 차트는 `h-56 p-3` |
+| `className` | 외곽. 스크롤 목록이면 `overflow-hidden` |
+
+헤더가 버튼이어야 하는 접이식 패널(Colab Training)만 예외로 자체 셸을 씁니다.
 
 ### 7.1a 빈 상태
 
@@ -481,15 +491,19 @@ sm:       px-3   py-1    — 폼 안에서 h-9 입력 옆에 놓이는 값 선�
 | `design/no-arbitrary-text-size` | `src/**` | `text-[10px]` 같은 임의 크기 |
 | `design/no-arbitrary-color` | `src/**` | `bg-[#fff]` 같은 임의 색상 |
 | `design/no-unapproved-palette` | `src/**` | 시스템이 정의하지 않은 팔레트 (`purple-400` 등) |
-| `design/prefer-design-token` | `components/wireframe/**`, `components/ui/**` | 원시 팔레트 유틸리티 전부 |
+| `design/prefer-design-token` | `src/app/**` | 원시 팔레트 유틸리티 전부 |
 
-`prefer-design-token`이 공유 컴포넌트에만 걸리는 이유: 이 레이어는 **이미 100% 토큰화되어 있고**,
-모든 페이지가 여기서 조합되므로 원시 값 하나가 전체로 새어 나갑니다.
+`prefer-design-token`은 처음에 공유 컴포넌트 레이어에만 걸려 있었고, 페이지는 §12.2의
+래칫으로 묶어 두었습니다. 2026-09-07 이관(Evaluation → Training → MotorSetup → Dataset →
+Teleop / Recording → AppShell / Status / CameraSetup)으로 `src/app` 전체가 0이 되어
+지금은 **모든 파일에 즉시 에러**로 걸립니다. 새 페이지를 만들 때도 예외는 없습니다.
 
-### 12.2 래칫 — 페이지 레이어의 잔여 부채
+### 12.2 래칫 — 잔여 부채 측정 (현재 0)
 
-페이지 컴포넌트에는 토큰 도입 이전의 원시 팔레트가 남아 있습니다. 한 번에 옮길 가치는 없지만
-**다시 늘어나서는 안 되므로**, 스크립트가 수치를 측정하고 증가하면 CI를 실패시킵니다.
+토큰 도입 당시 페이지 레이어에 남아 있던 원시 팔레트 1,948개를 래칫으로 묶어 두고 페이지
+단위로 이관했습니다. 지금은 세 지표 모두 **0**이며 기준선도 0으로 잠겨 있습니다. 스크립트는
+그대로 CI에 남아, 린트가 놓치는 경로(템플릿 리터럴로 조립한 클래스 등)에서 원시 값이
+다시 들어오면 실패합니다.
 
 ```bash
 npm run design:audit              # 기준선 대비 검사
@@ -505,7 +519,8 @@ npm run design:audit -- --update  # 현재 수치를 새 기준선으로 확정
 | `classNamesMissingDark` | 라이트 팔레트 색을 쓰면서 `dark:` 짝이 전혀 없는 className |
 | `hexLiterals` | 하드코딩된 hex 색상 (`useChartTokens.ts`의 폴백만 예외) |
 
-**부채를 줄였다면 `--update`로 기준선을 내려 잠그세요.** 그래야 래칫이 앞으로만 조여집니다.
+기준선이 0이므로 `--update`를 쓸 일은 없습니다. 이 검사가 실패하면 부채가 "다시 생긴" 것이니
+기준선을 올리지 말고 원인을 토큰으로 고치세요.
 
 ### 12.3 CI
 
@@ -533,7 +548,7 @@ npm run build
 |---|---|
 | `PageHeader` | 페이지 제목 + 부제 + 액션 |
 | `SectionHeader` | 독립 섹션 제목 (step 뱃지 지원) |
-| `Card` | 표준 카드 (헤더 + 바디) |
+| `Card` | 표준 카드 (헤더 + 바디, `icon` / `action` / `bodyClassName`) |
 | `StatusBadge` | 상태 아이콘 (running/ready/loading/warning/error/idle/blocked) |
 | `BlockerCard` | Start 불가 경고 + 해결 링크 |
 | `ProcessButtons` | Start / Stop |

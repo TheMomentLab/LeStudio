@@ -80,10 +80,13 @@ export function Card({
   className,
   bodyClassName,
   titleClassName,
+  icon,
   children,
   badge,
 }: {
   step?: string | number;
+  /** Small leading icon (13px lucide) shown before the title. */
+  icon?: React.ReactNode;
   title?: string;
   titleSub?: string;
   action?: React.ReactNode;
@@ -112,6 +115,7 @@ export function Card({
               </span>
             )}
             <div className="flex items-center gap-2">
+              {icon && <span className="text-fg-muted flex-none [&>svg]:block">{icon}</span>}
               {title?.includes("—") ? (
                 <>
                   <span className="text-sm font-medium text-fg-body">

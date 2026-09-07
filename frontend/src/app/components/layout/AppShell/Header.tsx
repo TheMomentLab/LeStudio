@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { NavLink } from "react-router";
 import { KeyRound, Moon, Sun, Menu } from "lucide-react";
+import { inputClassName } from "../../wireframe";
 import { buttonStyles } from "../../ui/button";
 import { cn } from "../../ui/utils";
 import { useTheme } from "../../../theme-context";
@@ -64,9 +65,9 @@ export function Header({
     : `Session token required for remote changes on ${describeApiOrigin(apiOrigin)}`;
 
   const wsColor = {
-    connected: "bg-emerald-400",
-    unstable: "bg-amber-400",
-    disconnected: "bg-red-400",
+    connected: "bg-ok-solid",
+    unstable: "bg-warn-solid",
+    disconnected: "bg-danger-solid",
   }[wsStatus];
 
   const hfLabel = hfAuth === "ready"
@@ -86,10 +87,10 @@ export function Header({
       : "Hugging Face token is invalid";
 
   return (
-    <header className="h-12 flex-none flex items-center gap-2 px-4 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 z-50">
+    <header className="h-12 flex-none flex items-center gap-2 px-4 border-b border-line bg-surface-chrome z-50">
       <button
         onClick={onToggleSidebar}
-        className="p-1.5 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 rounded cursor-pointer hidden lg:block"
+        className="p-1.5 text-fg-muted hover:text-fg-body rounded cursor-pointer hidden lg:block"
         title="Toggle sidebar"
         aria-label="Toggle sidebar"
       >
@@ -97,7 +98,7 @@ export function Header({
       </button>
       <button
         onClick={onMobileToggle}
-        className="p-1.5 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 rounded cursor-pointer lg:hidden"
+        className="p-1.5 text-fg-muted hover:text-fg-body rounded cursor-pointer lg:hidden"
         title="Open menu"
         aria-label="Open menu"
       >
@@ -105,7 +106,7 @@ export function Header({
       </button>
 
       <NavLink to="/" className="flex items-center gap-1.5 mr-4 hover:opacity-75 transition-opacity">
-        <svg className="size-6 text-zinc-700 dark:text-zinc-300" viewBox="0 0 100 100" fill="none" stroke="currentColor" strokeWidth={4} strokeLinecap="round" strokeLinejoin="round">
+        <svg className="size-6 text-fg-body" viewBox="0 0 100 100" fill="none" stroke="currentColor" strokeWidth={4} strokeLinecap="round" strokeLinejoin="round">
           <defs>
             <mask id="planet-mask">
               <rect width="100" height="100" fill="white" />
@@ -115,7 +116,7 @@ export function Header({
           <circle cx="50" cy="50" r="34" mask="url(#planet-mask)" />
           <ellipse cx="50" cy="50" rx="48" ry="16" transform="rotate(-15 50 50)" />
         </svg>
-        <span className="text-sm text-zinc-800 dark:text-zinc-200">LeStudio</span>
+        <span className="text-sm text-fg-heading">LeStudio</span>
         <span className="text-3xs font-bold tracking-wide uppercase leading-none px-1.5 py-0.5 rounded-full border border-warn-line bg-warn-bg text-warn">ALPHA</span>
       </NavLink>
 
@@ -129,8 +130,8 @@ export function Header({
                 className={cn(
                   "flex items-center gap-1.5 px-2.5 py-1 rounded border text-sm cursor-pointer transition-colors",
                   sessionTokenSaved
-                    ? "border-zinc-200 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400"
-                    : "border-amber-500/30 text-amber-600 dark:text-amber-400 bg-amber-500/5",
+                    ? "border-line-control text-fg-muted"
+                    : "border-warn-line text-warn bg-warn-bg",
                 )}
                 title={remoteTitle}
                 aria-label={remoteTitle}
@@ -139,13 +140,13 @@ export function Header({
                 <span>{remoteLabel}</span>
               </button>
             </PopoverTrigger>
-            <PopoverContent align="end" className="w-80 bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-700 p-0">
-              <div className="px-3 py-2.5 border-b border-zinc-100 dark:border-zinc-800">
+            <PopoverContent align="end" className="w-80 bg-surface border-line-control p-0">
+              <div className="px-3 py-2.5 border-b border-line-subtle">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-sm font-medium text-zinc-700 dark:text-zinc-200">Remote Session Token</span>
-                  <span className="text-xs text-zinc-400 font-mono">{describeApiOrigin(apiOrigin)}</span>
+                  <span className="text-sm font-medium text-fg-body">Remote Session Token</span>
+                  <span className="text-xs text-fg-muted font-mono">{describeApiOrigin(apiOrigin)}</span>
                 </div>
-                <p className="text-xs text-zinc-400 mt-0.5">
+                <p className="text-xs text-fg-muted mt-0.5">
                   Remote LeStudio changes require the session token printed by the server at startup.
                 </p>
               </div>
@@ -171,7 +172,7 @@ export function Header({
                   }}
                   placeholder="Paste LeStudio token"
                   aria-label="LeStudio session token"
-                  className="w-full px-2.5 py-1.5 rounded border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 text-sm text-zinc-700 dark:text-zinc-200 placeholder:text-zinc-400 outline-none focus:border-zinc-400 dark:focus:border-zinc-500 transition-colors"
+                  className={cn(inputClassName, "h-auto px-2.5 py-1.5 rounded")}
                 />
                 <div className="flex items-center gap-2">
                   <button
@@ -225,12 +226,12 @@ export function Header({
               className={cn(
                 "flex items-center gap-1.5 px-2.5 py-1 rounded border text-sm cursor-pointer transition-colors",
                 hfAuth === "ready"
-                  ? "border-zinc-200 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400"
+                  ? "border-line-control text-fg-muted"
                   : hfAuth === "missing_token"
-                    ? "border-amber-500/30 text-amber-600 dark:text-amber-400 bg-amber-500/5"
+                    ? "border-warn-line text-warn bg-warn-bg"
                     : hfAuth === "expired_token"
-                      ? "border-amber-500/30 text-amber-600 dark:text-amber-400 bg-amber-500/5"
-                    : "border-red-500/30 text-red-600 dark:text-red-400 bg-red-500/5"
+                      ? "border-warn-line text-warn bg-warn-bg"
+                    : "border-danger-line text-danger bg-danger-bg"
               )}
               title={hfTitle}
               aria-label={`Hugging Face status: ${hfLabel}`}
@@ -239,29 +240,29 @@ export function Header({
               <span>{hfLabel}</span>
             </button>
           </PopoverTrigger>
-          <PopoverContent align="end" className="w-72 bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-700 p-0">
-            <div className="px-3 py-2.5 border-b border-zinc-100 dark:border-zinc-800">
+          <PopoverContent align="end" className="w-72 bg-surface border-line-control p-0">
+            <div className="px-3 py-2.5 border-b border-line-subtle">
               <div className="flex items-center justify-between gap-2">
-                <span className="text-sm font-medium text-zinc-700 dark:text-zinc-200">Hugging Face</span>
+                <span className="text-sm font-medium text-fg-body">Hugging Face</span>
                 {hfAuth !== "ready" && (
                   <a
                     href="https://huggingface.co/settings/tokens"
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors whitespace-nowrap flex-none"
+                    className="text-xs text-fg-muted hover:text-fg-body transition-colors whitespace-nowrap flex-none"
                   >
                     Get Token →
                   </a>
                 )}
               </div>
-              <p className="text-xs text-zinc-400 mt-0.5">{hfTitle}</p>
+              <p className="text-xs text-fg-muted mt-0.5">{hfTitle}</p>
             </div>
             <div className="p-3 flex flex-col gap-2">
               {hfAuth === "ready" ? (
                 <>
                   <div className="flex items-center gap-2">
-                    <span className="size-2 rounded-full bg-emerald-400 flex-none" />
-                    <span className="text-sm text-zinc-700 dark:text-zinc-200">{hfUsername ?? "Connected"}</span>
+                    <span className="size-2 rounded-full bg-ok-solid flex-none" />
+                    <span className="text-sm text-fg-body">{hfUsername ?? "Connected"}</span>
                   </div>
                   <button
                     onClick={async () => {
@@ -315,7 +316,7 @@ export function Header({
                     }}
                     placeholder="hf_..."
                     aria-label="Hugging Face access token"
-                    className="w-full px-2.5 py-1.5 rounded border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 text-sm text-zinc-700 dark:text-zinc-200 placeholder:text-zinc-400 outline-none focus:border-zinc-400 dark:focus:border-zinc-500 transition-colors"
+                    className={cn(inputClassName, "h-auto px-2.5 py-1.5 rounded")}
                   />
                   <button
                     onClick={async () => {
@@ -353,16 +354,16 @@ export function Header({
           </PopoverContent>
         </Popover>
 
-        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded border border-zinc-200 dark:border-zinc-700" title={`WebSocket: ${wsStatus}`}>
+        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded border border-line-control" title={`WebSocket: ${wsStatus}`}>
           <span className={cn("size-2 rounded-full", wsColor)} />
-          <span className="text-sm text-zinc-500 dark:text-zinc-400">WS</span>
+          <span className="text-sm text-fg-muted">WS</span>
         </div>
 
-        <div className="mx-0.5 h-4 w-px bg-zinc-200 dark:bg-zinc-700" />
+        <div className="mx-0.5 h-4 w-px bg-surface-raised" />
 
         <button
           onClick={toggleTheme}
-          className="p-1.5 rounded text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 cursor-pointer"
+          className="p-1.5 rounded text-fg-muted hover:text-fg-body cursor-pointer"
           title="Toggle theme"
           aria-label="Toggle theme"
         >
@@ -373,7 +374,7 @@ export function Header({
           href="https://github.com/TheMomentLab/lerobot-studio"
           target="_blank"
           rel="noopener noreferrer"
-          className="p-1.5 rounded text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 cursor-pointer"
+          className="p-1.5 rounded text-fg-muted hover:text-fg-body cursor-pointer"
           title="GitHub"
           aria-label="Open GitHub repository"
         >

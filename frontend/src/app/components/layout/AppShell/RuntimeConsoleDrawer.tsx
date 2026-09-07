@@ -437,17 +437,17 @@ export function RuntimeConsoleDrawer() {
 
   return (
     <div
-      className="flex-none border-t border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 flex flex-col"
+      className="flex-none border-t border-line bg-canvas flex flex-col"
       style={{ height: collapsed ? MIN_CONSOLE_HEIGHT : consoleHeight }}
     >
       <div
         onMouseDown={onMouseDown}
-        className="h-1 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-600 cursor-ns-resize flex-none transition-colors"
+        className="h-1 bg-surface-sunken hover:bg-line-strong cursor-ns-resize flex-none transition-colors"
       />
 
-      <div className="flex items-center gap-2 px-3 h-7 flex-none border-b border-zinc-200 dark:border-zinc-800">
-        <Terminal size={12} className="text-zinc-400 flex-none" />
-        <span className="text-sm text-zinc-500 font-mono">Console</span>
+      <div className="flex items-center gap-2 px-3 h-7 flex-none border-b border-line">
+        <Terminal size={12} className="text-fg-muted flex-none" />
+        <span className="text-sm text-fg-muted font-mono">Console</span>
 
         <div className="flex items-center gap-1 ml-2">
           {PROCESS_NAMES.map((p) => (
@@ -458,8 +458,8 @@ export function RuntimeConsoleDrawer() {
               className={cn(
                 "px-2 py-0.5 rounded text-sm font-mono transition-colors cursor-pointer",
                 activeProcess === p
-                  ? "bg-zinc-200 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300"
-                  : "text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+                  ? "bg-surface-raised text-fg-body"
+                  : "text-fg-muted hover:text-fg-body"
               )}
             >
               {isRuntimeProcessRunning(procStatus, p) ? (
@@ -475,7 +475,7 @@ export function RuntimeConsoleDrawer() {
 
         <div className="ml-auto flex items-center gap-1">
           <button
-            className="p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 cursor-pointer"
+            className="p-1 text-fg-muted hover:text-fg-body cursor-pointer"
             title="Copy logs"
             aria-label="Copy console logs"
             onClick={() => { void handleCopy(); }}
@@ -483,7 +483,7 @@ export function RuntimeConsoleDrawer() {
             <Copy size={12} />
           </button>
           <button
-            className="p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 cursor-pointer"
+            className="p-1 text-fg-muted hover:text-fg-body cursor-pointer"
             title="Clear"
             aria-label="Clear console logs"
             onClick={() => clearLog(activeProcess)}
@@ -492,7 +492,7 @@ export function RuntimeConsoleDrawer() {
           </button>
           <button
             onClick={() => setCollapsed(!collapsed)}
-            className="p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 cursor-pointer"
+            className="p-1 text-fg-muted hover:text-fg-body cursor-pointer"
             aria-label={collapsed ? "Expand console" : "Collapse console"}
           >
             {collapsed ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
@@ -508,20 +508,20 @@ export function RuntimeConsoleDrawer() {
             </div>
           ))}
           {lines.length === 0 && procReconnected[activeProcess] && (
-            <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-blue-500/30 bg-blue-500/5 text-sm text-blue-600 dark:text-blue-400 mb-2">
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-info-line bg-info-bg text-sm text-info mb-2">
               <span className="flex-none">⚡</span>
               <span>Reconnected — This process was recovered from a previous server session. Live output is not available.</span>
             </div>
           )}
           {lines.length === 0 && !procReconnected[activeProcess] && (
-            <div className="text-zinc-400">No output yet. Start a process to stream logs.</div>
+            <div className="text-fg-muted">No output yet. Start a process to stream logs.</div>
           )}
         </div>
       )}
 
       {!collapsed && (
-        <div className="flex items-center gap-2 px-4 py-2 border-t border-zinc-200 dark:border-zinc-800 flex-none">
-          <span className="text-zinc-400 font-mono text-sm">›</span>
+        <div className="flex items-center gap-2 px-4 py-2 border-t border-line flex-none">
+          <span className="text-fg-muted font-mono text-sm">›</span>
           <input
             ref={inputRef}
             type="text"
@@ -533,17 +533,17 @@ export function RuntimeConsoleDrawer() {
               : "Enter command and press Enter to run"
             }
             aria-label="Console command input"
-            className="flex-1 bg-transparent text-sm font-mono text-zinc-700 dark:text-zinc-300 placeholder:text-zinc-500 outline-none"
+            className="flex-1 bg-transparent text-sm font-mono text-fg-body placeholder:text-fg-muted outline-none"
           />
           <button
-            className="px-2 py-1 rounded border border-zinc-300 dark:border-zinc-700 text-xs font-mono text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-900 cursor-pointer"
+            className="px-2 py-1 rounded border border-line-strong text-xs font-mono text-fg-body hover:bg-surface-hover cursor-pointer"
             onClick={() => { void sendStdin(); }}
             aria-label="Send console input"
           >
             Send
           </button>
           <button
-            className="px-2 py-1 rounded border border-zinc-300 dark:border-zinc-700 text-xs font-mono text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-900 cursor-pointer"
+            className="px-2 py-1 rounded border border-line-strong text-xs font-mono text-fg-body hover:bg-surface-hover cursor-pointer"
             onClick={() => setConsoleHeight(170)}
             title="Reset console height"
             aria-label="Reset console height"
