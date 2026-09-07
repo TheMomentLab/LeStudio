@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import asdict
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import Literal
 
 RegistryKind = Literal["robot", "teleop"]

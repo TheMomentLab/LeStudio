@@ -455,6 +455,7 @@ def test_api_eval_start_blocks_missing_real_robot_calibration(monkeypatch, tmp_p
     assert unlock_calls["count"] == 0
 
 
+@pytest.mark.skipif(not _has_lerobot_rl, reason="lerobot.rl not available")
 def test_api_eval_start_allows_omx_without_calibration_file(monkeypatch, tmp_path: Path):
     started = {"called": False}
 
@@ -497,6 +498,7 @@ def test_api_eval_start_allows_omx_without_calibration_file(monkeypatch, tmp_pat
     assert started["called"] is True
 
 
+@pytest.mark.skipif(not _has_lerobot_rl, reason="lerobot.rl not available")
 def test_api_eval_start_uses_type_policy_for_calibration_requirement(monkeypatch, tmp_path: Path):
     started = {"called": False}
 
