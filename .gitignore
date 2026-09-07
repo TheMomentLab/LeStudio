@@ -129,3 +129,6 @@ docs/
 
 test-results/
 tmp/playwright-mcp-output/
+
+# Vite dep cache
+.vite/
