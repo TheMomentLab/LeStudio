@@ -116,7 +116,7 @@ export function Header({
           <ellipse cx="50" cy="50" rx="48" ry="16" transform="rotate(-15 50 50)" />
         </svg>
         <span className="text-sm text-zinc-800 dark:text-zinc-200">LeStudio</span>
-        <span className="text-[10px] font-bold tracking-wide uppercase leading-none px-1.5 py-0.5 rounded-full border border-amber-500/30 bg-amber-500/10 text-amber-500 dark:text-amber-400">ALPHA</span>
+        <span className="text-3xs font-bold tracking-wide uppercase leading-none px-1.5 py-0.5 rounded-full border border-warn-line bg-warn-bg text-warn">ALPHA</span>
       </NavLink>
 
       <div className="flex-1" />

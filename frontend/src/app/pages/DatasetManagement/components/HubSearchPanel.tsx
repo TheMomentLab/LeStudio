@@ -324,7 +324,7 @@ export function HubSearchPanel() {
                 <div className="flex items-center gap-2">
                   <a href={`https://huggingface.co/datasets/${ds.id}`} target="_blank" rel="noopener noreferrer" className="font-mono text-sm font-medium text-blue-500 dark:text-blue-400 hover:underline">{ds.id}</a>
                   {ds.local_sync && (
-                    <HardDrive size={14} className="text-emerald-500 dark:text-emerald-400 flex-none" title="Synced locally" />
+                    <span title="Synced locally" className="flex-none inline-flex"><HardDrive size={14} className="text-emerald-500 dark:text-emerald-400" aria-label="Synced locally" /></span>
                   )}
                 </div>
                 <div className="flex items-center gap-3 text-sm text-zinc-400">

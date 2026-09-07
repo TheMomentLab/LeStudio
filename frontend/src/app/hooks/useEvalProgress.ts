@@ -566,35 +566,37 @@ export function useEvalProgress({
 
   const progressStatusStyle = useMemo<EvalProgressStyle>(() => {
     const map: Record<EvalProgressStatus, EvalProgressStyle> = {
+      // Inline styles resolve var(), so these read the same tokens as the rest
+      // of the UI and stay correct in both themes.
       idle: {
         label: "IDLE",
-        bg: "rgba(148,163,184,0.18)",
-        color: "var(--text2, #71717a)",
+        bg: "var(--surface-sunken)",
+        color: "var(--fg-muted)",
       },
       starting: {
         label: "STARTING",
-        bg: "rgba(59,130,246,0.18)",
-        color: "#93c5fd",
+        bg: "var(--info-bg)",
+        color: "var(--info-fg)",
       },
       running: {
         label: "RUNNING",
-        bg: "rgba(34,197,94,0.18)",
-        color: "#86efac",
+        bg: "var(--ok-bg)",
+        color: "var(--ok-fg)",
       },
       stopped: {
         label: "STOPPED",
-        bg: "rgba(148,163,184,0.18)",
-        color: "var(--text2, #71717a)",
+        bg: "var(--surface-sunken)",
+        color: "var(--fg-muted)",
       },
       completed: {
         label: "COMPLETED",
-        bg: "rgba(16,185,129,0.20)",
-        color: "#6ee7b7",
+        bg: "var(--ok-bg)",
+        color: "var(--ok-fg)",
       },
       error: {
         label: "ERROR",
-        bg: "rgba(248,81,73,0.20)",
-        color: "#fca5a5",
+        bg: "var(--danger-bg)",
+        color: "var(--danger-fg)",
       },
     };
     return map[progressStatus];

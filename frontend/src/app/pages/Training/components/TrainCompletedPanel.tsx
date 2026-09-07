@@ -5,6 +5,7 @@ import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YA
 import { buttonStyles } from "../../../components/ui/button";
 import type { CheckpointItem } from "../types";
 import { CustomTooltip } from "./CustomTooltip";
+import { useChartTokens } from "../../../hooks/useChartTokens";
 
 interface TrainCompletedPanelProps {
   policyType: string;
@@ -25,6 +26,7 @@ export function TrainCompletedPanel({
   onRefreshCheckpoints,
   onStartNewTraining,
 }: TrainCompletedPanelProps) {
+  const chart = useChartTokens();
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center gap-3 px-4 py-3 rounded-lg border border-emerald-500/30 bg-emerald-500/5">
@@ -45,16 +47,16 @@ export function TrainCompletedPanel({
           <div className="h-48 p-3">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={lossData} margin={{ top: 8, right: 12, bottom: 4, left: -8 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(63,63,70,0.5)" vertical={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke={chart["chart-grid"]} vertical={false} />
                 <XAxis
                   dataKey="step"
-                  tick={{ fontSize: 10, fill: "#71717a" }}
+                  tick={{ fontSize: 10, fill: chart["chart-axis"] }}
                   tickLine={false}
                   axisLine={false}
                   tickFormatter={(v) => v >= 1000 ? `${(v / 1000).toFixed(0)}K` : String(v)}
                 />
                 <YAxis
-                  tick={{ fontSize: 10, fill: "#71717a" }}
+                  tick={{ fontSize: 10, fill: chart["chart-axis"] }}
                   tickLine={false}
                   axisLine={false}
                   tickFormatter={(v) => v.toFixed(3)}
@@ -64,7 +66,7 @@ export function TrainCompletedPanel({
                 <Line
                   type="monotone"
                   dataKey="loss"
-                  stroke="#71717a"
+                  stroke={chart["chart-series-1"]}
                   strokeWidth={2}
                   dot={false}
                   isAnimationActive={false}

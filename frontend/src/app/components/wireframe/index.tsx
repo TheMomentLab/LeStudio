@@ -16,16 +16,16 @@ export function StatusBadge({
   pulse?: boolean;
 }) {
   const colorMap: Record<StatusType, string> = {
-    running: "text-emerald-500",
-    ready: "text-emerald-500",
-    loading: "text-blue-500",
-    warning: "text-amber-500",
-    error: "text-red-500",
-    idle: "text-zinc-400",
-    blocked: "text-amber-500",
+    running: "text-ok",
+    ready: "text-ok",
+    loading: "text-info",
+    warning: "text-warn",
+    error: "text-danger",
+    idle: "text-fg-muted",
+    blocked: "text-warn",
   };
   const iconMap: Record<StatusType, React.ReactNode> = {
-    running: <span className="relative flex size-3.5 items-center justify-center"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-40" /><span className="relative inline-flex size-2 rounded-full bg-emerald-500" /></span>,
+    running: <span className="relative flex size-3.5 items-center justify-center"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-ok-solid opacity-40" /><span className="relative inline-flex size-2 rounded-full bg-ok-solid" /></span>,
     ready: <CheckCircle size={14} />,
     loading: <Loader2 size={14} className="animate-spin" />,
     warning: <AlertTriangle size={14} />,
@@ -59,8 +59,8 @@ export function WireBox({
     <div
       className={cn(
         "flex flex-col items-center justify-center rounded border border-dashed",
-        "border-zinc-600 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-800/40",
-        "text-zinc-400 text-sm font-mono select-none",
+        "border-line-strong bg-surface-sunken",
+        "text-fg-muted text-sm font-mono select-none",
         className
       )}
       style={aspectRatio ? { aspectRatio } : undefined}
@@ -92,36 +92,36 @@ export function Card({
   return (
     <div
       className={cn(
-        "rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900",
+        "rounded-lg border border-line bg-surface",
         "flex flex-col",
         className
       )}
     >
       {title && (
-        <div className="flex items-center justify-between px-4 py-3 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800">
+        <div className="flex items-center justify-between px-4 py-3 bg-surface-muted border-b border-line">
           <div className="flex items-center gap-2">
             {step !== undefined && (
-              <span className="flex-none size-5 rounded bg-zinc-200 dark:bg-zinc-700 text-zinc-500 dark:text-zinc-400 text-sm flex items-center justify-center font-mono">
+              <span className="flex-none size-5 rounded bg-surface-raised text-fg-muted text-sm flex items-center justify-center font-mono">
                 {step}
               </span>
             )}
             <div className="flex items-center gap-2">
               {title?.includes("—") ? (
                 <>
-                  <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                  <span className="text-sm font-medium text-fg-body">
                     {title.split("—")[0].trim()}
                   </span>
-                  <span className="text-sm text-zinc-400">
+                  <span className="text-sm text-fg-muted">
                     {title.split("—")[1].trim()}
                   </span>
                 </>
               ) : (
-                <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">{title}</span>
+                <span className="text-sm font-medium text-fg-body">{title}</span>
               )}
               {badge}
             </div>
             {titleSub && (
-              <span className="text-sm text-zinc-400">{titleSub}</span>
+              <span className="text-sm text-fg-muted">{titleSub}</span>
             )}
           </div>
           {action && <div className="ml-4 flex-none">{action}</div>}
@@ -150,17 +150,17 @@ export function SectionHeader({
     <div className="flex items-start justify-between mb-3">
       <div className="flex items-start gap-2">
         {step !== undefined && (
-          <span className="mt-0.5 flex-none size-5 rounded bg-zinc-200 dark:bg-zinc-700 text-zinc-500 dark:text-zinc-400 text-sm flex items-center justify-center font-mono">
+          <span className="mt-0.5 flex-none size-5 rounded bg-surface-raised text-fg-muted text-sm flex items-center justify-center font-mono">
             {step}
           </span>
         )}
         <div>
           <div className="flex items-center gap-2">
-            <span className="text-base font-semibold text-zinc-900 dark:text-zinc-100">{title}</span>
+            <span className="text-base font-semibold text-fg">{title}</span>
             {badge}
           </div>
           {subtitle && (
-            <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-0.5">{subtitle}</p>
+            <p className="text-sm text-fg-muted mt-0.5">{subtitle}</p>
           )}
         </div>
       </div>
@@ -189,14 +189,14 @@ export function BlockerCard({
   const tone =
     severity === "error"
       ? {
-          shell: "border-red-500/30 bg-red-500/5",
-          text: "text-red-600 dark:text-red-400",
-          action: "border-red-500/30 text-red-600 dark:text-red-400 bg-red-500/10 hover:bg-red-500/20",
+          shell: "border-danger-line bg-danger-bg",
+          text: "text-danger",
+          action: "border-danger-line text-danger bg-danger-bg hover:bg-danger-bg",
         }
       : {
-          shell: "border-amber-500/30 bg-amber-500/5",
-          text: "text-amber-600 dark:text-amber-400",
-          action: "border-amber-500/30 text-amber-600 dark:text-amber-400 bg-amber-500/10 hover:bg-amber-500/20",
+          shell: "border-warn-line bg-warn-bg",
+          text: "text-warn",
+          action: "border-warn-line text-warn bg-warn-bg hover:bg-warn-bg",
         };
 
   const message = textReasons.length > 0 ? textReasons.join(" · ") : title;
@@ -264,7 +264,7 @@ export function ProcessButtons({
               tone: "success",
               className: cn(
                 sizeClassName,
-                "disabled:border-zinc-200 disabled:bg-zinc-100 disabled:text-zinc-400 dark:disabled:border-zinc-800 dark:disabled:bg-zinc-900 dark:disabled:text-zinc-600",
+                "disabled:border-line disabled:bg-surface-sunken disabled:text-fg-disabled",
               ),
             }),
             fullWidth && "w-full",
@@ -307,7 +307,7 @@ export function FieldRow({
 }) {
   return (
     <div className={cn("flex gap-3 min-h-9", align === "start" ? "items-start" : "items-center")}>
-      <span className={cn("text-sm font-medium text-zinc-600 dark:text-zinc-300 whitespace-nowrap flex-none w-[160px]", align === "start" && "pt-2")}>{label}</span>
+      <span className={cn("text-sm font-medium text-fg-body whitespace-nowrap flex-none w-[160px]", align === "start" && "pt-2")}>{label}</span>
       <div className="flex-1">{children}</div>
     </div>
   );
@@ -323,7 +323,7 @@ export function WireSelect({ placeholder, value, options, onChange, disabled, cl
       value={value ?? ""}
       onChange={onChange ? (e) => onChange(e.target.value) : () => {}}
       disabled={disabled}
-      className={cn("w-full h-9 px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-800 dark:text-zinc-200 text-sm outline-none cursor-pointer hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all", disabled && "opacity-50 cursor-not-allowed", className)}
+      className={cn("w-full h-9 px-3 py-2 rounded-lg border border-line-control bg-surface-input text-fg-heading text-sm outline-none cursor-pointer hover:border-line-strong focus:border-focus-ring focus:ring-2 focus:ring-focus-ring-alpha transition-all", disabled && "opacity-50 cursor-not-allowed", className)}
     >
       {placeholder && <option value="" disabled>{placeholder}</option>}
       {options?.map((o) => {
@@ -348,7 +348,7 @@ export function WireInput({ placeholder, value, onChange, disabled }: { placehol
       onChange={onChange ? (e) => onChange(e.target.value) : undefined}
       placeholder={placeholder}
       disabled={disabled}
-      className={cn("w-full h-9 px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-800 dark:text-zinc-200 text-sm outline-none placeholder:text-zinc-400 hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all", disabled && "opacity-50 cursor-not-allowed", readOnly && !disabled && "bg-zinc-100 dark:bg-zinc-800/80 text-zinc-500 dark:text-zinc-400 cursor-default border-transparent dark:border-transparent")}
+      className={cn("w-full h-9 px-3 py-2 rounded-lg border border-line-control bg-surface-input text-fg-heading text-sm outline-none placeholder:text-fg-muted hover:border-line-strong focus:border-focus-ring focus:ring-2 focus:ring-focus-ring-alpha transition-all", disabled && "opacity-50 cursor-not-allowed", readOnly && !disabled && "bg-surface-sunken text-fg-muted cursor-default border-transparent")}
     />
   );
 }
@@ -367,14 +367,14 @@ export function ResourceBar({
 }) {
   const pct = Math.round((value / max) * 100);
   const color =
-    pct >= 90 ? "bg-red-500" : pct >= 70 ? "bg-amber-500" : "bg-emerald-500";
+    pct >= 90 ? "bg-danger-solid" : pct >= 70 ? "bg-warn-solid" : "bg-ok-solid";
   return (
     <div className="flex items-center gap-3">
-      <span className="text-sm text-zinc-400 w-24 flex-none truncate">{label}</span>
-      <div className="flex-1 h-1.5 rounded-full bg-zinc-200 dark:bg-zinc-700 overflow-hidden">
+      <span className="text-sm text-fg-muted w-24 flex-none truncate">{label}</span>
+      <div className="flex-1 h-1.5 rounded-full bg-surface-raised overflow-hidden">
         <div className={cn("h-full rounded-full", color)} style={{ width: `${pct}%` }} />
       </div>
-      <span className="text-sm text-zinc-400 w-28 text-right flex-none whitespace-nowrap">
+      <span className="text-sm text-fg-muted w-28 text-right flex-none whitespace-nowrap">
         {unit ? `${value} / ${max} ${unit}` : `${pct}%`}
       </span>
     </div>
@@ -395,9 +395,9 @@ export function PageHeader({
     <div className="flex items-start justify-between mb-6">
       <div>
         <div className="flex items-center gap-3 mb-1">
-          <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-50 tracking-tight">{title}</h1>
+          <h1 className="text-xl font-bold text-fg tracking-tight">{title}</h1>
         </div>
-        {subtitle && <p className="text-sm text-zinc-500 dark:text-zinc-400">{subtitle}</p>}
+        {subtitle && <p className="text-sm text-fg-muted">{subtitle}</p>}
       </div>
       {action}
     </div>
@@ -408,7 +408,7 @@ export function PageHeader({
 // ─── Sticky Control Bar ───────────────────────────────────────────────────────
 export function StickyControlBar({ children }: { children: React.ReactNode }) {
   return (
-    <div className="sticky bottom-0 mt-auto border-t border-zinc-200 dark:border-zinc-800 bg-white/95 dark:bg-zinc-950/95 backdrop-blur px-6 h-12 flex items-center justify-between gap-4">
+    <div className="sticky bottom-0 mt-auto border-t border-line bg-surface-chrome/95 backdrop-blur px-6 h-12 flex items-center justify-between gap-4">
       {children}
     </div>
   );
@@ -437,7 +437,7 @@ export function WireToggle({
         aria-checked={on}
         className={cn(
           "w-8 h-4 rounded-full relative transition-colors",
-          on ? "bg-emerald-500" : "bg-zinc-300 dark:bg-zinc-700"
+          on ? "bg-ok-solid" : "bg-surface-raised"
         )}
         onClick={toggle}
       >
@@ -448,7 +448,7 @@ export function WireToggle({
           )}
         />
       </button>
-      {label && <span className="text-sm font-medium text-zinc-600 dark:text-zinc-300 select-none">{label}</span>}
+      {label && <span className="text-sm font-medium text-fg-body select-none">{label}</span>}
     </label>
   );
 }
@@ -464,7 +464,7 @@ export function ModeToggle({
   onChange?: (v: string) => void;
 }) {
   return (
-    <div className="inline-flex gap-1 bg-zinc-100 dark:bg-zinc-800/50 p-1 rounded-lg">
+    <div className="inline-flex gap-1 bg-surface-sunken p-1 rounded-lg">
       {options.map((o) => (
         <button
           type="button"
@@ -475,8 +475,8 @@ export function ModeToggle({
           className={cn(
             "px-3.5 py-1.5 rounded-md text-sm font-medium transition-all cursor-pointer",
             value === o
-              ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-sm"
-              : "text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
+              ? "bg-surface-elevated text-fg shadow-sm"
+              : "text-fg-muted hover:text-fg-body"
           )}
         >
           {o}
@@ -505,7 +505,7 @@ export function SubTabs({
   className?: string;
 }) {
   return (
-    <div className={cn("flex gap-1 bg-zinc-100 dark:bg-zinc-800/50 p-1 rounded-lg w-fit", className)}>
+    <div className={cn("flex gap-1 bg-surface-sunken p-1 rounded-lg w-fit", className)}>
       {tabs.map((tab) => (
         <button
           type="button"
@@ -514,8 +514,8 @@ export function SubTabs({
           className={cn(
             "flex items-center gap-1.5 px-3.5 py-1.5 rounded-md text-sm font-medium transition-all cursor-pointer",
             activeKey === tab.key
-              ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-sm"
-              : "text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
+              ? "bg-surface-elevated text-fg shadow-sm"
+              : "text-fg-muted hover:text-fg-body"
           )}
         >
           {tab.icon}
@@ -541,7 +541,7 @@ export function EmptyState({
   return (
     <div className="flex flex-col items-center justify-center py-8 gap-3 text-center">
       {icon && <div className="text-3xl opacity-30">{icon}</div>}
-      <p className={cn("text-sm text-zinc-400 max-w-xs", messageClassName)}>{message}</p>
+      <p className={cn("text-sm text-fg-muted max-w-xs", messageClassName)}>{message}</p>
       {action}
     </div>
   );
@@ -562,7 +562,7 @@ export function RefreshButton({
       onClick={onClick}
       title={title}
       aria-label={title}
-      className="p-1.5 rounded-md text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all cursor-pointer"
+      className="p-1.5 rounded-md text-fg-muted hover:text-fg-body hover:bg-surface-hover transition-all cursor-pointer"
     >
       <RefreshCw size={15} />
     </button>
@@ -589,10 +589,10 @@ export function StepperNav({ currentPath }: { currentPath: string }) {
   const progress = 5 + (idx / (PIPELINE_STEPS.length - 1)) * 95;
 
   return (
-    <div className="border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950">
-      <div className="grid grid-cols-[1fr_auto_1fr] items-center px-6 py-2 text-sm text-zinc-400">
+    <div className="border-b border-line bg-surface-chrome">
+      <div className="grid grid-cols-[1fr_auto_1fr] items-center px-6 py-2 text-sm text-fg-muted">
         {prev ? (
-          <Link to={prev.path} className="inline-flex items-center gap-1 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors">
+          <Link to={prev.path} className="inline-flex items-center gap-1 hover:text-fg-heading transition-colors">
             ← {prev.label}
           </Link>
         ) : <div aria-hidden="true" />}
@@ -604,15 +604,15 @@ export function StepperNav({ currentPath }: { currentPath: string }) {
             return (
               <React.Fragment key={step.path}>
                 {isNeighbor && i === idx - 1 && (
-                  <Link to={step.path} className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors">{step.label}</Link>
+                  <Link to={step.path} className="text-fg-muted hover:text-fg-body transition-colors">{step.label}</Link>
                 )}
-                {isNeighbor && i === idx - 1 && <span className="text-zinc-300 dark:text-zinc-600">›</span>}
+                {isNeighbor && i === idx - 1 && <span className="text-fg-disabled">›</span>}
                 {isCurrent && (
-                  <span className="text-zinc-700 dark:text-zinc-200 font-medium">{step.label}</span>
+                  <span className="text-fg-heading font-medium">{step.label}</span>
                 )}
-                {isNeighbor && i === idx + 1 && <span className="text-zinc-300 dark:text-zinc-600">›</span>}
+                {isNeighbor && i === idx + 1 && <span className="text-fg-disabled">›</span>}
                 {isNeighbor && i === idx + 1 && (
-                  <Link to={step.path} className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors">{step.label}</Link>
+                  <Link to={step.path} className="text-fg-muted hover:text-fg-body transition-colors">{step.label}</Link>
                 )}
               </React.Fragment>
             );
@@ -620,16 +620,16 @@ export function StepperNav({ currentPath }: { currentPath: string }) {
         </div>
 
         {next ? (
-          <Link to={next.path} className="justify-self-end inline-flex items-center gap-1 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors">
+          <Link to={next.path} className="justify-self-end inline-flex items-center gap-1 hover:text-fg-heading transition-colors">
             {next.label} →
           </Link>
         ) : <div aria-hidden="true" />}
       </div>
 
       {/* 2px green progress bar */}
-      <div className="h-0.5 w-full bg-zinc-200 dark:bg-zinc-800">
+      <div className="h-0.5 w-full bg-line">
         <div
-          className="h-full bg-emerald-500 transition-all duration-300"
+          className="h-full bg-ok-solid transition-all duration-300"
           style={{ width: `${progress}%` }}
         />
       </div>

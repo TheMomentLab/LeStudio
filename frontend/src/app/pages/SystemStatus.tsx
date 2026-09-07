@@ -281,12 +281,12 @@ export function SystemStatus() {
 // ─── History Row ─────────────────────────────────────────────────────────────
 
 const CATEGORY_COLORS: Record<HistoryCategory, string> = {
-  eval: "bg-blue-400",
-  train: "bg-purple-400",
-  teleop: "bg-emerald-400",
-  record: "bg-amber-400",
-  motor: "bg-zinc-400",
-  other: "bg-zinc-400",
+  eval: "bg-category-1",
+  train: "bg-category-2",
+  teleop: "bg-category-3",
+  record: "bg-category-4",
+  motor: "bg-category-5",
+  other: "bg-category-5",
 };
 
 const CATEGORY_LABELS: Record<HistoryCategory, string> = {

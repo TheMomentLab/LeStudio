@@ -67,6 +67,14 @@ jobs:
         working-directory: frontend
         run: npm run lint
 
+      - name: Typecheck frontend
+        working-directory: frontend
+        run: npm run typecheck
+
+      - name: Audit design system debt
+        working-directory: frontend
+        run: npm run design:audit
+
       - name: Test frontend
         working-directory: frontend
         run: npm test -- --run

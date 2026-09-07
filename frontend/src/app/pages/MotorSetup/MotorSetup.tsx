@@ -1101,7 +1101,7 @@ export function MotorSetup() {
                 onSetCalibBiLeftPort={setCalibBiLeftPort}
                 onSetCalibBiRightPort={setCalibBiRightPort}
                 onSetCalibBiId={setCalibBiId}
-                onSetCalibFileScope={setCalibFileScope}
+                onSetCalibFileScope={(value) => { setCalibFileScope(value === "Bi" ? "Bi" : "Single"); }}
                 onHandleCalibrationStart={() => { void handleCalibrationStart(); }}
                 onHandleCalibrationStop={() => { void handleCalibrationStop(); }}
                 onHandleCalibrationDelete={(file) => { void handleCalibrationDelete(file); }}

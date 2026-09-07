@@ -337,7 +337,7 @@ export function VideoPlayerPanel({
             const src = `/api/datasets/${encodeURIComponent(parsedId.user)}/${encodeURIComponent(parsedId.repo)}/videos/${encodeURIComponent(cam)}/${encodeURIComponent(chunk)}/${encodeURIComponent(file)}`;
             return (
               <div key={cam} className="relative bg-zinc-800 rounded border border-zinc-700 overflow-hidden aspect-video">
-                <div className="absolute top-2 left-2 z-10 px-1.5 py-0.5 bg-black/50 backdrop-blur rounded text-[10px] font-mono text-zinc-300">
+                <div className="absolute top-2 left-2 z-10 px-1.5 py-0.5 bg-black/50 backdrop-blur rounded text-3xs font-mono text-fg-inverted">
                   {cam}
                 </div>
                 <video

@@ -53,9 +53,9 @@ export function ColabPanel({
           )}
 
           <div className="flex items-center gap-3 flex-wrap">
-            <span className="flex-none size-5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold grid place-items-center leading-[0]">1</span>
+            <span className="flex-none size-5 rounded-full bg-ok-bg text-ok text-3xs font-bold grid place-items-center leading-[0]">1</span>
             <p className="text-sm text-zinc-600 dark:text-zinc-300 font-medium">Upload dataset to HF Hub</p>
-            <code className="text-[11px] text-zinc-500 dark:text-zinc-400 bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded truncate">
+            <code className="text-2xs text-fg-muted bg-surface-sunken px-1.5 py-0.5 rounded truncate">
               {colabRepoId || selectedRepoId || "lerobot-user/pick_cube"}
             </code>
             <button
@@ -81,7 +81,7 @@ export function ColabPanel({
           </div>
 
           <div className="flex items-start gap-3">
-            <span className="flex-none size-5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold grid place-items-center leading-[0] mt-0.5">2</span>
+            <span className="flex-none size-5 rounded-full bg-ok-bg text-ok text-3xs font-bold grid place-items-center leading-[0] mt-0.5">2</span>
             <div className="flex-1 min-w-0">
               <p className="text-sm text-zinc-600 dark:text-zinc-300 font-medium mb-1.5">Paste config snippet into Colab</p>
               <div className="relative rounded border border-zinc-200 dark:border-zinc-700 bg-zinc-900 overflow-hidden">
@@ -107,7 +107,7 @@ export function ColabPanel({
           </div>
 
           <div className="flex items-center gap-3 flex-wrap">
-            <span className="flex-none size-5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold grid place-items-center leading-[0]">3</span>
+            <span className="flex-none size-5 rounded-full bg-ok-bg text-ok text-3xs font-bold grid place-items-center leading-[0]">3</span>
             <p className="text-sm text-zinc-600 dark:text-zinc-300 font-medium">Open and run Colab notebook</p>
             <button
               type="button"

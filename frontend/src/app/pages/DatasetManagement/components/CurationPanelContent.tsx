@@ -95,7 +95,7 @@ export function CurationPanelContent({
   const addToast = useLeStudioStore((s) => s.addToast);
   const hfUsername = useLeStudioStore((s) => s.hfUsername);
   const parsed = parseDatasetId(datasetId);
-  const defaultRepoId = `${hfUsername ?? "lerobot-user"}/${parsed.repo}_curated_v1`;
+  const defaultRepoId = `${hfUsername ?? "lerobot-user"}/${parsed?.repo ?? "dataset"}_curated_v1`;
   const [deriveMode, setDeriveMode] = useState<"filter" | "good" | "exclude_bad">("good");
   const [newRepoId, setNewRepoId] = useState(defaultRepoId);
   const [jobId, setJobId] = useState("");
@@ -136,6 +136,10 @@ export function CurationPanelContent({
       const target = newRepoId.trim();
       if (!target) {
         addToast("Enter a new Repo ID", "error");
+        return;
+      }
+      if (!parsed) {
+        addToast(`Could not parse dataset id "${datasetId}"`, "error");
         return;
       }
       const res = await apiPost<DeriveStartResponse>(

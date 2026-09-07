@@ -33,11 +33,11 @@ interface ArmPairSelectorProps {
 
 function CalibStatus({ exists, optional }: { exists: boolean; optional: boolean }) {
   if (!exists && optional) {
-    return <span className="ml-1 text-[11px] text-amber-600 dark:text-amber-400">optional</span>;
+    return <span className="ml-1 text-2xs text-warn">optional</span>;
   }
   return exists
-    ? <CheckCircle2 size={14} className="text-emerald-500 inline-block ml-1" />
-    : <XCircle size={14} className="text-red-400 inline-block ml-1" />;
+    ? <CheckCircle2 size={14} className="text-ok inline-block ml-1" />
+    : <XCircle size={14} className="text-danger inline-block ml-1" />;
 }
 
 function ArmDetail({
@@ -53,8 +53,8 @@ function ArmDetail({
 }) {
   return (
     <div>
-      <span className="text-zinc-400">{label}:</span>{" "}
-      <span className="font-mono text-zinc-600 dark:text-zinc-300">/dev/{symlink}</span>
+      <span className="text-fg-muted">{label}:</span>{" "}
+      <span className="font-mono text-fg-body">/dev/{symlink}</span>
       <CalibStatus exists={calibrated} optional={optional} />
     </div>
   );
@@ -144,12 +144,12 @@ export function ArmPairSelector({
 
         {/* Details */}
         {(f || l) && (
-          <div className="rounded-md border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/30 px-4 py-2">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1 text-xs text-zinc-500 dark:text-zinc-400">
+          <div className="rounded-md border border-line bg-surface-muted px-4 py-2">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1 text-xs text-fg-muted">
               {f && <ArmDetail label="Follower" symlink={f.symlink} calibrated={f.calibrationExists} optional={getCalibrationUiMode(f.calibrationType, typeCatalog) === "optional"} />}
               {l && <ArmDetail label="Leader" symlink={l.symlink} calibrated={l.calibrationExists} optional={getCalibrationUiMode(l.calibrationType, typeCatalog) === "optional"} />}
             </div>
-            {omxNote && <div className="mt-2 text-xs text-amber-600 dark:text-amber-400">{omxNote}</div>}
+            {omxNote && <div className="mt-2 text-xs text-warn">{omxNote}</div>}
           </div>
         )}
       </div>
@@ -211,20 +211,20 @@ export function ArmPairSelector({
       </div>
 
       {/* Details */}
-      <div className="rounded-md border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/30 px-4 py-3">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1 text-xs text-zinc-500 dark:text-zinc-400">
+      <div className="rounded-md border border-line bg-surface-muted px-4 py-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1 text-xs text-fg-muted">
           <div className="flex flex-col gap-0.5">
-            <span className="text-zinc-400 font-medium">Left</span>
+            <span className="text-fg-muted font-medium">Left</span>
             {lf && <ArmDetail label="Follower" symlink={lf.symlink} calibrated={lf.calibrationExists} optional={getCalibrationUiMode(lf.calibrationType, typeCatalog) === "optional"} />}
             {ll && <ArmDetail label="Leader" symlink={ll.symlink} calibrated={ll.calibrationExists} optional={getCalibrationUiMode(ll.calibrationType, typeCatalog) === "optional"} />}
           </div>
           <div className="flex flex-col gap-0.5">
-            <span className="text-zinc-400 font-medium">Right</span>
+            <span className="text-fg-muted font-medium">Right</span>
             {rf && <ArmDetail label="Follower" symlink={rf.symlink} calibrated={rf.calibrationExists} optional={getCalibrationUiMode(rf.calibrationType, typeCatalog) === "optional"} />}
             {rl && <ArmDetail label="Leader" symlink={rl.symlink} calibrated={rl.calibrationExists} optional={getCalibrationUiMode(rl.calibrationType, typeCatalog) === "optional"} />}
           </div>
         </div>
-        {omxNote && <div className="mt-2 text-xs text-amber-600 dark:text-amber-400">{omxNote}</div>}
+        {omxNote && <div className="mt-2 text-xs text-warn">{omxNote}</div>}
       </div>
     </div>
   );

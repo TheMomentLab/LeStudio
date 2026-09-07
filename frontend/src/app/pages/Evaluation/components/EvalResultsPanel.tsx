@@ -22,6 +22,7 @@ import {
 } from "recharts";
 import type { EpisodeResult } from "../../../hooks/useEvalProgress";
 import { RewardTooltip } from "./RewardTooltip";
+import { useChartTokens } from "../../../hooks/useChartTokens";
 
 export interface EvalResultsPanelProps {
   progressStatus: "idle" | "starting" | "running" | "stopped" | "completed" | "error";
@@ -54,6 +55,7 @@ export function EvalResultsPanel({
   onQuickRerun,
   onStartNewEvaluation,
 }: EvalResultsPanelProps) {
+  const chart = useChartTokens();
   return (
     <div className="flex flex-col gap-4">
       <div
@@ -197,17 +199,17 @@ export function EvalResultsPanel({
               >
                 <CartesianGrid
                   strokeDasharray="3 3"
-                  stroke="rgba(63,63,70,0.5)"
+                  stroke={chart["chart-grid"]}
                   vertical={false}
                 />
                 <XAxis
                   dataKey="ep"
-                  tick={{ fontSize: 10, fill: "#71717a" }}
+                  tick={{ fontSize: 10, fill: chart["chart-axis"] }}
                   tickLine={false}
                   axisLine={false}
                 />
                 <YAxis
-                  tick={{ fontSize: 10, fill: "#71717a" }}
+                  tick={{ fontSize: 10, fill: chart["chart-axis"] }}
                   tickLine={false}
                   axisLine={false}
                   domain={[0, 1]}
@@ -217,7 +219,7 @@ export function EvalResultsPanel({
                 <Tooltip content={<RewardTooltip />} />
                 <ReferenceLine
                   y={0.6}
-                  stroke="#6b7280"
+                  stroke={chart["fg-muted"]}
                   strokeDasharray="4 4"
                   strokeWidth={1}
                 />
@@ -227,10 +229,10 @@ export function EvalResultsPanel({
                       key={r.ep}
                       fill={
                         r.reward >= 0.7
-                          ? "#10b981"
+                          ? chart["ok-solid"]
                           : r.reward >= 0.5
-                            ? "#f59e0b"
-                            : "#ef4444"
+                            ? chart["warn-solid"]
+                            : chart["danger-solid"]
                       }
                       fillOpacity={r.ep === bestEp?.ep ? 1 : 0.75}
                     />

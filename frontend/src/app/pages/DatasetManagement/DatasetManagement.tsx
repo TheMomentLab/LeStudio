@@ -94,7 +94,6 @@ export function DatasetManagement() {
 
   const selectDataset = (ds: LocalDataset) => {
     setSelectedDataset(ds);
-    setQualityData(null);
     setPushJobId("");
     setPushStatus(null);
     setDatasetTags({});

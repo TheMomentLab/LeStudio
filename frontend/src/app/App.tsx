@@ -64,9 +64,7 @@ export default function App() {
 
   return (
     <ThemeProvider>
-      <RouterProvider
-        router={router}
-      />
+      <RouterProvider router={router} />
       <Toaster position="top-right" closeButton richColors />
     </ThemeProvider>
   );

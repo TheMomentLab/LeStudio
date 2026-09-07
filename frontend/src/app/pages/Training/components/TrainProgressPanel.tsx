@@ -5,6 +5,7 @@ import { StatusBadge } from "../../../components/wireframe";
 import { cn } from "../../../components/ui/utils";
 import { CustomTooltip } from "./CustomTooltip";
 import { TrainOomBanner } from "./TrainOomBanner";
+import { useChartTokens } from "../../../hooks/useChartTokens";
 
 interface TrainProgressPanelProps {
   currentStep: number;
@@ -35,6 +36,7 @@ export function TrainProgressPanel({
   oomDetected,
   onRetryAfterOom,
 }: TrainProgressPanelProps) {
+  const chart = useChartTokens();
   return (
     <div className="flex flex-col gap-4">
       <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden">
@@ -99,16 +101,16 @@ export function TrainProgressPanel({
           <div className="h-64 p-3">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={lossData} margin={{ top: 8, right: 12, bottom: 4, left: -8 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(63,63,70,0.5)" vertical={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke={chart["chart-grid"]} vertical={false} />
                 <XAxis
                   dataKey="step"
-                  tick={{ fontSize: 10, fill: "#71717a" }}
+                  tick={{ fontSize: 10, fill: chart["chart-axis"] }}
                   tickLine={false}
                   axisLine={false}
                   tickFormatter={(v) => v >= 1000 ? `${(v / 1000).toFixed(0)}K` : String(v)}
                 />
                 <YAxis
-                  tick={{ fontSize: 10, fill: "#71717a" }}
+                  tick={{ fontSize: 10, fill: chart["chart-axis"] }}
                   tickLine={false}
                   axisLine={false}
                   tickFormatter={(v) => v.toFixed(3)}
@@ -118,7 +120,7 @@ export function TrainProgressPanel({
                 <Line
                   type="monotone"
                   dataKey="loss"
-                  stroke="#71717a"
+                  stroke={chart["chart-series-1"]}
                   strokeWidth={2}
                   dot={false}
                   isAnimationActive={false}
