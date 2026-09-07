@@ -301,16 +301,16 @@ export function IdentifyArmModal({ open, arms, onClose, onComplete }: IdentifyAr
       />
 
       {/* Modal panel */}
-      <div className="relative w-full max-w-lg mx-4 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 shadow-2xl">
+      <div className="relative w-full max-w-lg mx-4 rounded-xl border border-line-control bg-surface shadow-2xl">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-200 dark:border-zinc-800">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-line">
           <div className="flex items-center gap-2">
-            <Zap size={16} className="text-zinc-500" />
-            <h2 id="identify-arm-modal-title" className="text-base font-semibold text-zinc-900 dark:text-zinc-100">Identify Arm</h2>
+            <Zap size={16} className="text-fg-muted" />
+            <h2 id="identify-arm-modal-title" className="text-base font-semibold text-fg">Identify Arm</h2>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-md text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all cursor-pointer"
+            className="p-1.5 rounded-md text-fg-muted hover:text-fg-body hover:bg-surface-hover transition-all cursor-pointer"
             aria-label="Close"
           >
             <X size={16} />
@@ -321,15 +321,15 @@ export function IdentifyArmModal({ open, arms, onClose, onComplete }: IdentifyAr
         <div className="px-5 py-5">
           {step === "waiting" && (
             <div className="flex flex-col gap-4">
-              <div className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border ${missingSerial ? "border-emerald-500/30 bg-emerald-500/5" : "border-amber-500/30 bg-amber-500/5"}`}>
-                <span className={`size-2 rounded-full animate-pulse ${missingSerial ? "bg-emerald-400" : "bg-amber-400"}`} />
-                <span className={`text-sm ${missingSerial ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"}`}>
+              <div className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border ${missingSerial ? "border-ok-line bg-ok-bg" : "border-warn-line bg-warn-bg"}`}>
+                <span className={`size-2 rounded-full animate-pulse ${missingSerial ? "bg-ok-solid" : "bg-warn-solid"}`} />
+                <span className={`text-sm ${missingSerial ? "text-ok" : "text-warn"}`}>
                   {missingSerial
                     ? `Disconnected arm (${missingSerial}) detected. Reconnect it now.`
                     : "Disconnect one arm from USB, then reconnect it to identify."}
                 </span>
               </div>
-              <p className="text-xs text-zinc-400">
+              <p className="text-xs text-fg-muted">
                 Polling every 1.5s for device changes. Only disconnect/reconnect one arm at a time.
               </p>
             </div>
@@ -337,14 +337,14 @@ export function IdentifyArmModal({ open, arms, onClose, onComplete }: IdentifyAr
 
           {step === "found" && (
             <div className="flex flex-col gap-4">
-              <div className="px-3 py-2.5 rounded-lg border border-emerald-500/30 bg-emerald-500/5">
-                <p className="text-sm text-emerald-600 dark:text-emerald-400 mb-1">Arm detected successfully.</p>
+              <div className="px-3 py-2.5 rounded-lg border border-ok-line bg-ok-bg">
+                <p className="text-sm text-ok mb-1">Arm detected successfully.</p>
                 {identifySerial && (
-                  <p className="text-xs text-emerald-500/80 font-mono">Serial: {identifySerial}</p>
+                  <p className="text-xs text-ok/80 font-mono">Serial: {identifySerial}</p>
                 )}
               </div>
               <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium text-zinc-600 dark:text-zinc-300">Assign Role</label>
+                <label className="text-sm font-medium text-fg-body">Assign Role</label>
                 <WireSelect
                   value={identifyRole}
                   options={ARM_ROLE_OPTIONS}
@@ -356,21 +356,21 @@ export function IdentifyArmModal({ open, arms, onClose, onComplete }: IdentifyAr
 
           {step === "conflict" && (
             <div className="flex flex-col gap-4">
-              <div className="px-3 py-2.5 rounded-lg border border-red-500/30 bg-red-500/5">
-                <p className="text-sm text-red-600 dark:text-red-400 mb-1">Multiple arm changes detected.</p>
-                <p className="text-xs text-red-500/80">Reconnect all arms, then retry with only one arm disconnected.</p>
+              <div className="px-3 py-2.5 rounded-lg border border-danger-line bg-danger-bg">
+                <p className="text-sm text-danger mb-1">Multiple arm changes detected.</p>
+                <p className="text-xs text-danger/80">Reconnect all arms, then retry with only one arm disconnected.</p>
               </div>
             </div>
           )}
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between px-5 py-4 border-t border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/30 rounded-b-xl">
+        <div className="flex items-center justify-between px-5 py-4 border-t border-line bg-surface-muted rounded-b-xl">
           <div className="flex items-center gap-2">
             {import.meta.env.DEV && step === "waiting" && (
               <button
                 onClick={handleSimulate}
-                className="text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 cursor-pointer underline"
+                className="text-xs text-fg-muted hover:text-fg-body cursor-pointer underline"
               >
                 (Dev: simulate)
               </button>

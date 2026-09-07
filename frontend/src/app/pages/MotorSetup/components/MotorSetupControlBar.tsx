@@ -5,8 +5,8 @@ import { StatusBadge, StickyControlBar } from "../../../components/wireframe";
 
 // Every page that runs a hardware/ML process puts its status + primary action in
 // the bottom StickyControlBar (Teleop, Record, Train, Eval). Motor Setup now does
-// the same for its three process tabs. The Setup wizard keeps its per-step
-// buttons because it is a guided sequence, not a single start/stop.
+// the same for all four tabs. The Setup wizard keeps its per-step buttons
+// (Next Motor, Retry) in the panel; only Start / Stop live in the bar.
 //
 // Tone rule (DESIGN_GUIDE §5.2): a button that *starts a process* is
 // primary/success; everything else primary/neutral or secondary.
@@ -30,6 +30,13 @@ type MotorSetupControlBarProps = {
   onMonConnect: () => void;
   onMonDisconnect: () => void;
   onEmergencyStop: () => void;
+  // setup wizard
+  wizardRunning: boolean;
+  wizardAllDone: boolean;
+  wizardProcessActive: boolean;
+  setupStartDisabled: boolean;
+  onSetupStart: () => void;
+  onStopWizard: () => void;
   // calibration
   calibrateRunning: boolean;
   calibStartDisabled: boolean;
@@ -40,6 +47,7 @@ type MotorSetupControlBarProps = {
 export function MotorSetupControlBar(props: MotorSetupControlBarProps) {
   const { tab } = props;
   if (tab === "mapping") return <MappingBar {...props} />;
+  if (tab === "setup") return <SetupBar {...props} />;
   if (tab === "monitor") return <MonitorBar {...props} />;
   if (tab === "calibration") return <CalibrationBar {...props} />;
   return null;
@@ -84,6 +92,56 @@ function MappingBar({
           <Zap size={12} className="inline mr-1.5" />
           Identify Arm
         </button>
+      </div>
+    </StickyControlBar>
+  );
+}
+
+function SetupBar({
+  armCount,
+  wizardRunning,
+  wizardAllDone,
+  wizardProcessActive,
+  setupStartDisabled,
+  onSetupStart,
+  onStopWizard,
+}: MotorSetupControlBarProps) {
+  if (wizardAllDone) return null;
+  const status = wizardRunning ? (wizardProcessActive ? "running" : "warning") : setupStartDisabled ? "blocked" : "ready";
+  const text = wizardRunning
+    ? wizardProcessActive
+      ? "Motor setup running — follow the steps above"
+      : "Setup process stopped — check the console"
+    : armCount === 0 || setupStartDisabled
+      ? "Resolve the blockers above to start"
+      : "Motor setup ready";
+  return (
+    <StickyControlBar>
+      <div className="flex items-center gap-2 min-w-0">
+        <StatusBadge status={status} pulse={wizardRunning && wizardProcessActive} />
+        <span className="text-sm text-fg-muted truncate">{text}</span>
+      </div>
+      <div className="flex items-center gap-2">
+        {wizardRunning ? (
+          wizardProcessActive && (
+            <button
+              type="button"
+              onClick={onStopWizard}
+              className={buttonStyles({ variant: "secondary", tone: "danger", size: "sm", className: "whitespace-nowrap gap-1.5" })}
+            >
+              <Square size={11} className="fill-current" /> Stop Process
+            </button>
+          )
+        ) : (
+          <button
+            type="button"
+            onClick={onSetupStart}
+            disabled={setupStartDisabled}
+            className={buttonStyles({ variant: "primary", tone: "success", size: "sm", className: "whitespace-nowrap gap-1.5" })}
+          >
+            <Play size={13} className="fill-current" /> Start Motor Setup
+          </button>
+        )}
       </div>
     </StickyControlBar>
   );

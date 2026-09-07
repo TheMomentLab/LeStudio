@@ -1023,12 +1023,10 @@ export function MotorSetup() {
                 wizardError={wizardError}
                 onSetSetupArmType={setSetupArmType}
                 onSetSetupPort={setSetupPort}
-                onHandleSetupStart={() => { void handleSetupStart(); }}
                 onWizardPressEnter={() => { void wizardPressEnter(); }}
                 onWizardRetry={wizardRetry}
                 onWizardRestart={() => { void restartWizard(); }}
                 onWizardSimulateError={wizardSimulateError}
-                onStopWizard={() => { void handleSetupStop(); }}
                 onResetWizard={resetWizardState}
                 onExitWizard={exitWizard}
                 onSetMotorTab={setMotorTab}
@@ -1117,6 +1115,12 @@ export function MotorSetup() {
         onMonConnect={() => { void handleMonConnect(); }}
         onMonDisconnect={() => { void handleMonDisconnect(); }}
         onEmergencyStop={() => { void handleEmergencyStop(); }}
+        wizardRunning={wizardRunning}
+        wizardAllDone={wizardAllDone}
+        wizardProcessActive={setupProcessActive}
+        setupStartDisabled={noPort || hasConflict || arms.length === 0}
+        onSetupStart={() => { void handleSetupStart(); }}
+        onStopWizard={() => { void handleSetupStop(); }}
         calibrateRunning={calibrateRunning}
         calibStartDisabled={calibTypeMismatch || arms.length === 0 || (calibMode === "Single Arm" && Boolean(calibFileNameError))}
         onCalibrationStart={() => { void handleCalibrationStart(); }}

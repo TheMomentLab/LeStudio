@@ -82,12 +82,12 @@ export function CalibrationTabPanel({
   if (!hasMappedArms) {
     return (
       <div className="flex flex-col items-center gap-4 py-12 text-center">
-        <div className="size-12 rounded-full bg-amber-500/10 flex items-center justify-center">
-          <Unplug size={24} className="text-amber-500" />
+        <div className="size-12 rounded-full bg-warn-bg flex items-center justify-center">
+          <Unplug size={24} className="text-warn" />
         </div>
         <div className="flex flex-col gap-1">
-          <h3 className="text-base font-semibold text-zinc-800 dark:text-zinc-200">Arm Mapping Required</h3>
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">
+          <h3 className="text-base font-semibold text-fg-heading">Arm Mapping Required</h3>
+          <p className="text-sm text-fg-muted">
             {arms.length === 0
               ? "No arms detected. Connect USB devices and refresh."
               : "Go to the Mapping tab to assign follower/leader roles before calibrating."}
@@ -116,10 +116,10 @@ export function CalibrationTabPanel({
           ) : (
             <div className="flex flex-col gap-2">
               {calibFiles.map((file) => (
-                <div key={`${file.id}-${file.guessed_type ?? "unknown"}`} className="group flex items-center gap-2 p-2 rounded border border-zinc-200 dark:border-zinc-700">
+                <div key={`${file.id}-${file.guessed_type ?? "unknown"}`} className="group flex items-center gap-2 p-2 rounded border border-line-control">
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm text-zinc-700 dark:text-zinc-300 font-mono truncate">{file.id}</div>
-                      <div className="text-xs text-zinc-400 truncate">
+                      <div className="text-sm text-fg-body font-mono truncate">{file.id}</div>
+                      <div className="text-xs text-fg-muted truncate">
                         {file.shared_profile
                           ? `${(file.guessed_type ?? "unknown")} - shared left/right pair - ${(file.modified ?? "-")}`
                           : `${(file.guessed_type ?? "unknown")} - ${(file.modified ?? "-")}`}
@@ -127,7 +127,7 @@ export function CalibrationTabPanel({
                     </div>
                   <button
                     onClick={(e) => { e.stopPropagation(); onHandleCalibrationDelete(file); }}
-                    className="p-1 text-zinc-300 dark:text-zinc-600 hover:text-red-400 cursor-pointer"
+                    className="p-1 text-fg-disabled hover:text-danger cursor-pointer"
                   >
                     <Trash2 size={12} />
                   </button>
@@ -142,7 +142,7 @@ export function CalibrationTabPanel({
             {calibMode === "Single Arm" ? (
               <>
                 {calibTypeMismatch && (
-                  <div className="flex items-center gap-1.5 text-sm text-amber-400 px-1">
+                  <div className="flex items-center gap-1.5 text-sm text-warn px-1">
                     <AlertTriangle size={12} className="flex-none" />
                     Type and port do not match
                   </div>
@@ -159,7 +159,7 @@ export function CalibrationTabPanel({
                     disabled={arms.length === 0}
                   />
                 </FieldRow>
-                <div className="pt-1 border-t border-zinc-200 dark:border-zinc-700/60" />
+                <div className="pt-1 border-t border-line-control" />
                 <FieldRow label="Calibration File Name" align="start">
                   <div className="flex flex-col gap-1">
                     <WireInput
@@ -169,8 +169,8 @@ export function CalibrationTabPanel({
                       placeholder="e.g. follower_arm_1"
                     />
                     {calibFileNameError
-                      ? <p className="text-xs text-red-400">{calibFileNameError}</p>
-                      : <p className="text-xs text-zinc-400">Auto-generated from selected arm. Re-running updates the same file.</p>}
+                      ? <p className="text-xs text-danger">{calibFileNameError}</p>
+                      : <p className="text-xs text-fg-muted">Auto-generated from selected arm. Re-running updates the same file.</p>}
                   </div>
                 </FieldRow>
               </>
@@ -197,11 +197,11 @@ export function CalibrationTabPanel({
                     disabled={arms.length === 0}
                   />
                 </FieldRow>
-                <div className="pt-1 border-t border-zinc-200 dark:border-zinc-700/60" />
+                <div className="pt-1 border-t border-line-control" />
                 <FieldRow label="Shared Profile ID" align="start">
                   <div className="flex flex-col gap-1">
                     <WireInput value={calibBiId} onChange={calibBiIdAuto ? undefined : onSetCalibBiId} disabled={arms.length === 0} />
-                    <p className="text-xs text-zinc-400">Creates {calibBiId}_left.json and {calibBiId}_right.json.</p>
+                    <p className="text-xs text-fg-muted">Creates {calibBiId}_left.json and {calibBiId}_right.json.</p>
                   </div>
                 </FieldRow>
               </>
@@ -213,16 +213,16 @@ export function CalibrationTabPanel({
       {validation && !validation.ok && (
         <div className="flex flex-col gap-2">
           {validation.errors.length > 0 && (
-            <div className="rounded-lg border border-red-500/30 bg-red-500/5 px-3 py-2">
+            <div className="rounded-lg border border-danger-line bg-danger-bg px-3 py-2">
               <div className="flex items-center gap-1.5 mb-1.5">
-                <CircleAlert size={13} className="text-red-400 flex-none" />
-                <span className="text-sm font-medium text-red-400">
+                <CircleAlert size={13} className="text-danger flex-none" />
+                <span className="text-sm font-medium text-danger">
                   {validation.errors.length} calibration error{validation.errors.length > 1 ? "s" : ""}
                 </span>
               </div>
               <ul className="flex flex-col gap-1 pl-5">
                 {validation.errors.map((issue, i) => (
-                  <li key={`err-${issue.code}-${issue.joint}-${i}`} className="text-xs text-red-400/90 list-disc">
+                  <li key={`err-${issue.code}-${issue.joint}-${i}`} className="text-xs text-danger/90 list-disc">
                     <span className="font-mono">{issue.joint}</span> — {issue.message}
                   </li>
                 ))}
@@ -230,16 +230,16 @@ export function CalibrationTabPanel({
             </div>
           )}
           {validation.warnings.length > 0 && (
-            <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2">
+            <div className="rounded-lg border border-warn-line bg-warn-bg px-3 py-2">
               <div className="flex items-center gap-1.5 mb-1.5">
-                <AlertTriangle size={13} className="text-amber-400 flex-none" />
-                <span className="text-sm font-medium text-amber-400">
+                <AlertTriangle size={13} className="text-warn flex-none" />
+                <span className="text-sm font-medium text-warn">
                   {validation.warnings.length} calibration warning{validation.warnings.length > 1 ? "s" : ""}
                 </span>
               </div>
               <ul className="flex flex-col gap-1 pl-5">
                 {validation.warnings.map((issue, i) => (
-                  <li key={`warn-${issue.code}-${issue.joint}-${i}`} className="text-xs text-amber-400/90 list-disc">
+                  <li key={`warn-${issue.code}-${issue.joint}-${i}`} className="text-xs text-warn/90 list-disc">
                     <span className="font-mono">{issue.joint}</span> — {issue.message}
                   </li>
                 ))}

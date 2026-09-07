@@ -1,6 +1,7 @@
-import { AlertCircle, Check, CornerDownLeft, Loader2, Play, RotateCcw, Square } from "lucide-react";
+import { AlertCircle, Check, CornerDownLeft, Loader2, RotateCcw } from "lucide-react";
 import {
   BlockerCard,
+  Card,
   FieldRow,
   WireSelect,
 } from "../../../components/wireframe";
@@ -27,12 +28,10 @@ interface SetupTabPanelProps {
   wizardError: string | null;
   onSetSetupArmType: (value: string) => void;
   onSetSetupPort: (value: string) => void;
-  onHandleSetupStart: () => void;
   onWizardPressEnter: () => void;
   onWizardRetry: () => void;
   onWizardRestart: () => void;
   onWizardSimulateError: () => void;
-  onStopWizard: () => void;
   onResetWizard: () => void;
   onExitWizard: () => void;
   onSetMotorTab: (tab: string) => void;
@@ -54,12 +53,10 @@ export function SetupTabPanel({
   wizardError,
   onSetSetupArmType,
   onSetSetupPort,
-  onHandleSetupStart,
   onWizardPressEnter,
   onWizardRetry,
   onWizardRestart,
   onWizardSimulateError,
-  onStopWizard,
   onResetWizard,
   onExitWizard,
   onSetMotorTab,
@@ -67,67 +64,45 @@ export function SetupTabPanel({
   return (
     <div className="flex flex-col gap-4">
       {!wizardRunning && !wizardAllDone && (
-        <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex flex-col">
-          <div className="flex items-center justify-between px-4 py-3 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800">
-            <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Setup Configuration</span>
-          </div>
-          <div className="px-4 py-4 flex flex-col gap-3">
-            {(noPort || arms.length === 0) && <BlockerCard title="Setup Blocked" reasons={["Cannot detect port. Check USB connection."]} />}
-            {hasConflict && !noPort && (
-              <BlockerCard
-                title="Setup Blocked"
-                severity="error"
-                reasons={[{ text: "Teleop process is running", to: "/teleop" }]}
-              />
-            )}
-            <FieldRow label="Arm Role Type">
-              <WireSelect
-                value={setupArmType}
-                options={armTypes}
-                onChange={onSetSetupArmType}
-              />
-            </FieldRow>
-            <FieldRow label="Arm Port">
-              <WireSelect
-                placeholder={noPort || arms.length === 0 ? "No port detected" : undefined}
-                value={noPort || arms.length === 0 ? "" : setupPort}
-                options={noPort || arms.length === 0 ? [] : portOptions}
-                onChange={onSetSetupPort}
-              />
-            </FieldRow>
-          </div>
-        </div>
-      )}
-
-      {!wizardRunning && !wizardAllDone && (
-        <div className="flex justify-end">
-          <button
-            onClick={onHandleSetupStart}
-            disabled={noPort || hasConflict || arms.length === 0}
-            className={buttonStyles({
-              variant: "primary",
-              tone: "neutral",
-              className: "h-10 px-5 whitespace-nowrap",
-            })}
-          >
-            <Play size={12} className="inline mr-1.5 fill-current" />
-            Start Motor Setup
-          </button>
-        </div>
+        <Card title="Setup Configuration" bodyClassName="flex flex-col gap-3">
+          {(noPort || arms.length === 0) && <BlockerCard title="Setup Blocked" reasons={["Cannot detect port. Check USB connection."]} />}
+          {hasConflict && !noPort && (
+            <BlockerCard
+              title="Setup Blocked"
+              severity="error"
+              reasons={[{ text: "Teleop process is running", to: "/teleop" }]}
+            />
+          )}
+          <FieldRow label="Arm Role Type">
+            <WireSelect
+              value={setupArmType}
+              options={armTypes}
+              onChange={onSetSetupArmType}
+            />
+          </FieldRow>
+          <FieldRow label="Arm Port">
+            <WireSelect
+              placeholder={noPort || arms.length === 0 ? "No port detected" : undefined}
+              value={noPort || arms.length === 0 ? "" : setupPort}
+              options={noPort || arms.length === 0 ? [] : portOptions}
+              onChange={onSetSetupPort}
+            />
+          </FieldRow>
+        </Card>
       )}
 
       {wizardRunning && (
         <div className="flex flex-col gap-4">
           {/* ── Progress bar ── */}
           <div className="flex items-center gap-2">
-            <span className="text-sm text-zinc-500 flex-none">Progress</span>
-            <div className="flex-1 h-1.5 rounded-full bg-zinc-200 dark:bg-zinc-700 overflow-hidden">
+            <span className="text-sm text-fg-muted flex-none">Progress</span>
+            <div className="flex-1 h-1.5 rounded-full bg-surface-raised overflow-hidden">
               <div
-                className="h-full bg-emerald-500 rounded-full transition-all duration-500"
+                className="h-full bg-ok-solid rounded-full transition-all duration-500"
                 style={{ width: `${(wizardMotorState.filter((s) => s === "done").length / SETUP_MOTORS.length) * 100}%` }}
               />
             </div>
-            <span className="text-sm text-zinc-400 flex-none font-mono">
+            <span className="text-sm text-fg-muted flex-none font-mono">
               {wizardMotorState.filter((s) => s === "done").length} / {SETUP_MOTORS.length}
             </span>
           </div>
@@ -142,16 +117,16 @@ export function SetupTabPanel({
                   key={motor.name}
                   className={cn(
                     "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-mono border transition-colors",
-                    state === "done" && "border-emerald-500/30 bg-emerald-500/10 text-emerald-400",
-                    state === "writing" && "border-emerald-500/30 bg-emerald-500/5 text-emerald-400",
-                    state === "waiting" && isCurrent && "border-emerald-400 bg-emerald-500/10 text-emerald-300 ring-1 ring-emerald-400/30",
-                    state === "error" && "border-red-500/30 bg-red-500/10 text-red-400",
-                    state === "pending" && "border-zinc-200 dark:border-zinc-700 text-zinc-400"
+                    state === "done" && "border-ok-line bg-ok-bg text-ok",
+                    state === "writing" && "border-ok-line bg-ok-bg text-ok",
+                    state === "waiting" && isCurrent && "border-ok-solid bg-ok-bg text-ok ring-1 ring-ok-line",
+                    state === "error" && "border-danger-line bg-danger-bg text-danger",
+                    state === "pending" && "border-line-control text-fg-muted"
                   )}
                 >
                   {state === "done" && <Check size={12} />}
                   {state === "writing" && <Loader2 size={12} className="animate-spin" />}
-                  {state === "waiting" && isCurrent && <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse" />}
+                  {state === "waiting" && isCurrent && <span className="size-1.5 rounded-full bg-ok-solid animate-pulse" />}
                   {state === "error" && <AlertCircle size={12} />}
                   {motor.name}
                 </div>
@@ -161,11 +136,11 @@ export function SetupTabPanel({
 
           {/* ── Waiting: instruction + ENTER button ── */}
           {!wizardError && wizardMotorState[wizardStep] === "waiting" && (
-            <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-5 flex flex-col items-center gap-4">
+            <div className="rounded-lg border border-ok-line bg-ok-bg p-5 flex flex-col items-center gap-4">
               <div className="flex items-center gap-2">
-                <span className="size-2 rounded-full bg-emerald-400 animate-pulse flex-none" />
-                <p className="text-base text-emerald-300 font-medium">
-                  Connect only <span className="text-emerald-100 font-semibold">'{SETUP_MOTORS[wizardStep].name}'</span> motor
+                <span className="size-2 rounded-full bg-ok-solid animate-pulse flex-none" />
+                <p className="text-base text-ok font-medium">
+                  Connect only <span className="text-fg font-semibold">'{SETUP_MOTORS[wizardStep].name}'</span> motor
                 </p>
               </div>
               <button
@@ -179,7 +154,7 @@ export function SetupTabPanel({
                 <CornerDownLeft size={18} /> Next Motor ↵
               </button>
               {!wizardProcessActive && (
-                <p className="text-xs text-amber-400">
+                <p className="text-xs text-warn">
                   The motor setup process is no longer running. Check the console logs before continuing.
                 </p>
               )}
@@ -188,9 +163,9 @@ export function SetupTabPanel({
 
           {/* ── Writing state ── */}
           {wizardMotorState[wizardStep] === "writing" && (
-            <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-4 flex items-center gap-3">
-              <Loader2 size={16} className="text-zinc-400 animate-spin flex-none" />
-              <p className="text-sm text-zinc-400">
+            <div className="rounded-lg border border-line p-4 flex items-center gap-3">
+              <Loader2 size={16} className="text-fg-muted animate-spin flex-none" />
+              <p className="text-sm text-fg-muted">
                 '{SETUP_MOTORS[wizardStep].name}' motor write in progress. Waiting for the real process output...
               </p>
             </div>
@@ -198,12 +173,12 @@ export function SetupTabPanel({
 
           {/* ── Error state ── */}
           {wizardError && (
-            <div className="rounded-lg border border-red-500/30 bg-red-500/5 px-4 py-3 flex items-start gap-3">
-              <AlertCircle size={14} className="text-red-500 flex-none mt-0.5" />
+            <div className="rounded-lg border border-danger-line bg-danger-bg px-4 py-3 flex items-start gap-3">
+              <AlertCircle size={14} className="text-danger flex-none mt-0.5" />
               <div className="flex-1 flex flex-col gap-3">
-                <p className="text-sm text-red-400">{wizardError}</p>
+                <p className="text-sm text-danger">{wizardError}</p>
                 {!wizardProcessActive && (
-                  <p className="text-xs text-red-300/80">
+                  <p className="text-xs text-danger/80">
                     Recovery: reconnect only the highlighted motor, then either run the setup again or go back and choose a different port/type.
                   </p>
                 )}
@@ -227,46 +202,36 @@ export function SetupTabPanel({
             </div>
           )}
 
-          {/* ── Footer: stop / demo ── */}
-          <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-100 dark:border-zinc-800">
-            {import.meta.env.DEV && (
-              <>
-                <span className="mr-auto text-xs text-zinc-400">Demo:</span>
-                <button
-                  onClick={onWizardSimulateError}
-                  disabled={wizardMotorState[wizardStep] !== "waiting"}
-                  className="mr-auto text-xs px-2 py-0.5 rounded border border-zinc-200 dark:border-zinc-700 text-zinc-500 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
-                >
-                  Simulate Error
-                </button>
-              </>
-            )}
-            {wizardProcessActive && (
+          {/* ── Footer: demo only (Stop lives in the control bar) ── */}
+          {import.meta.env.DEV && (
+            <div className="flex items-center gap-2 pt-2 border-t border-line-subtle">
+              <span className="text-xs text-fg-muted">Demo:</span>
               <button
-                onClick={onStopWizard}
-                className={buttonStyles({ variant: "secondary", tone: "danger", className: "h-10 px-5 whitespace-nowrap gap-1.5" })}
+                onClick={onWizardSimulateError}
+                disabled={wizardMotorState[wizardStep] !== "waiting"}
+                className="text-xs px-2 py-0.5 rounded border border-line-control text-fg-muted cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
               >
-                <Square size={11} className="fill-current" /> Stop Process
+                Simulate Error
               </button>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       )}
 
       {/* ── All done ── */}
       {!wizardRunning && wizardAllDone && (
-        <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-4 flex flex-col gap-3">
+        <div className="rounded-lg border border-ok-line bg-ok-bg p-4 flex flex-col gap-3">
           <div className="flex items-center gap-2">
-            <Check size={16} className="text-emerald-500" />
-            <p className="text-sm text-emerald-400 font-medium">
+            <Check size={16} className="text-ok" />
+            <p className="text-sm text-ok font-medium">
               Motor setup complete - 6 motor IDs written to EEPROM
             </p>
           </div>
           <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
             {SETUP_MOTORS.map((m) => (
-              <div key={m.name} className="text-center px-2 py-1.5 rounded bg-white dark:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-700">
-                <div className="text-xs text-zinc-400 truncate">{m.name}</div>
-                <div className="text-sm font-mono text-zinc-700 dark:text-zinc-300">ID {m.id}</div>
+              <div key={m.name} className="text-center px-2 py-1.5 rounded bg-surface-input border border-line-control">
+                <div className="text-xs text-fg-muted truncate">{m.name}</div>
+                <div className="text-sm font-mono text-fg-body">ID {m.id}</div>
               </div>
             ))}
           </div>

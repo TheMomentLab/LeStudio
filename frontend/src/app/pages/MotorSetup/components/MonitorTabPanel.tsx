@@ -48,11 +48,11 @@ export function MonitorTabPanel({
 }: MonitorTabPanelProps) {
   return (
     <div className="flex flex-col gap-4">
-      <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 overflow-hidden">
-        <div className="flex items-center gap-2 px-3 py-2 bg-zinc-50 dark:bg-zinc-800/30">
+      <div className="rounded-lg border border-line overflow-hidden">
+        <div className="flex items-center gap-2 px-3 py-2 bg-surface-muted">
           <WireToggle label="Freewheel" checked={freewheel} onChange={onHandleFreewheelToggle} />
-          <div className="w-px h-4 bg-zinc-200 dark:bg-zinc-700 flex-none" />
-          <span className="text-sm text-zinc-500 flex-none">Port</span>
+          <div className="w-px h-4 bg-line-strong flex-none" />
+          <span className="text-sm text-fg-muted flex-none">Port</span>
           <div className="flex-1 min-w-0">
             <WireSelect
               value={monPort}
@@ -65,15 +65,15 @@ export function MonitorTabPanel({
       </div>
 
       {monError && (
-        <div className="px-3 py-2 rounded border border-red-500/30 bg-red-500/5 text-sm text-red-400">
+        <div className="px-3 py-2 rounded border border-danger-line bg-danger-bg text-sm text-danger">
           <AlertTriangle size={14} className="inline mr-1 shrink-0" />{monError}
         </div>
       )}
 
       {monConnected && freewheel && (
-        <div className="px-3 py-2 rounded border border-amber-500/30 bg-amber-500/5 text-sm text-amber-400">
+        <div className="px-3 py-2 rounded border border-warn-line bg-warn-bg text-sm text-warn">
           <span className="block flex items-center gap-1"><AlertTriangle size={14} className="shrink-0" />Freewheel enabled</span>
-          <span className="text-sm text-amber-400/60 block mt-0.5">Motor lock released. Move button disabled.</span>
+          <span className="text-sm text-warn/70 block mt-0.5">Motor lock released. Move button disabled.</span>
         </div>
       )}
 

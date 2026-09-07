@@ -52,6 +52,7 @@ export default tseslint.config(
       // cannot regress. Pages still in the ratchet are covered by design:audit.
       'src/app/pages/Evaluation/**/*.{ts,tsx}',
       'src/app/pages/Training/**/*.{ts,tsx}',
+      'src/app/pages/MotorSetup/**/*.{ts,tsx}',
     ],
     plugins: { design: designSystem },
     rules: {
