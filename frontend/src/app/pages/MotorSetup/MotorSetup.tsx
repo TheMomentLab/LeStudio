@@ -31,7 +31,6 @@ import type {
 } from "./types";
 
 const ARM_ROLE_OPTIONS = ["Follower Arm 1", "Follower Arm 2", "Leader Arm 1", "Leader Arm 2"];
-const CALIBRATION_FILE_SCOPE_OPTIONS = ["Single", "Bi"] as const;
 type WizardMotorState = "pending" | "waiting" | "writing" | "done" | "error";
 
 const MOTOR_PROMPT_RE = /Connect the controller board to the '([^']+)' motor only and press enter\./i;
@@ -220,7 +219,8 @@ export function MotorSetup() {
   const [calibBiLeftPort, setCalibBiLeftPort] = useState("");
   const [calibBiRightPort, setCalibBiRightPort] = useState("");
   const [calibFiles, setCalibFiles] = useState<CalibrationFileItem[]>([]);
-  const [calibFileScope, setCalibFileScope] = useState<(typeof CALIBRATION_FILE_SCOPE_OPTIONS)[number]>("Single");
+  // The calibration file list always follows the selected arm mode.
+  const calibFileScope: "Single" | "Bi" = calibMode === "Bi-Arm" ? "Bi" : "Single";
   const [calibSelectedFileStatus, setCalibSelectedFileStatus] = useState<CalibrationFileStatusResponse | null>(null);
 
   const persistCanonicalPair = useCallback((typeName: string) => {
@@ -567,10 +567,6 @@ export function MotorSetup() {
   useEffect(() => {
     void refreshCalibrationFileStatus();
   }, [refreshCalibrationFileStatus]);
-
-  useEffect(() => {
-    setCalibFileScope(calibMode === "Bi-Arm" ? "Bi" : "Single");
-  }, [calibMode]);
 
   // Auto-refresh calibration file list when calibrate process finishes
   const prevCalibrateRunning = useRef(false);
@@ -1086,8 +1082,6 @@ export function MotorSetup() {
                 calibBiId={calibBiId}
                 calibBiIdAuto={calibMode === "Bi-Arm"}
                 calibFiles={filteredCalibFiles}
-                calibFileScope={calibFileScope}
-                calibFileScopeOptions={[...CALIBRATION_FILE_SCOPE_OPTIONS]}
                 selectedCalibrationExists={Boolean(calibSelectedFileStatus?.exists)}
                 selectedCalibrationPath={calibSelectedFileStatus?.path ?? ""}
                 validation={calibSelectedFileStatus?.validation}
@@ -1101,7 +1095,6 @@ export function MotorSetup() {
                 onSetCalibBiLeftPort={setCalibBiLeftPort}
                 onSetCalibBiRightPort={setCalibBiRightPort}
                 onSetCalibBiId={setCalibBiId}
-                onSetCalibFileScope={(value) => { setCalibFileScope(value === "Bi" ? "Bi" : "Single"); }}
                 onHandleCalibrationStart={() => { void handleCalibrationStart(); }}
                 onHandleCalibrationStop={() => { void handleCalibrationStop(); }}
                 onHandleCalibrationDelete={(file) => { void handleCalibrationDelete(file); }}

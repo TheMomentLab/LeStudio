@@ -42,12 +42,12 @@ export function AppShell() {
         />
 
         <div className="flex flex-1 overflow-hidden">
-          <div className="hidden md:flex">
+          <div className="hidden lg:flex">
             <Sidebar collapsed={sidebarCollapsed} />
           </div>
 
           {mobileSidebarOpen && (
-            <div className="md:hidden fixed inset-0 z-50 flex" data-testid="mobile-sidebar-overlay">
+            <div className="lg:hidden fixed inset-0 z-50 flex" data-testid="mobile-sidebar-overlay">
               <button
                 type="button"
                 className="absolute inset-0 border-0 bg-black/50 p-0 animate-in fade-in duration-200"

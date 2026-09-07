@@ -348,8 +348,8 @@ export function DatasetManagement() {
                   />
                 </div>
                 {/* Info row */}
-                <div className="px-3 py-2.5 flex items-center justify-between border-b border-zinc-200 dark:border-zinc-800">
-                  <div className="flex items-center gap-4 text-sm text-zinc-500">
+                <div className="px-3 py-2.5 flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5 border-b border-zinc-200 dark:border-zinc-800">
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-zinc-500 [&>span]:whitespace-nowrap">
                     <span className="flex items-center gap-1"><MonitorPlay size={12} /> {formatMetric(selectedDataset?.episodes, "eps")}</span>
                     <span>{formatMetric(selectedDataset?.frames, "frames")}</span>
                     <span>{formatMetric(detailData?.fps, "FPS")}</span>

@@ -30,8 +30,6 @@ interface CalibrationTabPanelProps {
   calibBiId: string;
   calibBiIdAuto: boolean;
   calibFiles: CalibrationFileItem[];
-  calibFileScope: "Single" | "Bi";
-  calibFileScopeOptions: Array<"Single" | "Bi">;
   selectedCalibrationExists: boolean;
   selectedCalibrationPath: string;
   validation?: CalibrationValidation;
@@ -45,7 +43,6 @@ interface CalibrationTabPanelProps {
   onSetCalibBiLeftPort: (value: string) => void;
   onSetCalibBiRightPort: (value: string) => void;
   onSetCalibBiId: (value: string) => void;
-  onSetCalibFileScope: (value: "Single" | "Bi") => void;
   onHandleCalibrationStart: () => void;
   onHandleCalibrationStop: () => void;
   onHandleCalibrationDelete: (file: CalibrationFileItem) => void;
@@ -76,8 +73,6 @@ export function CalibrationTabPanel({
   calibBiId,
   calibBiIdAuto,
   calibFiles,
-  calibFileScope,
-  calibFileScopeOptions,
   validation,
   onSetCalibMode,
   onSetCalibArmType,
@@ -87,7 +82,6 @@ export function CalibrationTabPanel({
   onSetCalibBiLeftPort,
   onSetCalibBiRightPort,
   onSetCalibBiId,
-  onSetCalibFileScope,
   onHandleCalibrationStart,
   onHandleCalibrationStop,
   onHandleCalibrationDelete,
@@ -119,15 +113,8 @@ export function CalibrationTabPanel({
 
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] gap-6">
         <Card
-          title="Calibration Files"
+          title={calibMode === "Single Arm" ? "Calibration Files · Single Arm" : "Calibration Files · Bi-Arm"}
           className="min-h-[300px]"
-          action={(
-            <ModeToggle
-              options={calibFileScopeOptions}
-              value={calibFileScope}
-              onChange={(value) => onSetCalibFileScope(value === "Bi" ? "Bi" : "Single")}
-            />
-          )}
         >
           {calibFiles.length === 0 ? (
             <div className="flex min-h-[220px] items-center justify-center">

@@ -20,7 +20,7 @@ export function Sidebar({ collapsed, onClose }: { collapsed: boolean; onClose?: 
       )}
     >
       {onClose && (
-        <div className="flex justify-end p-2 md:hidden">
+        <div className="flex justify-end p-2 lg:hidden">
           <button onClick={onClose} className="p-1 text-zinc-400 hover:text-zinc-600">
             <span className="sr-only">Close sidebar</span>
             <X size={16} />

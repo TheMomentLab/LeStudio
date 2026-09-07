@@ -65,7 +65,8 @@ export default function App() {
   return (
     <ThemeProvider>
       <RouterProvider router={router} />
-      <Toaster position="top-right" closeButton richColors />
+      {/* Header is h-12 (48px); keep toasts clear of its controls. */}
+      <Toaster position="top-right" offset={{ top: 56, right: 16 }} closeButton richColors />
     </ThemeProvider>
   );
 }

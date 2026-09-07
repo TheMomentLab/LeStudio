@@ -89,7 +89,7 @@ export function Header({
     <header className="h-12 flex-none flex items-center gap-2 px-4 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 z-50">
       <button
         onClick={onToggleSidebar}
-        className="p-1.5 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 rounded cursor-pointer hidden md:block"
+        className="p-1.5 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 rounded cursor-pointer hidden lg:block"
         title="Toggle sidebar"
         aria-label="Toggle sidebar"
       >
@@ -97,7 +97,7 @@ export function Header({
       </button>
       <button
         onClick={onMobileToggle}
-        className="p-1.5 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 rounded cursor-pointer md:hidden"
+        className="p-1.5 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 rounded cursor-pointer lg:hidden"
         title="Open menu"
         aria-label="Open menu"
       >
