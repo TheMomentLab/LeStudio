@@ -102,7 +102,17 @@
 | `ring-focus-ring-alpha` | 포커스 링 (`focus:ring-2` 와 함께) |
 
 포커스 표시는 **파란색이며, 이는 의도된 규칙입니다.** 상태색(emerald/amber/red)과 겹치지 않아
-"포커스"와 "유효성"이 시각적으로 분리됩니다. `theme.css`의 `*:focus-visible` 전역 아웃라인도 같은 토큰을 씁니다.
+"포커스"와 "유효성"이 시각적으로 분리됩니다.
+
+포커스 모양은 **두 가지뿐**입니다.
+
+| 대상 | 모양 | 어디서 오나 |
+|---|---|---|
+| 버튼, 링크, 탭, 행 등 누르는 것 | 2px 실선 아웃라인, 2px 오프셋 (키보드 포커스에만) | `theme.css`의 `*:focus-visible`. 컴포넌트가 따로 링을 그리지 않습니다 |
+| 텍스트 입력, 셀렉트 등 값을 넣는 것 | 파란 테두리 + 2px 연한 링 (마우스 포커스에도) | `inputClassName` / `WireInput` / `WireSelect` |
+
+`outline-none`은 위 표의 둘째 줄처럼 대체 포커스 스타일을 함께 줄 때만 씁니다. 클릭되는 `div`에는
+`role="button" tabIndex={0}`과 Enter/Space 처리를 붙여 키보드로도 닿게 합니다 (Dataset 목록 행 참고).
 
 ### 2.6 범주형 (Categorical)
 

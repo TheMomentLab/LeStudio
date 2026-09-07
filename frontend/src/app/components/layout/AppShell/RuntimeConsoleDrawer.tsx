@@ -531,7 +531,7 @@ export function RuntimeConsoleDrawer() {
               : "Enter command and press Enter to run"
             }
             aria-label="Console command input"
-            className="flex-1 bg-transparent text-sm font-mono text-fg-body placeholder:text-fg-muted outline-none"
+            className="flex-1 bg-transparent text-sm font-mono text-fg-body placeholder:text-fg-muted outline-none rounded px-1 -mx-1 focus:ring-2 focus:ring-focus-ring-alpha"
           />
           <button
             className="px-2 py-1 rounded border border-line-strong text-xs font-mono text-fg-body hover:bg-surface-hover cursor-pointer"

@@ -242,14 +242,24 @@ export function DatasetManagement() {
                   {localDatasets.map((ds) => (
                     <div
                       key={ds.id}
+                      role="button"
+                      tabIndex={0}
                       onClick={() => selectDataset(ds)}
+                      onKeyDown={(e) => {
+                        if (e.target !== e.currentTarget) return;
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          selectDataset(ds);
+                        }
+                      }}
                       className={cn(
-                        "group flex items-center gap-3 px-3 py-2 cursor-pointer transition-colors",
+                        "group flex items-center gap-3 px-3 py-2 cursor-pointer transition-colors focus-visible:-outline-offset-2",
                         selectedDataset?.id === ds.id
                           ? "bg-surface-selected"
                           : "hover:bg-surface-hover",
                       )}
-                      aria-selected={selectedDataset?.id === ds.id}
+                      aria-pressed={selectedDataset?.id === ds.id}
+                      aria-label={`Select ${ds.id}`}
                     >
                       <div className="min-w-0 flex-1">
                         <div className="font-mono text-sm font-medium text-fg-heading truncate">

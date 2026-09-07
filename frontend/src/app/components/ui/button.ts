@@ -16,8 +16,8 @@ const BASE_STYLES = [
   "text-sm font-medium whitespace-nowrap",
   "transition-colors duration-150",
   "cursor-pointer disabled:cursor-not-allowed disabled:opacity-50",
-  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring-alpha",
-  "focus-visible:ring-offset-2 focus-visible:ring-offset-surface",
+  // Keyboard focus comes from the global `*:focus-visible` outline in
+  // theme.css so buttons, links and tabs all show the same 2px ring.
 ].join(" ");
 
 const SIZE_STYLES: Record<ButtonSize, string> = {
