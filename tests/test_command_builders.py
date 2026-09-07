@@ -293,12 +293,12 @@ def test_build_teleop_args_bi_mode_auto_normalizes_ids_without_suffixes():
 
 def test_build_calibrate_args_single_robot_and_leader():
     robot_args = cb.build_calibrate_args("/py", {"robot_type": "so101_follower", "robot_id": "rid", "port": "/dev/f"})
-    assert robot_args[:3] == ["/py", "-m", "lestudio.calibrate_bridge"]
+    assert robot_args[:3] == ["/py", "-m", "lerobot_doctor.calibrate_bridge"]
     assert "--robot.type=so101_follower" in robot_args
     assert "--robot.id=rid" in robot_args
 
     leader_args = cb.build_calibrate_args("/py", {"robot_type": "so101_leader", "robot_id": "lid", "port": "/dev/l"})
-    assert leader_args[:3] == ["/py", "-m", "lestudio.calibrate_bridge"]
+    assert leader_args[:3] == ["/py", "-m", "lerobot_doctor.calibrate_bridge"]
     assert "--teleop.type=so101_leader" in leader_args
     assert "--teleop.id=lid" in leader_args
 
@@ -314,7 +314,7 @@ def test_build_calibrate_args_bi_leader_uses_teleop_namespace():
             "right_port": "/dev/l2",
         },
     )
-    assert args[:3] == ["/py", "-m", "lestudio.calibrate_bridge"]
+    assert args[:3] == ["/py", "-m", "lerobot_doctor.calibrate_bridge"]
     assert "--teleop.type=bi_so_leader" in args
     assert any(a.startswith("--teleop.calibration_dir=") for a in args)
     assert "--teleop.left_arm_config.port=/dev/l1" in args
@@ -332,7 +332,7 @@ def test_build_calibrate_args_bi_follower_uses_robot_calibration_dir():
             "right_port": "/dev/f2",
         },
     )
-    assert args[:3] == ["/py", "-m", "lestudio.calibrate_bridge"]
+    assert args[:3] == ["/py", "-m", "lerobot_doctor.calibrate_bridge"]
     assert "--robot.type=bi_so_follower" in args
     assert any(a.startswith("--robot.calibration_dir=") for a in args)
     assert "--robot.left_arm_config.port=/dev/f1" in args

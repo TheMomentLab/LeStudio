@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from lestudio import type_policy as tp
+from lerobot_doctor import type_policy as tp
 
 
 def test_get_type_policy_for_omx_follower():

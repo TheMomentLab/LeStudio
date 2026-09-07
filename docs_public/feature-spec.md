@@ -59,7 +59,7 @@ LeStudio는 LeRobot 워크플로를 위한 로컬 우선 GUI 워크벤치입니�
 
 | Feature | User-facing outcome | Main UI surface | Main backend surface | Status |
 |---|---|---|---|---|
-| Workbench layout | 설정부터 ML까지 이어지는 사이드바 기반 워크플로 | `frontend/src/app/components/layout/` | `server.py`에서 서빙되는 정적 SPA | implemented |
+| Workbench layout | 설정부터 ML까지 이어지는 사이드바 기반 워크플로 | `packages/lestudio/frontend/src/app/components/layout/` | `server.py`에서 서빙되는 정적 SPA | implemented |
 | Global console drawer | 공용 프로세스 출력 보기와 로그 복사 동작 | `RuntimeConsoleDrawer` 및 앱 셸 | `/ws`, `ProcessManager` | implemented |
 | Layout | 데스크톱 사이드바, 태블릿 드로어. 모바일 폭은 지원 대상이 아님 | 앱 셸 레이아웃 컴포넌트 | n/a | implemented |
 | Status badges | 실행 중 / 성능 저하 / 의존성 누락 상태 피드백 | 헤더, 사이드바, 페이지 단위 상태 UI | bootstrap + 프로세스 상태 API | implemented |
@@ -72,15 +72,15 @@ LeStudio는 LeRobot 워크플로를 위한 로컬 우선 GUI 워크벤치입니�
 
 | Feature | User-facing outcome | Main UI surface | Main backend surface | Status |
 |---|---|---|---|---|
-| System status dashboard | 디바이스, 프로세스, CPU, RAM, 디스크, GPU 상태 가시화 | `frontend/src/app/pages/SystemStatus.tsx` | `routes/streaming.py`, 디바이스 API | implemented |
-| Camera preview | 구성된 카메라의 라이브 프리뷰 | `frontend/src/app/pages/CameraSetup.tsx` | `/stream/*`, 스냅샷 API, `_streaming.py` | implemented |
+| System status dashboard | 디바이스, 프로세스, CPU, RAM, 디스크, GPU 상태 가시화 | `packages/lestudio/frontend/src/app/pages/SystemStatus.tsx` | `routes/streaming.py`, 디바이스 API | implemented |
+| Camera preview | 구성된 카메라의 라이브 프리뷰 | `packages/lestudio/frontend/src/app/pages/CameraSetup.tsx` | `/stream/*`, 스냅샷 API, `_streaming.py` | implemented |
 | USB bandwidth visibility | 카메라별 FPS / MB/s / 버스 사용률 피드백 | 카메라 설정 UI | 카메라 통계 엔드포인트 | implemented |
-| Device mapping (udev) | 안정적인 카메라 및 암 symlink 생성과 검증. Teleop/Record/Eval에서 매핑 강제 정책 적용. | `frontend/src/app/pages/MotorSetup/`의 매핑 및 udev 탭 | `routes/udev.py` 및 헬퍼 | implemented |
+| Device mapping (udev) | 안정적인 카메라 및 암 symlink 생성과 검증. Teleop/Record/Eval에서 매핑 강제 정책 적용. | `packages/lestudio/frontend/src/app/pages/MotorSetup/`의 매핑 및 udev 탭 | `routes/udev.py` 및 헬퍼 | implemented |
 | Mapping enforcement | 매핑 안 된 arm/camera로는 Teleop/Record/Eval 시작 불가. BlockerCard로 Setup 유도. | Teleop/Record/Eval 페이지 | n/a (프론트엔드 gate) | implemented |
 | Arm Identify Modal | 분리된 모달 대화상자로 leader/follower arm 식별. 취소 플로우 지원. | `IdentifyArmModal.tsx` | 디바이스 및 udev 헬퍼 | implemented |
 | ArmPairSelector | follower/leader 독립 선택 드롭다운. type/port/calibration ID 자동 유도. Teleop/Record/Eval 공유. | `ArmPairSelector.tsx`, `armSets.ts` | config persist | implemented |
 | Camera selection checkboxes | Teleop/Record에서 매핑된 카메라 중 사용할 것을 체크박스로 선택/해제 | Teleop/Record 카메라 탭 | payload에 선택된 카메라만 포함 | implemented |
-| Motor setup | 모터 초기화 및 설정 명령 실행 | `frontend/src/app/pages/MotorSetup/` | `routes/process.py`, `command_builders.py` | implemented with constraints |
+| Motor setup | 모터 초기화 및 설정 명령 실행 | `packages/lestudio/frontend/src/app/pages/MotorSetup/` | `routes/process.py`, `command_builders.py` | implemented with constraints |
 | Calibration management | 캘리브레이션 실행, Single/Bi 파일 필터, shared profile 정규화, 이상 감지, 파일 삭제 | 모터 설정 캘리브레이션 흐름 | `routes/process.py`, `calibration_validator.py` | implemented |
 | Calibration anomaly detection | 캘리브레이션 파일 내 homing offset/range 이상치 자동 검출 | 캘리브레이션 상태 UI | `calibration_validator.py` | implemented |
 | File-based logging | 프로세스별 로그 파일 저장 (~/.config/lestudio/logs/, 5MB×3, 7일 만료) | n/a (백엔드 인프라) | `_logging.py`, teleop/record/process 로거 | implemented |
@@ -90,10 +90,10 @@ LeStudio는 LeRobot 워크플로를 위한 로컬 우선 GUI 워크벤치입니�
 
 | Feature | User-facing outcome | Main UI surface | Main backend surface | Status |
 |---|---|---|---|---|
-| Teleop launch | ArmPairSelector로 arm 선택, 카메라 체크박스로 카메라 선택, Motor tuning 접기. 매핑 강제. | `frontend/src/app/pages/Teleop.tsx` | `routes/process.py`, `command_builders.py`, `teleop_bridge.py` | implemented |
+| Teleop launch | ArmPairSelector로 arm 선택, 카메라 체크박스로 카메라 선택, Motor tuning 접기. 매핑 강제. | `packages/lestudio/frontend/src/app/pages/Teleop.tsx` | `routes/process.py`, `command_builders.py`, `teleop_bridge.py` | implemented |
 | Teleop live camera retention | teleop가 디바이스를 점유한 동안에도 카메라 피드 유지 | Teleop 페이지 카메라 영역 | `camera_patch.py`, SHM 스냅샷 경로, 스트리밍 라우트 | implemented |
 | Teleop conflict management | 호환되지 않는 프로세스의 동시 실행 방지 | Teleop 페이지 + 전역 프로세스 상태 | `ProcessManager` conflict groups | implemented |
-| Record launch | ArmPairSelector로 arm 선택, 카메라 체크박스로 카메라 선택. 매핑 강제. | `frontend/src/app/pages/Recording/` | `routes/process.py`, `record_bridge.py`, `command_builders.py` | implemented |
+| Record launch | ArmPairSelector로 arm 선택, 카메라 체크박스로 카메라 선택. 매핑 강제. | `packages/lestudio/frontend/src/app/pages/Recording/` | `routes/process.py`, `record_bridge.py`, `command_builders.py` | implemented |
 | Episode control bridge | Next / abort / stdin 기반 런타임 제어 | Recording 런타임 UI | `/api/process/{name}/input`, stdin 브리지 경로 | implemented |
 | Resume recording support | 기존 흐름에 이어서 녹화 계속 진행 | Recording 계획/런타임 흐름 | record 실행 옵션 | implemented |
 
@@ -101,7 +101,7 @@ LeStudio는 LeRobot 워크플로를 위한 로컬 우선 GUI 워크벤치입니�
 
 | Feature | User-facing outcome | Main UI surface | Main backend surface | Status |
 |---|---|---|---|---|
-| Local dataset listing | 로컬에 있는 데이터셋 탐색 | `frontend/src/app/pages/DatasetManagement/` | `routes/dataset/listing.py` | implemented |
+| Local dataset listing | 로컬에 있는 데이터셋 탐색 | `packages/lestudio/frontend/src/app/pages/DatasetManagement/` | `routes/dataset/listing.py` | implemented |
 | Dataset detail and delete | 메타데이터 확인, 녹화 환경 표시 (robot type, 카메라, 관절), 삭제 | 데이터셋 관리 UI | `routes/dataset/listing.py` | implemented |
 | Episode video replay | 멀티카메라 동기 재생 및 스크러빙 | 데이터셋 비디오 플레이어 컴포넌트 | 데이터셋 비디오 서빙 엔드포인트 | implemented |
 | Episode curation | 에피소드 삭제, 태깅, 필터링 | 큐레이션 관련 데이터셋 UI | `routes/dataset/curation.py` | implemented |
@@ -114,12 +114,12 @@ LeStudio는 LeRobot 워크플로를 위한 로컬 우선 GUI 워크벤치입니�
 
 | Feature | User-facing outcome | Main UI surface | Main backend surface | Status |
 |---|---|---|---|---|
-| Training launch | GUI에서 LeRobot 학습 시작 | `frontend/src/app/pages/Training/` | `routes/training.py`, `command_builders.py` | implemented |
+| Training launch | GUI에서 LeRobot 학습 시작 | `packages/lestudio/frontend/src/app/pages/Training/` | `routes/training.py`, `command_builders.py` | implemented |
 | CUDA preflight | 학습 전 GPU / PyTorch 호환성 문제 감지 | 학습 preflight UI | `routes/training.py`, 헬퍼 로직 | implemented |
 | One-click dependency remediation | 앱 흐름 안에서 PyTorch 또는 관련 수정 설치 | 학습 설치 흐름 | 학습 설치 엔드포인트 | implemented with constraints |
 | Live training metrics | 손실 / LR / ETA / step 진행률 실시간 표시 | 학습 진행 UI 및 차트 | `ProcessManager` 메트릭 파싱 + `/ws` | implemented |
 | Checkpoint browser | 체크포인트를 스캔하고 eval로 넘길 준비 수행 | 학습/평가 공용 UI | `routes/eval.py` 체크포인트 API | implemented |
-| Eval launch | ArmPairSelector로 arm 선택 (real robot만). 매핑 강제. | `frontend/src/app/pages/Evaluation/` | `routes/eval.py`, `command_builders.py` | implemented |
+| Eval launch | ArmPairSelector로 arm 선택 (real robot만). 매핑 강제. | `packages/lestudio/frontend/src/app/pages/Evaluation/` | `routes/eval.py`, `command_builders.py` | implemented |
 | Eval env-type assistance | env type을 추론하거나 선택하고 관련 설정 적용 | 평가 설정 UI | `routes/eval.py` 및 헬퍼 로직 | implemented |
 | Eval result tracking | 에피소드별 결과 및 라이브 프로세스 출력 검토 | 평가 진행/결과 UI | `/ws`를 통한 eval 프로세스 출력 | implemented |
 

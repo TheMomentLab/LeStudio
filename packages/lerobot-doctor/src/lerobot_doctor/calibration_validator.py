@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from lestudio import type_policy
+from lerobot_doctor import type_policy
 
 logger = logging.getLogger(__name__)
 

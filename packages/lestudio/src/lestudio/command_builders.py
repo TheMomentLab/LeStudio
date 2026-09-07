@@ -6,9 +6,9 @@ import shutil
 from json import JSONDecodeError
 from pathlib import Path
 
-from lestudio import path_policy, type_policy
-
-from ._device_helpers import derive_bi_calibration_profile_id, get_calibration_dir
+import lerobot_doctor.motor_setup_bridge
+from lerobot_doctor import path_policy, type_policy
+from lerobot_doctor.device_helpers import derive_bi_calibration_profile_id, get_calibration_dir
 
 logger = logging.getLogger(__name__)
 
@@ -326,7 +326,7 @@ def build_calibrate_args(python_exe: str, data: dict) -> list[str]:
             return [
                 python_exe,
                 "-m",
-                "lestudio.calibrate_bridge",
+                "lerobot_doctor.calibrate_bridge",
                 f"--teleop.type={bi_type}",
                 _calibration_dir_arg("teleop", bi_type),
                 f"--teleop.left_arm_config.port={left_port}",
@@ -336,7 +336,7 @@ def build_calibrate_args(python_exe: str, data: dict) -> list[str]:
         return [
             python_exe,
             "-m",
-            "lestudio.calibrate_bridge",
+            "lerobot_doctor.calibrate_bridge",
             f"--robot.type={bi_type}",
             _calibration_dir_arg("robot", bi_type),
             f"--robot.left_arm_config.port={left_port}",
@@ -351,7 +351,7 @@ def build_calibrate_args(python_exe: str, data: dict) -> list[str]:
         return [
             python_exe,
             "-m",
-            "lestudio.calibrate_bridge",
+            "lerobot_doctor.calibrate_bridge",
             f"--teleop.type={robot_type}",
             f"--teleop.port={port}",
             f"--teleop.id={robot_id}",
@@ -359,7 +359,7 @@ def build_calibrate_args(python_exe: str, data: dict) -> list[str]:
     return [
         python_exe,
         "-m",
-        "lestudio.calibrate_bridge",
+        "lerobot_doctor.calibrate_bridge",
         f"--robot.type={robot_type}",
         f"--robot.port={port}",
         f"--robot.id={robot_id}",
@@ -374,7 +374,7 @@ def build_motor_setup_args(python_exe: str, data: dict) -> list[str]:
         raise ValueError(f"Motor Setup does not support '{robot_type}'. Supported types: {supported}")
     return [
         python_exe,
-        str(Path(__file__).with_name("motor_setup_bridge.py")),
+        str(Path(lerobot_doctor.motor_setup_bridge.__file__)),
         f"--python-exe={python_exe}",
         f"--robot-type={robot_type}",
         f"--port={port}",

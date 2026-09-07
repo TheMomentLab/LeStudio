@@ -17,7 +17,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 from starlette.types import Scope
 
-from lestudio import device_registry
+from lerobot_doctor import device_registry
 from lestudio._auth import TokenAuthMiddleware, generate_token
 from lestudio._cors import _resolve_cors_settings
 from lestudio._device_watcher import DeviceWatcher

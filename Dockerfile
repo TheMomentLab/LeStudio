@@ -5,10 +5,10 @@ FROM node:20-slim AS frontend-builder
 WORKDIR /app/frontend
 
 # Copy frontend source
-COPY frontend/package*.json ./
+COPY packages/lestudio/frontend/package*.json ./
 RUN npm ci
 
-COPY frontend/ ./
+COPY packages/lestudio/frontend/ ./
 RUN npm run build
 # The build output is placed in /app/src/lestudio/static (as per vite.config.ts)
 
@@ -41,8 +41,9 @@ RUN groupadd -r lerobot_group && useradd -m -r -g lerobot_group lerobot_user \
     && usermod -a -G tty lerobot_user
 
 # Copy dependency metadata for pip install cache
-COPY pyproject.toml README.md ./
-COPY src/lestudio/__init__.py src/lestudio/__init__.py
+COPY packages/lerobot-doctor packages/lerobot-doctor
+COPY packages/lestudio/pyproject.toml packages/lestudio/README.md packages/lestudio/
+COPY packages/lestudio/src/lestudio/__init__.py packages/lestudio/src/lestudio/__init__.py
 
 # Install heavy dependency first (cached layer)
 RUN pip install "lerobot[cameras, motors] @ git+https://github.com/huggingface/lerobot.git"
@@ -51,10 +52,10 @@ RUN pip install "lerobot[cameras, motors] @ git+https://github.com/huggingface/l
 COPY . .
 
 # Copy built frontend assets from stage 1
-COPY --from=frontend-builder /app/src/lestudio/static /app/src/lestudio/static
+COPY --from=frontend-builder /app/src/lestudio/static /app/packages/lestudio/src/lestudio/static
 
 # Install LeStudio
-RUN pip install -e .
+RUN pip install -e packages/lerobot-doctor -e packages/lestudio
 
 # Give the non-root user ownership
 RUN chown -R lerobot_user:lerobot_group /app

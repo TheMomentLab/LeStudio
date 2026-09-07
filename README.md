@@ -57,7 +57,7 @@ The hardware layer is being split into a standalone package (working name `lerob
 - **Layout**: Desktop sidebar and a tablet drawer. Mobile widths are not supported.
 - **Config Profiles**: Save, load, import, export, and delete working configurations.
 - **Session History**: Track run-related events across recording, training, and evaluation flows.
-- **Design system**: Semantic color tokens for both themes, enforced by a custom ESLint rule and a CI audit (see `frontend/DESIGN_GUIDE.md`).
+- **Design system**: Semantic color tokens for both themes, enforced by a custom ESLint rule and a CI audit (see `packages/lestudio/frontend/DESIGN_GUIDE.md`).
 
 ### Operation: Teleop & Record
 - **Teleop**: Multi-camera teleoperation with preflight checks and live SHM-shared camera feeds.
@@ -165,6 +165,17 @@ For development compatibility only, `LESTUDIO_CORS_ORIGINS="*"` is supported but
 
 ## Development
 
+### Repository layout
+
+```
+packages/
+├── lerobot-doctor/   # Hardware layer library: device discovery, udev/type/path policy, motor & calibration bridges
+└── lestudio/         # Workbench: FastAPI backend (src/lestudio) + React frontend (frontend/)
+tests/                # Backend tests for both packages
+```
+
+`lestudio` depends on `lerobot-doctor`; the dependency never points the other way. See [docs_public/direction.md](docs_public/direction.md) for why the repository is split this way.
+
 ```bash
 conda activate lerobot
 ```
@@ -184,9 +195,9 @@ lestudio serve --reload
 Backend checks:
 
 ```bash
-python -m ruff check src/lestudio
-python -m mypy src/lestudio --ignore-missing-imports
-python -m compileall -q src/lestudio
+python -m ruff check packages
+python -m mypy packages/lerobot-doctor/src/lerobot_doctor packages/lestudio/src/lestudio --ignore-missing-imports
+python -m compileall -q packages/lerobot-doctor/src/lerobot_doctor packages/lestudio/src/lestudio
 make test
 ```
 
@@ -195,7 +206,7 @@ make test
 Frontend checks:
 
 ```bash
-cd frontend
+cd packages/lestudio/frontend
 npm ci
 npm run lint
 npm test -- --run
@@ -203,7 +214,7 @@ npm run test:e2e
 npm run build
 ```
 
-`npm run build` emits the frontend bundle to `src/lestudio/static/`, which FastAPI serves directly.
+`npm run build` emits the frontend bundle to `packages/lestudio/src/lestudio/static/`, which FastAPI serves directly.
 
 CI runs these checks automatically on every push: `.github/workflows/ci.yml`.
 

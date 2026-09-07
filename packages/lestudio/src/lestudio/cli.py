@@ -12,7 +12,7 @@ import webbrowser
 from pathlib import Path
 from typing import cast
 
-from lestudio import path_policy
+from lerobot_doctor import path_policy
 
 logger = logging.getLogger(__name__)
 

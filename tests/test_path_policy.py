@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lestudio import path_policy
+from lerobot_doctor import path_policy
 
 
 def test_lerobot_cache_root_uses_hf_lerobot_under_home(monkeypatch, tmp_path: Path):

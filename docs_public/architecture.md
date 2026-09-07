@@ -6,11 +6,12 @@ Use this page when you want the shortest accurate picture of how the product is 
 
 ## Core structure
 
-- `frontend/` contains the React + TypeScript UI.
-- `src/lestudio/server.py` assembles the FastAPI app and serves the built frontend from `src/lestudio/static/`.
-- `src/lestudio/routes/` contains route modules for devices, config, udev, process control, training, eval, dataset workflows (listing, curation, hub), streaming, and motor monitoring.
-- `src/lestudio/process_manager.py` owns subprocess lifecycle, output parsing, orphan recovery, and hardware conflict checks.
-- LeRobot-specific imports stay isolated to the adapter boundary: `teleop_bridge.py`, `record_bridge.py`, `camera_patch.py`, `device_registry.py`, and `motor_monitor_bridge.py`.
+- `packages/lestudio/frontend/` contains the React + TypeScript UI.
+- `packages/lestudio/src/lestudio/server.py` assembles the FastAPI app and serves the built frontend from `packages/lestudio/src/lestudio/static/`.
+- `packages/lestudio/src/lestudio/routes/` contains route modules for devices, config, udev, process control, training, eval, dataset workflows (listing, curation, hub), streaming, and motor monitoring.
+- `packages/lestudio/src/lestudio/process_manager.py` owns subprocess lifecycle, output parsing, orphan recovery, and hardware conflict checks.
+- `packages/lerobot-doctor/src/lerobot_doctor/` is the hardware layer library (device discovery, udev/type/path policy, motor and calibration bridges). `lestudio` depends on it; nothing points back.
+- LeRobot-specific imports stay isolated to the adapter boundary: `teleop_bridge.py`, `record_bridge.py`, `camera_patch.py` (in `lestudio`) and `device_registry.py`, `motor_monitor_bridge.py` (in `lerobot_doctor`).
 
 ## Runtime model
 
@@ -33,7 +34,7 @@ UI action
 
 ## Frontend state
 
-The UI currently uses a custom global store in `frontend/src/app/store/index.ts` built on `useSyncExternalStore`.
+The UI currently uses a custom global store in `packages/lestudio/frontend/src/app/store/index.ts` built on `useSyncExternalStore`.
 
 The store keeps:
 

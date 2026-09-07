@@ -4,7 +4,7 @@ import os
 
 import pytest
 
-from lestudio._device_helpers import get_arms, get_cameras
+from lerobot_doctor.device_helpers import get_arms, get_cameras
 
 pytestmark = pytest.mark.smoke_hw
 

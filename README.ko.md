@@ -57,7 +57,7 @@
 - **레이아웃**: 데스크톱 사이드바와 태블릿 드로어. 모바일 폭은 지원하지 않습니다.
 - **설정 프로필**: 작업 설정 저장, 불러오기, 가져오기, 내보내기, 삭제.
 - **세션 히스토리**: 녹화, 학습, 평가 흐름의 실행 이벤트 추적.
-- **디자인 시스템**: 두 테마를 함께 다루는 시맨틱 색 토큰. 커스텀 ESLint 룰과 CI 감사로 강제 (`frontend/DESIGN_GUIDE.md`).
+- **디자인 시스템**: 두 테마를 함께 다루는 시맨틱 색 토큰. 커스텀 ESLint 룰과 CI 감사로 강제 (`packages/lestudio/frontend/DESIGN_GUIDE.md`).
 
 ### 조작: 텔레옵 및 녹화
 - **텔레옵**: 멀티카메라 원격 조작, 사전 점검, SHM 기반 실시간 카메라 피드 유지.
@@ -165,6 +165,17 @@ export LESTUDIO_CORS_ORIGIN_REGEX='^https://(localhost|127\.0\.0\.1)(:\d+)?$'
 
 ## 개발
 
+### 저장소 구성
+
+```
+packages/
+├── lerobot-doctor/   # 하드웨어 계층 라이브러리: 디바이스 탐색, udev/type/path 정책, 모터·캘리브레이션 브리지
+└── lestudio/         # 워크벤치: FastAPI 백엔드(src/lestudio) + React 프론트엔드(frontend/)
+tests/                # 두 패키지를 함께 검증하는 백엔드 테스트
+```
+
+`lestudio`가 `lerobot-doctor`에 의존하며, 반대 방향 의존은 없습니다. 이렇게 나눈 이유는 [docs_public/direction.md](docs_public/direction.md)를 참조하세요.
+
 ```bash
 conda activate lerobot
 ```
@@ -184,9 +195,9 @@ lestudio serve --reload
 백엔드 검사:
 
 ```bash
-python -m ruff check src/lestudio
-python -m mypy src/lestudio --ignore-missing-imports
-python -m compileall -q src/lestudio
+python -m ruff check packages
+python -m mypy packages/lerobot-doctor/src/lerobot_doctor packages/lestudio/src/lestudio --ignore-missing-imports
+python -m compileall -q packages/lerobot-doctor/src/lerobot_doctor packages/lestudio/src/lestudio
 make test
 ```
 
@@ -195,7 +206,7 @@ make test
 프론트엔드 검사:
 
 ```bash
-cd frontend
+cd packages/lestudio/frontend
 npm ci
 npm run lint
 npm test -- --run
@@ -203,7 +214,7 @@ npm run test:e2e
 npm run build
 ```
 
-`npm run build`는 프론트엔드 번들을 `src/lestudio/static/`에 출력하며, FastAPI가 이 결과물을 직접 서빙합니다.
+`npm run build`는 프론트엔드 번들을 `packages/lestudio/src/lestudio/static/`에 출력하며, FastAPI가 이 결과물을 직접 서빙합니다.
 
 CI는 모든 push 시 이 검사를 자동으로 실행합니다: `.github/workflows/ci.yml`.
 

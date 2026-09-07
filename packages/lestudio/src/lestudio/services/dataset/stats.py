@@ -9,7 +9,8 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
-from ... import path_policy
+from lerobot_doctor import path_policy
+
 from ...lib.async_job_manager import TERMINAL_JOB_STATUS, _cleanup_finished_jobs
 from ...routes._state import DatasetJobState
 from .listing import discover_parquet_files

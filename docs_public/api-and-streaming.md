@@ -69,7 +69,7 @@ This keeps camera delivery independent from process log delivery.
 
 ## 3. Backend API Surface
 
-The backend is split by route module under `src/lestudio/routes/`.
+The backend is split by route module under `packages/lestudio/src/lestudio/routes/`.
 
 ### 3.1 Bootstrap and configuration APIs
 
@@ -84,7 +84,7 @@ These are heavily used during frontend startup.
 - `GET /api/hf/whoami`
 - `GET /api/train/preflight`
 
-`frontend/src/app/services/bootstrap.ts` calls these endpoints in parallel, then normalizes the results into initial UI state.
+`packages/lestudio/frontend/src/app/services/bootstrap.ts` calls these endpoints in parallel, then normalizes the results into initial UI state.
 
 ### 3.2 Device and ecosystem APIs
 
@@ -211,7 +211,7 @@ Unlike the LeRobot subprocess paths, these routes talk to `motor_monitor_bridge.
 
 ### 4.1 Startup bootstrap
 
-`frontend/src/app/App.tsx` calls `runBootstrap()` and then separately fetches per-process status for:
+`packages/lestudio/frontend/src/app/App.tsx` calls `runBootstrap()` and then separately fetches per-process status for:
 
 - `teleop`
 - `record`
@@ -225,7 +225,7 @@ This means startup state is assembled from multiple APIs rather than one backend
 
 ### 4.2 `apiClient.ts` responsibilities
 
-`frontend/src/app/services/apiClient.ts` is the main frontend transport layer.
+`packages/lestudio/frontend/src/app/services/apiClient.ts` is the main frontend transport layer.
 
 It provides:
 
@@ -244,7 +244,7 @@ Important current behavior:
 
 The client supports two modes.
 
-- `mock`: local fake handlers under `frontend/src/mock-api/handlers`
+- `mock`: local fake handlers under `packages/lestudio/frontend/src/mock-api/handlers`
 - `passthrough`: real backend via HTTP and WebSocket
 
 This allows UI development without requiring the Python backend or hardware.
@@ -405,13 +405,13 @@ When adding a new feature, the transport choice should follow current project pa
 
 ## 9. Related Files
 
-- `src/lestudio/routes/process.py`
-- `src/lestudio/routes/streaming.py`
-- `src/lestudio/routes/training.py`
-- `src/lestudio/routes/eval.py`
-- `src/lestudio/routes/devices.py`
-- `src/lestudio/routes/dataset/`
-- `src/lestudio/routes/motor.py`
-- `src/lestudio/process_manager.py`
-- `frontend/src/app/services/apiClient.ts`
-- `frontend/src/app/services/bootstrap.ts`
+- `packages/lestudio/src/lestudio/routes/process.py`
+- `packages/lestudio/src/lestudio/routes/streaming.py`
+- `packages/lestudio/src/lestudio/routes/training.py`
+- `packages/lestudio/src/lestudio/routes/eval.py`
+- `packages/lestudio/src/lestudio/routes/devices.py`
+- `packages/lestudio/src/lestudio/routes/dataset/`
+- `packages/lestudio/src/lestudio/routes/motor.py`
+- `packages/lestudio/src/lestudio/process_manager.py`
+- `packages/lestudio/frontend/src/app/services/apiClient.ts`
+- `packages/lestudio/frontend/src/app/services/bootstrap.ts`

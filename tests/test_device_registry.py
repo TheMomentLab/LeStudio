@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 
-from lestudio import device_registry as dr
+from lerobot_doctor import device_registry as dr
 
 
 def test_get_robot_types_fallback_when_lerobot_unavailable(monkeypatch):

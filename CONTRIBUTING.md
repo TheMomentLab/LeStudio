@@ -11,10 +11,17 @@ cd lestudio
 conda create -n lerobot python=3.10 -y
 conda activate lerobot
 make dev
-cd frontend && npm ci && cd ..
+cd packages/lestudio/frontend && npm ci && cd ..
 ```
 
-Use `make install` only if you want the runtime package without contributor tooling. `make dev` installs the backend dev extras used by CI (`ruff`, `mypy`, pytest helpers).
+The repository is a monorepo with two Python packages under `packages/`:
+
+- `packages/lerobot-doctor` — hardware layer library (device discovery, udev/type/path policy, motor and calibration bridges). No server or CLI yet.
+- `packages/lestudio` — the workbench: FastAPI backend under `src/lestudio/` and the React frontend under `frontend/`. Depends on `lerobot-doctor`.
+
+Shared tool configuration (pytest, ruff, mypy, pyright) lives in the root `pyproject.toml`; `tests/` covers both packages.
+
+Use `make install` only if you want the runtime packages without contributor tooling. `make dev` installs both packages editable plus the dev extras used by CI (`ruff`, `mypy`, pytest helpers).
 
 ## Development Run
 
@@ -28,7 +35,7 @@ lestudio serve --port 8000 --no-browser
 Frontend:
 
 ```bash
-cd frontend
+cd packages/lestudio/frontend
 npm run dev
 ```
 
@@ -40,20 +47,20 @@ Restart guidance (what to restart after frontend/backend changes):
 
 Do not import `lerobot.*` outside these 5 adapter files:
 
-1. `src/lestudio/teleop_bridge.py`
-2. `src/lestudio/record_bridge.py`
-3. `src/lestudio/camera_patch.py`
-4. `src/lestudio/device_registry.py`
-5. `src/lestudio/motor_monitor_bridge.py`
+1. `packages/lestudio/src/lestudio/teleop_bridge.py`
+2. `packages/lestudio/src/lestudio/record_bridge.py`
+3. `packages/lestudio/src/lestudio/camera_patch.py`
+4. `packages/lerobot-doctor/src/lerobot_doctor/device_registry.py`
+5. `packages/lerobot-doctor/src/lerobot_doctor/motor_monitor_bridge.py`
 
 All other backend code must stay decoupled and run LeRobot through subprocess orchestration.
 
 A few files reference `lerobot` **indirectly** via subprocess spawning or `importlib.import_module()`.
 These are intentional and acceptable because they create runtime coupling only, not compile-time imports:
 
-- `command_builders.py` — Builds subprocess command strings containing `lerobot` script paths
-- `calibrate_bridge.py` — Uses `importlib.import_module()` for dynamic robot-type resolution
-- `motor_setup_bridge.py` — Spawns `lerobot_setup_motors` as a subprocess
+- `packages/lestudio/src/lestudio/command_builders.py` — Builds subprocess command strings containing `lerobot` script paths
+- `packages/lerobot-doctor/src/lerobot_doctor/calibrate_bridge.py` — Uses `importlib.import_module()` for dynamic robot-type resolution
+- `packages/lerobot-doctor/src/lerobot_doctor/motor_setup_bridge.py` — Spawns `lerobot_setup_motors` as a subprocess
 
 The CI boundary check (`rg` + `grep` in `ci.yml`) enforces the compile-time import rule.
 Subprocess and dynamic-import patterns are outside its scope by design.
@@ -63,16 +70,16 @@ Subprocess and dynamic-import patterns are outside its scope by design.
 Backend:
 
 ```bash
-python3 -m ruff check src/lestudio
-python3 -m mypy src/lestudio --ignore-missing-imports
-python3 -m compileall -q src/lestudio
+python3 -m ruff check packages
+python3 -m mypy packages/lerobot-doctor/src/lerobot_doctor packages/lestudio/src/lestudio --ignore-missing-imports
+python3 -m compileall -q packages/lerobot-doctor/src/lerobot_doctor packages/lestudio/src/lestudio
 make test
 ```
 
 Frontend:
 
 ```bash
-cd frontend
+cd packages/lestudio/frontend
 npm ci
 npm run lint
 npm test -- --run

@@ -7,8 +7,9 @@ import os
 
 from fastapi import APIRouter
 
-from .. import device_registry, type_policy
-from .._device_helpers import CAMERA_ROLES, get_arms, get_cameras
+from lerobot_doctor import device_registry, type_policy
+from lerobot_doctor.device_helpers import CAMERA_ROLES, get_arms, get_cameras
+
 from .._streaming import _DEFAULT_CAM_SETTINGS, _get_cam_settings, restart_all_streamers
 from ..capabilities import Capability, register
 from ._state import AppState

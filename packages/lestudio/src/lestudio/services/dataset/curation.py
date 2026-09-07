@@ -3,7 +3,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from ... import path_policy
+from lerobot_doctor import path_policy
+
 from .stats import get_episode_stats
 
 

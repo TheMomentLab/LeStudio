@@ -14,8 +14,9 @@ from typing import cast
 
 from fastapi import APIRouter
 
+from lerobot_doctor.motor_monitor_bridge import get_bridge
+
 from ..capabilities import Capability, register
-from ..motor_monitor_bridge import get_bridge
 from ._state import AppState
 
 logger = logging.getLogger(__name__)

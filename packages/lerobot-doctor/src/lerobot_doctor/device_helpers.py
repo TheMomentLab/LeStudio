@@ -9,7 +9,7 @@ import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from lestudio import device_registry, path_policy, type_policy
+from lerobot_doctor import device_registry, path_policy, type_policy
 
 logger = logging.getLogger(__name__)
 

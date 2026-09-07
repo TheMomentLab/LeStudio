@@ -11,8 +11,8 @@ import pytest
 from _routing import find_endpoint as _find_endpoint
 
 import lestudio.routes.eval as eval_routes
-import lestudio.services.process_service as process_service
 import lestudio.routes.training as training_routes
+import lestudio.services.process_service as process_service
 import lestudio.services.training_service as training_service
 from lestudio.routes.models import HfTokenRequest
 from lestudio.server import create_app
@@ -356,7 +356,7 @@ def test_api_type_policy_catalog_exposes_defaults_and_known_types(tmp_path: Path
 
 
 def test_api_type_policy_catalog_still_returns_static_policy_when_lerobot_unavailable(monkeypatch, tmp_path: Path):
-    monkeypatch.setattr("lestudio.device_registry._LEROBOT_AVAILABLE", False)
+    monkeypatch.setattr("lerobot_doctor.device_registry._LEROBOT_AVAILABLE", False)
 
     app = _make_app(tmp_path)
     endpoint = _find_endpoint(app, "/api/policy/type-catalog", "GET")

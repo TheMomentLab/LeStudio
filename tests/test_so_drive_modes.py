@@ -13,10 +13,8 @@ sys.path.insert(0, str(ROOT / "lerobot" / "src"))
 
 pytest.importorskip("lerobot.motors.motors_bus", reason="lerobot submodule not available")
 from lerobot.motors.motors_bus import MotorCalibration
+from lerobot.robots.so_follower.so_follower import FIRST_SYNC_READ_RETRIES, FIRST_SYNC_READ_SETTLE_S, SOFollower
 from lerobot.robots.so_follower.so_follower import SO_ARM_DRIVE_MODES as FOLLOWER_DRIVE_MODES
-from lerobot.robots.so_follower.so_follower import FIRST_SYNC_READ_RETRIES
-from lerobot.robots.so_follower.so_follower import FIRST_SYNC_READ_SETTLE_S
-from lerobot.robots.so_follower.so_follower import SOFollower
 from lerobot.robots.so_follower.so_follower import _apply_default_so_drive_modes as apply_follower_drive_modes
 from lerobot.teleoperators.so_leader.so_leader import SO_ARM_DRIVE_MODES as LEADER_DRIVE_MODES
 from lerobot.teleoperators.so_leader.so_leader import _apply_default_so_drive_modes as apply_leader_drive_modes

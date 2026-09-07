@@ -14,9 +14,10 @@ import psutil
 from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import Response, StreamingResponse
 
+from lerobot_doctor import path_policy
+from lerobot_doctor.device_helpers import get_usb_bus_for_camera
+
 from .. import _streaming as _str
-from .. import path_policy
-from .._device_helpers import get_usb_bus_for_camera
 from .._streaming import (
     _streamers,
     _streamers_lock,

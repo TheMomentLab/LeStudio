@@ -10,7 +10,7 @@ from typing import Any
 
 import pytest
 
-from lestudio.calibration_validator import (
+from lerobot_doctor.calibration_validator import (
     EXPECTED_JOINTS_SO,
     MIN_USEFUL_SPAN,
     POSITION_MAX,

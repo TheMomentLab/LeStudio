@@ -5,27 +5,27 @@ LEROBOT_PATH ?= lerobot
 
 .PHONY: install install-full dev test build-frontend clean help
 
-## install: Init submodule + install both (editable, no-deps for lerobot)
+## install: Init submodule + install lerobot (no-deps), lerobot-doctor and lestudio (editable)
 install:
 	git submodule update --init "$(LEROBOT_PATH)"
 	pip install --no-deps -e "$(LEROBOT_PATH)"
-	pip install -e .
+	pip install -e packages/lerobot-doctor -e packages/lestudio
 
 ## install-full: Same as install but resolves all lerobot dependencies (may change torch)
 install-full:
 	git submodule update --init "$(LEROBOT_PATH)"
 	pip install -e "$(LEROBOT_PATH)"
-	pip install -e .
+	pip install -e packages/lerobot-doctor -e packages/lestudio
 
 ## dev: Init submodule + install with dev dependencies (no-deps for lerobot)
 dev:
 	git submodule update --init "$(LEROBOT_PATH)"
 	pip install --no-deps -e "$(LEROBOT_PATH)"
-	pip install -e ".[dev]"
+	pip install -e packages/lerobot-doctor -e "packages/lestudio[dev]"
 
 ## build-frontend: Build the React frontend
 build-frontend:
-	cd frontend && npm ci && npm run build
+	cd packages/lestudio/frontend && npm ci && npm run build
 
 ## test: Run unit tests (no hardware required)
 test:
@@ -37,7 +37,7 @@ test-hw:
 
 ## clean: Remove build artifacts and caches
 clean:
-	rm -rf build dist *.egg-info src/*.egg-info
+	rm -rf build dist *.egg-info packages/*/src/*.egg-info packages/*/build packages/*/dist
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 
 help:

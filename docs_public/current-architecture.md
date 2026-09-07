@@ -24,7 +24,7 @@ LeStudio is a browser-based workbench around LeRobot workflows.
 
 At a high level:
 
-1. The frontend is built in `frontend/` and bundled into `src/lestudio/static/`.
+1. The frontend is built in `packages/lestudio/frontend/` and bundled into `packages/lestudio/src/lestudio/static/`.
 2. FastAPI serves both the REST/WebSocket backend and the built frontend assets.
 3. Long-running operations such as teleop, record, calibrate, train, and eval are executed as subprocesses.
 4. Process stdout/stderr, derived metrics, and status updates are streamed to the browser over `/ws`.
@@ -46,11 +46,11 @@ Browser UI
   -> WebSocket (`/ws`) for process output, metrics, status
   -> HTTP streaming (`/stream/*`, `/api/camera/snapshot/*`) for camera frames
 
-FastAPI app (`src/lestudio/server.py`)
+FastAPI app (`packages/lestudio/src/lestudio/server.py`)
   -> shared AppState
-  -> route modules under `src/lestudio/routes/`
+  -> route modules under `packages/lestudio/src/lestudio/routes/`
   -> ProcessManager for subprocess lifecycle
-  -> static frontend serving from `src/lestudio/static/`
+  -> static frontend serving from `packages/lestudio/src/lestudio/static/`
 
 LeRobot boundary
   -> command builders compose CLI arguments
@@ -64,7 +64,7 @@ LeRobot boundary
 
 ### 4.1 App Factory and Route Assembly
 
-`src/lestudio/server.py` is the backend entry point.
+`packages/lestudio/src/lestudio/server.py` is the backend entry point.
 
 Key responsibilities:
 
@@ -75,7 +75,7 @@ Key responsibilities:
 - construct `ProcessManager`
 - recover orphaned processes from previous server sessions
 - include route modules for devices, config, udev, process control, training, eval, dataset, streaming, and motor APIs
-- mount `src/lestudio/static/` at `/` for SPA serving
+- mount `packages/lestudio/src/lestudio/static/` at `/` for SPA serving
 
 Important implementation detail:
 
@@ -83,7 +83,7 @@ Important implementation detail:
 
 ### 4.2 Shared AppState
 
-`src/lestudio/routes/_state.py` defines `AppState`, which is passed into each route factory.
+`packages/lestudio/src/lestudio/routes/_state.py` defines `AppState`, which is passed into each route factory.
 
 It centralizes:
 
@@ -118,7 +118,7 @@ The backend is organized around route factories instead of one monolithic app mo
 
 ### 5.1 ProcessManager Role
 
-`src/lestudio/process_manager.py` is the runtime core for long-running work.
+`packages/lestudio/src/lestudio/process_manager.py` is the runtime core for long-running work.
 
 Its responsibilities go beyond simply calling `subprocess.Popen`:
 
@@ -151,7 +151,7 @@ This means LeStudio treats process scheduling as part of the product logic, not 
 
 ### 5.2 Command Builders
 
-`src/lestudio/command_builders.py` composes CLI arguments for teleop, record, calibrate, motor setup, train, eval, and dataset derivation.
+`packages/lestudio/src/lestudio/command_builders.py` composes CLI arguments for teleop, record, calibrate, motor setup, train, eval, and dataset derivation.
 
 Current state is mixed:
 
@@ -163,7 +163,7 @@ That split is important: LeStudio is already architecturally preparing for gener
 
 ### 5.3 Process Route Flow
 
-`src/lestudio/routes/process.py` is the main control surface for long-running operations.
+`packages/lestudio/src/lestudio/routes/process.py` is the main control surface for long-running operations.
 
 Important behaviors:
 
@@ -182,7 +182,7 @@ This route layer is where UI intent becomes operational subprocess work.
 
 ### 6.1 WebSocket Channel
 
-`src/lestudio/routes/streaming.py` exposes `/ws`.
+`packages/lestudio/src/lestudio/routes/streaming.py` exposes `/ws`.
 
 Today the WebSocket sends:
 
@@ -220,7 +220,7 @@ This split is a defining design choice of LeStudio: the UI keeps camera visibili
 
 ### 7.1 App Bootstrap
 
-`frontend/src/app/App.tsx` is the frontend root.
+`packages/lestudio/frontend/src/app/App.tsx` is the frontend root.
 
 On startup it:
 
@@ -234,7 +234,7 @@ This means the frontend does not wait for a single backend bootstrap payload. It
 
 ### 7.2 Routing
 
-`frontend/src/app/routes.ts` defines the app shell plus the main workflow pages:
+`packages/lestudio/frontend/src/app/routes.ts` defines the app shell plus the main workflow pages:
 
 - status
 - camera setup
@@ -249,7 +249,7 @@ The route structure mirrors the product workflow from setup to operation to ML e
 
 ### 7.3 Global Store
 
-`frontend/src/app/store/index.ts` is the main UI state container.
+`packages/lestudio/frontend/src/app/store/index.ts` is the main UI state container.
 
 Important current-state note:
 
@@ -275,7 +275,7 @@ The store also contains action functions directly on the state object, so it beh
 
 ### 7.4 Transport Layer
 
-`frontend/src/app/services/apiClient.ts` encapsulates API transport.
+`packages/lestudio/frontend/src/app/services/apiClient.ts` encapsulates API transport.
 
 Key characteristics:
 
@@ -290,7 +290,7 @@ This file is effectively the frontend IPC layer.
 
 ### 7.5 Bootstrap Service
 
-`frontend/src/app/services/bootstrap.ts` converts several backend responses into a normalized startup view model.
+`packages/lestudio/frontend/src/app/services/bootstrap.ts` converts several backend responses into a normalized startup view model.
 
 It is responsible for:
 
@@ -351,11 +351,11 @@ LeStudio is designed so most backend code does not import `lerobot.*` directly.
 
 Current project guidance treats the LeRobot coupling boundary as isolated to these files:
 
-- `src/lestudio/teleop_bridge.py`
-- `src/lestudio/record_bridge.py`
-- `src/lestudio/camera_patch.py`
-- `src/lestudio/device_registry.py`
-- `src/lestudio/motor_monitor_bridge.py`
+- `packages/lestudio/src/lestudio/teleop_bridge.py`
+- `packages/lestudio/src/lestudio/record_bridge.py`
+- `packages/lestudio/src/lestudio/camera_patch.py`
+- `packages/lerobot-doctor/src/lerobot_doctor/device_registry.py`
+- `packages/lerobot-doctor/src/lerobot_doctor/motor_monitor_bridge.py`
 
 Design intent:
 

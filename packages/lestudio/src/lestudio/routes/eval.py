@@ -11,8 +11,9 @@ from typing import Any
 
 from fastapi import APIRouter
 
-from .. import type_policy
-from .._device_helpers import ensure_bimanual_calibration_files, get_calibration_file_path
+from lerobot_doctor import type_policy
+from lerobot_doctor.device_helpers import ensure_bimanual_calibration_files, get_calibration_file_path
+
 from .._streaming import stop_all_streamers_for_process, unlock_cameras
 from .._train_helpers import (
     _check_cuda_runtime_compat,

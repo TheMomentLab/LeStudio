@@ -4,18 +4,18 @@ from pathlib import Path
 
 import pytest
 
+import lerobot_doctor.device_helpers as _device_mod
+import lerobot_doctor.udev_helpers as _udev_mod
+from lerobot_doctor.device_helpers import get_usb_bus_for_camera
+from lerobot_doctor.udev_helpers import _build_rules, _manual_udev_install_commands, _parse_udev_rules
 from lestudio._cors import _parse_cors_origins
-from lestudio._udev_helpers import _build_rules, _parse_udev_rules, _manual_udev_install_commands
 from lestudio._train_helpers import (
-    _ensure_non_interactive_conda_args,
-    _parse_install_args,
-    _normalize_console_command,
     _cuda_tag_to_toolkit_version,
+    _ensure_non_interactive_conda_args,
     _format_cmd,
+    _normalize_console_command,
+    _parse_install_args,
 )
-import lestudio._device_helpers as _device_mod
-from lestudio._device_helpers import get_usb_bus_for_camera
-import lestudio._udev_helpers as _udev_mod
 
 
 def test_parse_cors_origins_handles_empty_and_csv():

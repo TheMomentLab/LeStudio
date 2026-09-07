@@ -10,7 +10,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from lestudio import path_policy
+from lerobot_doctor import path_policy
 
 logger = logging.getLogger(__name__)
 

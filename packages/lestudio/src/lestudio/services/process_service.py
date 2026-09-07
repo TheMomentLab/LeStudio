@@ -8,8 +8,16 @@ from typing import cast
 
 import cv2
 
-from lestudio import command_builders, device_registry, path_policy, type_policy
-from lestudio._device_helpers import ensure_bimanual_calibration_files, get_calibration_file_path
+from lerobot_doctor import device_registry, path_policy, type_policy
+from lerobot_doctor.calibration_validator import (
+    CalibrationIssue,
+    CalibrationValidationResult,
+    validate_and_cross_validate,
+    validate_calibration_file,
+)
+from lerobot_doctor.device_helpers import ensure_bimanual_calibration_files, get_calibration_file_path
+from lerobot_doctor.motor_monitor_bridge import get_bridge as _get_motor_bridge
+from lestudio import command_builders
 from lestudio._streaming import (
     _get_cam_settings,
     _preview_streamers,
@@ -17,13 +25,6 @@ from lestudio._streaming import (
     _streamers_lock,
     stop_all_streamers_for_process,
 )
-from lestudio.calibration_validator import (
-    CalibrationIssue,
-    CalibrationValidationResult,
-    validate_and_cross_validate,
-    validate_calibration_file,
-)
-from lestudio.motor_monitor_bridge import get_bridge as _get_motor_bridge
 from lestudio.routes._state import AppState
 
 logger = logging.getLogger(__name__)

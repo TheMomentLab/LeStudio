@@ -22,21 +22,21 @@ jobs:
       - name: Install backend deps
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e ".[dev]"
+          python -m pip install -e packages/lerobot-doctor -e "packages/lestudio[dev]"
 
       - name: Lint with ruff
-        run: python -m ruff check src/lestudio
+        run: python -m ruff check packages
 
       - name: Type check with mypy
-        run: python -m mypy src/lestudio --ignore-missing-imports
+        run: python -m mypy packages/lerobot-doctor/src/lerobot_doctor packages/lestudio/src/lestudio --ignore-missing-imports
 
       - name: Compile backend
-        run: python -m compileall -q src/lestudio
+        run: python -m compileall -q packages/lerobot-doctor/src packages/lestudio/src
 
       - name: Enforce LeRobot import boundary
         run: |
-          violations="$(rg -n '\b(from|import)\s+lerobot(\.|\b)' src/lestudio \
-            | grep -vE 'src/lestudio/(teleop_bridge|record_bridge|camera_patch|device_registry|motor_monitor_bridge)\.py:' || true)"
+          violations="$(rg -n '\b(from|import)\s+lerobot(\.|\b)' packages/lestudio/src packages/lerobot-doctor/src \
+            | grep -vE '(lestudio/(teleop_bridge|record_bridge|camera_patch)|lerobot_doctor/(device_registry|motor_monitor_bridge))\.py:' || true)"
           if [ -n "$violations" ]; then
             echo "Found forbidden lerobot imports:"
             echo "$violations"
@@ -44,7 +44,7 @@ jobs:
           fi
 
       - name: Run tests
-        run: python -m pytest -q -m "not smoke_hw and not lerobot" -p pytest_cov.plugin --cov=lestudio --cov-report=term-missing --cov-report=xml tests
+        run: python -m pytest -q -m "not smoke_hw and not lerobot" -p pytest_cov.plugin --cov=lestudio --cov=lerobot_doctor --cov-report=term-missing --cov-report=xml tests
 
   frontend:
     runs-on: ubuntu-latest
@@ -57,36 +57,36 @@ jobs:
         with:
           node-version: "20"
           cache: "npm"
-          cache-dependency-path: frontend/package-lock.json
+          cache-dependency-path: packages/lestudio/frontend/package-lock.json
 
       - name: Install frontend deps
-        working-directory: frontend
+        working-directory: packages/lestudio/frontend
         run: npm ci
 
       - name: Lint frontend
-        working-directory: frontend
+        working-directory: packages/lestudio/frontend
         run: npm run lint
 
       - name: Typecheck frontend
-        working-directory: frontend
+        working-directory: packages/lestudio/frontend
         run: npm run typecheck
 
       - name: Audit design system debt
-        working-directory: frontend
+        working-directory: packages/lestudio/frontend
         run: npm run design:audit
 
       - name: Test frontend
-        working-directory: frontend
+        working-directory: packages/lestudio/frontend
         run: npm test -- --run
 
       - name: Install Playwright browser
-        working-directory: frontend
+        working-directory: packages/lestudio/frontend
         run: npx playwright install chromium
 
       - name: Run frontend E2E smoke tests
-        working-directory: frontend
+        working-directory: packages/lestudio/frontend
         run: npm run test:e2e
 
       - name: Build frontend
-        working-directory: frontend
+        working-directory: packages/lestudio/frontend
         run: npm run build
