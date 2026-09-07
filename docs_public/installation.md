@@ -4,9 +4,9 @@ This guide covers the minimum environment and commands needed to get LeStudio ru
 
 ## Requirements
 
-- Python 3.10+
+- Python 3.12 recommended. 3.10 / 3.11 still work, but resolve to lerobot 0.4.x (the last line supporting them).
 - Linux (for `udev` rules and `/dev/video*` access)
-- [Hugging Face LeRobot](https://github.com/huggingface/lerobot) installed in your environment
+- [Hugging Face LeRobot](https://github.com/huggingface/lerobot) is installed automatically as a pip dependency (`lerobot>=0.4.4,<0.7`)
 
 ### System Packages (Ubuntu / Debian)
 
@@ -28,7 +28,7 @@ sudo apt-get install -y \
 | Package | Why |
 |---|---|
 | `build-essential`, `cmake` | Compile native Python extensions during `pip install` |
-| `git` | Clone the repository and manage the lerobot submodule |
+| `git` | Clone the repository |
 | `ffmpeg` | Video encoding/decoding for dataset recording and playback |
 | `libgl1-mesa-glx`, `libglib2.0-0`, `libsm6`, `libxext6` | Runtime libraries required by OpenCV |
 
@@ -56,18 +56,19 @@ Log out and back in (or reboot) for changes to take effect.
 ## Install from Source
 
 ```bash
-git clone --recursive https://github.com/TheMomentLab/lestudio.git
+git clone https://github.com/TheMomentLab/lestudio.git
 cd lestudio
 
 # one-time: create conda env if you don't have one
-conda create -n lerobot python=3.10 -y
+conda create -n lerobot python=3.12 -y
 
 conda activate lerobot
 make install
 ```
 
-The [custom lerobot fork](https://github.com/TheMomentLab/lerobot) is tracked as a git submodule.  
-`--recursive` pulls it automatically; `make install` installs both packages in editable mode.
+`make install` installs `lerobot-doctor` and `lestudio` in editable mode. `lestudio` declares upstream `lerobot` as a dependency, so pip pulls it (with the dataset, training and Feetech / Dynamixel extras) for your Python version. If you need a specific torch build (CUDA version, CPU-only), install torch first; pip keeps a compatible torch that is already present.
+
+Upgrading from an older checkout that used the `lerobot` git submodule: delete the `lerobot/` directory and run `make install` again. The fork is no longer used.
 
 If you plan to contribute or run the full verification stack (`ruff`, `mypy`, pytest helpers), run `make dev` after the base install.
 

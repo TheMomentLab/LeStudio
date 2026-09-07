@@ -11,13 +11,14 @@ import pytest
 from _routing import find_endpoint as _find_endpoint
 
 import lestudio.routes.eval as eval_routes
-import lestudio.routes.training as training_routes
 import lestudio.services.process_service as process_service
 import lestudio.services.training_service as training_service
 from lestudio.routes.models import HfTokenRequest
 from lestudio.server import create_app
 
-_has_lerobot_rl = importlib.util.find_spec("lerobot.rl") is not None
+_has_lerobot_rl = (
+    importlib.util.find_spec("lerobot") is not None and importlib.util.find_spec("lerobot.rl") is not None
+)
 
 
 def _make_app(tmp_path: Path):

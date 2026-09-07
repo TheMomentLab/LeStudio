@@ -38,9 +38,16 @@ def _install_input_prompt_passthrough() -> Callable[[], None]:
 
 def _install_stdin_bridge():
     from lerobot.scripts import lerobot_record as record_mod
-    from lerobot.utils import control_utils
 
-    original = control_utils.init_keyboard_listener
+    # lerobot <= 0.4 exposes the listener from utils.control_utils; 0.5+ moved it
+    # to utils.keyboard_input. lerobot_record imports the name into its own
+    # namespace in both lines, so that is what actually has to be patched.
+    try:
+        from lerobot.utils import control_utils as keyboard_mod
+    except ImportError:
+        from lerobot.utils import keyboard_input as keyboard_mod
+
+    original = keyboard_mod.init_keyboard_listener
 
     def patched_init_keyboard_listener():
         listener, events = original()
@@ -63,7 +70,7 @@ def _install_stdin_bridge():
         threading.Thread(target=read_stdin, daemon=True).start()
         return listener, events
 
-    control_utils.init_keyboard_listener = patched_init_keyboard_listener
+    keyboard_mod.init_keyboard_listener = patched_init_keyboard_listener
     record_mod.init_keyboard_listener = patched_init_keyboard_listener
 
     # Force sequential video encoding to avoid ProcessPoolExecutor deadlock.

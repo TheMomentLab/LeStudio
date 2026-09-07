@@ -302,7 +302,12 @@ def _patch_teleop_loop(
     original_loop = cast(Callable[..., None], teleop_mod.teleop_loop)
     move_cursor_up = cast(Callable[[int], None], teleop_mod.move_cursor_up)
     precise_sleep = cast(Callable[[float], None], teleop_mod.precise_sleep)
-    log_rerun_data = cast(Callable[..., None], teleop_mod.log_rerun_data)
+    # lerobot <= 0.4 exposes log_rerun_data(...); 0.6+ replaced it with
+    # log_visualization_data(display_mode, ...). Resolve whichever is present.
+    log_rerun_data = cast(Callable[..., None] | None, getattr(teleop_mod, "log_rerun_data", None))
+    log_visualization_data = cast(
+        Callable[..., None] | None, getattr(teleop_mod, "log_visualization_data", None)
+    )
 
     def debug_teleop_loop(
         teleop: object,
@@ -314,7 +319,10 @@ def _patch_teleop_loop(
         display_data: bool = False,
         duration: float | None = None,
         display_compressed_images: bool = False,
+        **loop_kwargs: Any,
     ) -> None:
+        # Newer lerobot passes extra keyword arguments (e.g. display_mode); keep
+        # them so the loop signature tracks upstream without a rewrite here.
         robot_obj = cast(Any, robot)
         teleop_obj = cast(Any, teleop)
         teleop_action_processor_fn = cast(Any, teleop_action_processor)
@@ -341,6 +349,7 @@ def _patch_teleop_loop(
                 display_data=display_data,
                 duration=duration,
                 display_compressed_images=display_compressed_images,
+                **loop_kwargs,
             )
             return
 
@@ -391,11 +400,19 @@ def _patch_teleop_loop(
 
             if display_data:
                 obs_transition = robot_observation_processor_fn(observation)
-                log_rerun_data(
-                    observation=obs_transition,
-                    action=teleop_action,
-                    compress_images=display_compressed_images,
-                )
+                if log_rerun_data is not None:
+                    log_rerun_data(
+                        observation=obs_transition,
+                        action=teleop_action,
+                        compress_images=display_compressed_images,
+                    )
+                elif log_visualization_data is not None:
+                    log_visualization_data(
+                        str(loop_kwargs.get("display_mode", "rerun")),
+                        observation=obs_transition,
+                        action=teleop_action,
+                        compress_images=display_compressed_images,
+                    )
 
                 print("\n" + "-" * (display_len + 10))
                 print(f"{'NAME':<{display_len}} | {'NORM':>7}")

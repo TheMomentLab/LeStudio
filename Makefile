@@ -1,26 +1,19 @@
 SHELL := /bin/bash
 
-# lerobot is tracked as a git submodule
-LEROBOT_PATH ?= lerobot
+# `lerobot` is a normal pip dependency of packages/lestudio (version range in
+# its pyproject). It resolves to whatever upstream release matches your Python:
+# 0.4.x on Python 3.10/3.11, 0.5+ on Python 3.12+. Install torch first if you
+# need a specific CUDA/CPU build, e.g.
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
 
-.PHONY: install install-full dev test build-frontend clean help
+.PHONY: install dev test test-hw build-frontend clean help
 
-## install: Init submodule + install lerobot (no-deps), lerobot-doctor and lestudio (editable)
+## install: Install lerobot-doctor and lestudio (editable); pulls upstream lerobot
 install:
-	git submodule update --init "$(LEROBOT_PATH)"
-	pip install --no-deps -e "$(LEROBOT_PATH)"
 	pip install -e packages/lerobot-doctor -e packages/lestudio
 
-## install-full: Same as install but resolves all lerobot dependencies (may change torch)
-install-full:
-	git submodule update --init "$(LEROBOT_PATH)"
-	pip install -e "$(LEROBOT_PATH)"
-	pip install -e packages/lerobot-doctor -e packages/lestudio
-
-## dev: Init submodule + install with dev dependencies (no-deps for lerobot)
+## dev: Same as install plus the dev toolchain used by CI (ruff, mypy, pytest helpers)
 dev:
-	git submodule update --init "$(LEROBOT_PATH)"
-	pip install --no-deps -e "$(LEROBOT_PATH)"
 	pip install -e packages/lerobot-doctor -e "packages/lestudio[dev]"
 
 ## build-frontend: Build the React frontend

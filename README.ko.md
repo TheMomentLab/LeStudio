@@ -86,9 +86,9 @@
 
 ## 요구 사항
 
-- Python 3.10+
+- Python 3.12 권장 (3.10 / 3.11은 lerobot 0.4.x로 동작)
 - Linux (`udev` 규칙 및 `/dev/video*` 접근에 필요)
-- `huggingface/lerobot`이 환경에 설치되어 있어야 함
+- `lerobot`은 의존성으로 자동 설치됨 (설치 항목 참고)
 
 ### 선택 사항
 
@@ -98,19 +98,21 @@
 
 ## 설치
 
+LeStudio는 upstream [`lerobot`](https://github.com/huggingface/lerobot)을 일반 pip 의존성(`lerobot>=0.4.4,<0.7`)으로 사용합니다. Python 3.12에서는 현재 0.6.x 라인이, Python 3.10 / 3.11에서는 해당 버전을 지원하는 마지막 라인인 0.4.x가 설치됩니다.
+
 소스에서 설치:
 
 ```bash
-git clone --recursive https://github.com/TheMomentLab/lestudio.git
+git clone https://github.com/TheMomentLab/lestudio.git
 cd lestudio
-# 최초 1회 (필요 시): conda create -n lerobot python=3.10 -y
+# 최초 1회 (필요 시): conda create -n lerobot python=3.12 -y
 conda activate lerobot
 make install
 ```
 
-[커스텀 lerobot 포크](https://github.com/TheMomentLab/lerobot)는 git 서브모듈로 관리됩니다. `--recursive`로 자동으로 가져오며, `make install`이 두 패키지를 편집 가능 모드로 설치합니다.
+`make install`은 `lerobot-doctor`와 `lestudio`를 편집 가능 모드로 설치하고, `lerobot`을 dataset / training / Feetech·Dynamixel 모터 extras와 함께 가져옵니다. 특정 torch 빌드(CUDA 버전, CPU 전용)가 필요하면 torch를 먼저 설치하세요. pip이 그대로 유지합니다.
 
-> **예정된 변경.** 서브모듈은 upstream `lerobot`에 대한 버전 범위 의존성으로 바뀌고, 하드웨어 층은 `pip install`로 설치하는 패키지로 배포될 예정입니다. [방향](docs_public/direction.md) 문서를 참고하세요. 그전까지는 위와 같이 소스에서 설치합니다.
+> 서브모듈 기반 체크아웃에서 올라오는 경우: 옛 `lerobot/` 디렉터리를 지우고 `make install`을 다시 실행하세요. 포크는 더 이상 사용하지 않습니다.
 
 ## 실행
 

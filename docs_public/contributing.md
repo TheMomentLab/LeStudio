@@ -7,7 +7,7 @@ This page is the public contributor entry point. For deeper internal design note
 ## Development Setup
 
 ```bash
-git clone --recursive https://github.com/TheMomentLab/lestudio.git
+git clone https://github.com/TheMomentLab/lestudio.git
 cd lestudio
 conda activate lerobot
 make dev
@@ -52,6 +52,7 @@ LeStudio/
 │           ├── teleop_bridge.py        # LeRobot teleop wrapper (lerobot import boundary)
 │           ├── record_bridge.py        # LeRobot record wrapper (lerobot import boundary)
 │           ├── camera_patch.py         # OpenCVCamera SHM patch (lerobot import boundary)
+│           ├── eval_bridge.py          # lerobot_eval wrapper (registers robot families; dynamic import)
 │           └── static/                 # Built frontend (npm run build output)
 ├── tests/                              # Backend pytest tests (both packages)
 ├── pyproject.toml                      # Shared tool config (pytest, ruff, mypy, pyright)

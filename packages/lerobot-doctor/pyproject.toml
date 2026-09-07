@@ -25,6 +25,9 @@ classifiers = [
 # lazily and degrade to a fallback robot catalog when it is absent.
 dependencies = []
 
+[project.optional-dependencies]
+lerobot = ["lerobot>=0.4.4,<0.7"]
+
 [project.urls]
 Homepage = "https://github.com/TheMomentLab/lestudio"
 Repository = "https://github.com/TheMomentLab/lestudio"

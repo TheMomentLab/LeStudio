@@ -21,14 +21,11 @@ DEFAULT_RULES_PATH = Path("/etc/udev/rules.d/99-lerobot.rules")
 
 
 def find_lerobot_src() -> Path | None:
-    for candidate in [
-        Path.cwd() / "src" / "lerobot",
-        Path.cwd() / "lerobot" / "src" / "lerobot",
-        Path.cwd() / "reference" / "lerobot" / "src",
-    ]:
-        if candidate.is_dir():
-            return candidate.parent
+    """Locate the directory that contains the installed ``lerobot`` package.
 
+    ``lerobot`` is a normal pip dependency, so the installed package wins. A
+    source checkout can still be forced with ``--lerobot-path``.
+    """
     try:
         spec = importlib.util.find_spec("lerobot")
         if spec is None:

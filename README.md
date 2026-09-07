@@ -86,9 +86,9 @@ The hardware layer is being split into a standalone package (working name `lerob
 
 ## Requirements
 
-- Python 3.10+
+- Python 3.12 recommended (3.10 / 3.11 work with lerobot 0.4.x)
 - Linux (for `udev` rules and `/dev/video*` access)
-- `huggingface/lerobot` installed in your environment
+- `lerobot` is installed automatically as a dependency (see Installation)
 
 ### Optional
 
@@ -98,19 +98,21 @@ The hardware layer is being split into a standalone package (working name `lerob
 
 ## Installation
 
+LeStudio depends on upstream [`lerobot`](https://github.com/huggingface/lerobot) as a normal pip dependency (`lerobot>=0.4.4,<0.7`). Python 3.12 resolves the current 0.6.x line; Python 3.10 / 3.11 resolve 0.4.x, the last line that supports them.
+
 Install from source:
 
 ```bash
-git clone --recursive https://github.com/TheMomentLab/lestudio.git
+git clone https://github.com/TheMomentLab/lestudio.git
 cd lestudio
-# one-time (if needed): conda create -n lerobot python=3.10 -y
+# one-time (if needed): conda create -n lerobot python=3.12 -y
 conda activate lerobot
 make install
 ```
 
-The [custom lerobot fork](https://github.com/TheMomentLab/lerobot) is tracked as a git submodule. `--recursive` pulls it automatically; `make install` installs both packages in editable mode.
+`make install` installs `lerobot-doctor` and `lestudio` in editable mode and pulls `lerobot` with the dataset, training and Feetech / Dynamixel motor extras. If you need a specific torch build (CUDA version, CPU-only), install torch first and pip keeps it.
 
-> **Planned change.** The submodule will be replaced by a version-range dependency on upstream `lerobot`, and the hardware layer will ship as a `pip install`-able package. See [Direction](docs_public/direction.md). Until then, install from source as above.
+> Upgrading from the submodule-based checkout: delete the old `lerobot/` directory and re-run `make install`. The fork is no longer used.
 
 ## Usage
 

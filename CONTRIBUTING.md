@@ -6,9 +6,9 @@ This guide defines the minimum engineering bar for pull requests.
 ## Local Setup
 
 ```bash
-git clone --recursive https://github.com/TheMomentLab/lestudio.git
+git clone https://github.com/TheMomentLab/lestudio.git
 cd lestudio
-conda create -n lerobot python=3.10 -y
+conda create -n lerobot python=3.12 -y
 conda activate lerobot
 make dev
 cd packages/lestudio/frontend && npm ci && cd ..
@@ -20,6 +20,8 @@ The repository is a monorepo with two Python packages under `packages/`:
 - `packages/lestudio` — the workbench: FastAPI backend under `src/lestudio/` and the React frontend under `frontend/`. Depends on `lerobot-doctor`.
 
 Shared tool configuration (pytest, ruff, mypy, pyright) lives in the root `pyproject.toml`; `tests/` covers both packages.
+
+Upstream `lerobot` is a pip dependency of `lestudio` (`>=0.4.4,<0.7`), not a submodule. CI runs the backend on Python 3.10 (resolves lerobot 0.4.x) and 3.12 (resolves the latest 0.6.x) so upstream drift fails the build instead of surfacing on a user's machine.
 
 Use `make install` only if you want the runtime packages without contributor tooling. `make dev` installs both packages editable plus the dev extras used by CI (`ruff`, `mypy`, pytest helpers).
 
@@ -60,6 +62,7 @@ These are intentional and acceptable because they create runtime coupling only, 
 
 - `packages/lestudio/src/lestudio/command_builders.py` — Builds subprocess command strings containing `lerobot` script paths
 - `packages/lerobot-doctor/src/lerobot_doctor/calibrate_bridge.py` — Uses `importlib.import_module()` for dynamic robot-type resolution
+- `packages/lestudio/src/lestudio/eval_bridge.py` — Uses `importlib.import_module()` to register robot / teleoperator families, then delegates to `lerobot_eval`
 - `packages/lerobot-doctor/src/lerobot_doctor/motor_setup_bridge.py` — Spawns `lerobot_setup_motors` as a subprocess
 
 The CI boundary check (`rg` + `grep` in `ci.yml`) enforces the compile-time import rule.

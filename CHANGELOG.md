@@ -11,7 +11,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - LeLab became the official LeRobot GUI (April–June 2026). LeStudio is being
   reorganised around hardware setup and diagnostics as a standalone package
   (working name `lerobot-doctor`) with the workbench kept on top. See
-  `docs_public/direction.md`. No code has moved yet.
+  `docs_public/direction.md`. Steps 1 and 2 of the plan are done (below).
 
 ### Added
 - OMX (OpenManipulator-X) support, a robot-family policy catalog and
@@ -32,6 +32,18 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - `tests/_routing.py` helper for route introspection across FastAPI versions.
 
 ### Changed
+- Repository re-laid out as a monorepo: `packages/lerobot-doctor` (hardware
+  layer library: device registry, udev / type / path policy, motor and
+  calibration bridges) and `packages/lestudio` (FastAPI backend + React
+  frontend, depends on `lerobot-doctor`). Shared tool config lives in the
+  root `pyproject.toml`. Behaviour unchanged.
+- Upstream `lerobot` is now a pip dependency (`>=0.4.4,<0.7`) instead of a
+  pinned fork submodule. CI runs the backend on Python 3.10 (lerobot 0.4.x)
+  and 3.12 (latest 0.6.x). The record and teleop bridges handle the
+  keyboard-listener and visualization helper renames in lerobot 0.5+.
+- Eval launches through `lestudio.eval_bridge`, which registers the
+  bimanual and OMX robot / teleoperator families before delegating to
+  upstream `lerobot_eval` (the fork used to patch this into the script).
 - Every page migrated from raw Tailwind palette classes to design tokens
   (1,948 → 0); the ESLint rule is enforced on all of `src/app`.
 - One look per role: green only on process-start buttons, one segmented
@@ -42,6 +54,14 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Session History timestamps and console tab emphasis toned to match.
 - Dependencies: react-router 7.18.3, vite 6.4.3 (npm audit clean),
   pyarrow ≥ 23.0.1.
+
+### Removed
+- The `lerobot` git submodule (TheMomentLab fork). Delete the old `lerobot/`
+  directory and re-run `make install` when upgrading a checkout.
+- `tests/test_so_drive_modes.py` and `tests/test_feetech_serial_trace.py`:
+  they exercised patches the fork carried inside lerobot itself (SO drive-mode
+  defaults, first-sync-read retry, Feetech homing-offset wrap), which do not
+  exist upstream.
 
 ### Fixed
 - Backend tests passed vacuously / failed on FastAPI ≥ 0.13x because

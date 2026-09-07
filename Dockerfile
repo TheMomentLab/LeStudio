@@ -15,7 +15,7 @@ RUN npm run build
 # ---------------------------------------------------------
 # Stage 2: Build Python Backend
 # ---------------------------------------------------------
-FROM python:3.10-slim
+FROM python:3.12-slim
 
 # Install system dependencies required for OpenCV, pyav, and building some python packages
 RUN apt-get update && apt-get install -y \
@@ -45,8 +45,9 @@ COPY packages/lerobot-doctor packages/lerobot-doctor
 COPY packages/lestudio/pyproject.toml packages/lestudio/README.md packages/lestudio/
 COPY packages/lestudio/src/lestudio/__init__.py packages/lestudio/src/lestudio/__init__.py
 
-# Install heavy dependency first (cached layer)
-RUN pip install "lerobot[cameras, motors] @ git+https://github.com/huggingface/lerobot.git"
+# Install the heavy dependency first (cached layer). Upstream release from PyPI;
+# the motor extras pull the Feetech / Dynamixel SDKs.
+RUN pip install "lerobot[feetech,dynamixel]>=0.6.1,<0.7"
 
 # Copy full LeStudio source
 COPY . .

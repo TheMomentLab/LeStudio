@@ -7,6 +7,14 @@ on:
 
 jobs:
   backend:
+    # Two legs cover both ends of the `lerobot` version range declared in
+    # packages/lestudio/pyproject.toml: Python 3.10 resolves the 0.4.x floor,
+    # Python 3.12 resolves the latest release, so upstream drift shows up here.
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.12"]
+    name: backend (py${{ matrix.python-version }})
     runs-on: ubuntu-latest
     env:
       PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
@@ -17,12 +25,17 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.10"
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: packages/*/pyproject.toml
 
       - name: Install backend deps
+        # The CPU torch index keeps lerobot's torch dependency small on CI.
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e packages/lerobot-doctor -e "packages/lestudio[dev]"
+          python -m pip install --extra-index-url https://download.pytorch.org/whl/cpu \
+            -e packages/lerobot-doctor -e "packages/lestudio[dev]"
+          python -c "import lerobot, torch; print('lerobot', lerobot.__version__, '| torch', torch.__version__)"
 
       - name: Lint with ruff
         run: python -m ruff check packages
@@ -44,7 +57,7 @@ jobs:
           fi
 
       - name: Run tests
-        run: python -m pytest -q -m "not smoke_hw and not lerobot" -p pytest_cov.plugin --cov=lestudio --cov=lerobot_doctor --cov-report=term-missing --cov-report=xml tests
+        run: python -m pytest -q -m "not smoke_hw" -p pytest_cov.plugin --cov=lestudio --cov=lerobot_doctor --cov-report=term-missing --cov-report=xml tests
 
   frontend:
     runs-on: ubuntu-latest

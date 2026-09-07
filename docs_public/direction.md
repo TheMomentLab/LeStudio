@@ -53,7 +53,7 @@ Shared between both packages: the design tokens and `components/wireframe` primi
 Order matters: the first three steps add no features. They draw the boundary and ship.
 
 1. **Re-layout as a monorepo** — `packages/lerobot-doctor` and `packages/lestudio`, shared frontend primitives. Behaviour unchanged. *Done 2026-09-08 for the Python side: the hardware layer (device registry, udev/type/path policy, motor and calibration bridges) now lives in `lerobot-doctor` as a library, and `lestudio` depends on it. The frontend is not split yet and `lerobot-doctor` has no server or CLI; those come with step 3.*
-2. **Drop the lerobot fork submodule** — depend on upstream `lerobot` by version range; run CI against the latest release so drift shows up immediately.
+2. **Drop the lerobot fork submodule** — depend on upstream `lerobot` by version range; run CI against the latest release so drift shows up immediately. *Done 2026-09-08: `lestudio` depends on `lerobot>=0.4.4,<0.7`; CI runs Python 3.10 (0.4.x floor) and 3.12 (latest 0.6.x). The fork's extras (Lepton camera, depth recording, one-hot record labels, MJPG-first camera probe, real-robot eval registration) are not carried over.*
 3. **Publish `lerobot-doctor`** — `pip install`, `lerobot-doctor` (web) and `lerobot-doctor ports | motors | cameras | calibration` (CLI). First public release.
 4. **Answer where the pain is** — point LeRobot port / motor / camera issues at the tool.
 5. **Then the workbench** — reposition LeStudio as "diagnostics plus the full loop", and decide page by page what to keep versus hand to LeLab.

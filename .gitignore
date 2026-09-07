@@ -75,7 +75,6 @@ outputs/
 # ============================================================
 config.json
 *.log
-src/lerobot/
 
 # AGENTS.md (auto-generated, local only)
 AGENTS.md

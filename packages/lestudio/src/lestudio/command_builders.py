@@ -482,7 +482,8 @@ def build_eval_args(python_exe: str, cfg: dict) -> list[str]:
     args = [
         python_exe,
         "-m",
-        "lerobot.scripts.lerobot_eval",
+        # Registers the bimanual / OMX families before delegating to lerobot_eval.
+        "lestudio.eval_bridge",
         f"--policy.path={policy_path}",
         f"--env.type={env_type}",
         f"--eval.n_episodes={episodes}",
