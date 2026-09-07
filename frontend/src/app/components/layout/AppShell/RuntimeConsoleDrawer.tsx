@@ -455,20 +455,18 @@ export function RuntimeConsoleDrawer() {
               key={p}
               onClick={() => setActiveProcess(p)}
               aria-label={`Show ${PROCESS_LABELS[p]} console`}
+              aria-pressed={activeProcess === p}
               className={cn(
-                "px-2 py-0.5 rounded text-sm font-mono transition-colors cursor-pointer",
+                "px-1.5 py-0.5 text-sm font-mono transition-colors cursor-pointer border-b-2 flex items-center gap-1.5",
                 activeProcess === p
-                  ? "bg-surface-raised text-fg-body"
-                  : "text-fg-muted hover:text-fg-body"
+                  ? "text-fg-heading border-fg"
+                  : "text-fg-muted border-transparent hover:text-fg-body"
               )}
             >
-              {isRuntimeProcessRunning(procStatus, p) ? (
-                <span className="flex items-center gap-1">
-                  {PROCESS_LABELS[p]}
-                </span>
-              ) : (
-                PROCESS_LABELS[p]
+              {isRuntimeProcessRunning(procStatus, p) && (
+                <span className="size-1.5 rounded-full bg-ok-solid animate-pulse" aria-label="running" />
               )}
+              {PROCESS_LABELS[p]}
             </button>
           ))}
         </div>

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { Link } from "react-router";
 import { cn } from "../components/ui/utils";
 import { Camera, Bot, Cpu, Eraser, AlertCircle, AlertTriangle, CheckCircle2, Link as LinkIcon, History, Shield } from "lucide-react";
 import {
@@ -14,6 +15,7 @@ import {
   type UiResourcesData,
 } from "../services/contracts";
 import { useHfAuth } from "../hf-auth-context";
+import { useLeStudioStore } from "../store";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type CameraDevice = { device: string; symlink: string | null; path: string; kernels?: string; model?: string };
@@ -28,6 +30,18 @@ function deviceCountLabel(noun: string, devices: Array<{ symlink: string | null 
   if (devices.length === 0) return `${noun} (0)`;
   const mapped = devices.filter((d) => d.symlink).length;
   return mapped === devices.length ? `${noun} (${devices.length})` : `${noun} (${mapped} of ${devices.length} mapped)`;
+}
+
+// Status + what to do about it. An icon alone told the user something was
+// wrong but not where to fix it (design audit P3).
+function PrerequisiteAction({ ok, label }: { ok: boolean; label: string }) {
+  if (ok) return <CheckCircle2 size={18} className="text-ok flex-none" />;
+  return (
+    <span className="flex items-center gap-1.5 text-xs text-warn flex-none whitespace-nowrap">
+      <AlertTriangle size={14} />
+      {label} →
+    </span>
+  );
 }
 
 function UnmappedChip() {
@@ -51,6 +65,7 @@ export function SystemStatus() {
   const [expandedHistory, setExpandedHistory] = useState<Set<number>>(new Set());
   const [gpuStatus, setGpuStatus] = useState<GpuStatusResponse | null>(null);
   const [udevRules, setUdevRules] = useState<RuleItem[]>([]);
+  const setHfPopoverOpen = useLeStudioStore((s) => s.setHfPopoverOpen);
   const { hfAuth } = useHfAuth();
 
   const refreshStatus = useCallback(() => {
@@ -107,21 +122,25 @@ export function SystemStatus() {
           {/* Prerequisites — HF token + udev rules */}
           <Card title="Prerequisites" icon={<Shield size={13} />} className="overflow-hidden" bodyClassName="p-0">
             <div className="divide-y divide-line-subtle border-b border-line-subtle">
-              {/* HF Token */}
-              <div className="flex items-center gap-3 px-3 py-2">
+              {/* HF Token — opens the header popover where the token is entered */}
+              <button
+                type="button"
+                onClick={() => setHfPopoverOpen(true)}
+                className="w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-surface-hover transition-colors cursor-pointer"
+              >
                 <div className="flex-1 min-w-0">
                   <div className="text-sm text-fg-body">Hugging Face Token</div>
                   <div className="text-xs text-fg-muted">
                     {hfAuth === "ready" ? "Authenticated — push/pull enabled" : "Required for dataset upload and model download"}
                   </div>
                 </div>
-                {hfAuth === "ready"
-                  ? <CheckCircle2 size={18} className="text-ok flex-none" />
-                  : <AlertTriangle size={16} className="text-warn flex-none" />
-                }
-              </div>
-              {/* udev Rules */}
-              <div className="flex items-center gap-3 px-3 py-2">
+                <PrerequisiteAction ok={hfAuth === "ready"} label="Set token" />
+              </button>
+              {/* udev Rules — go where the mapping is made */}
+              <Link
+                to="/motor-setup"
+                className="flex items-center gap-3 px-3 py-2 hover:bg-surface-hover transition-colors"
+              >
                 <div className="flex-1 min-w-0">
                   <div className="text-sm text-fg-body">Device Mapping</div>
                   <div className="text-xs text-fg-muted">
@@ -131,11 +150,8 @@ export function SystemStatus() {
                     }
                   </div>
                 </div>
-                {udevRules.length > 0
-                  ? <CheckCircle2 size={18} className="text-ok flex-none" />
-                  : <AlertTriangle size={16} className="text-warn flex-none" />
-                }
-              </div>
+                <PrerequisiteAction ok={udevRules.length > 0} label="Map devices" />
+              </Link>
             </div>
           </Card>
 

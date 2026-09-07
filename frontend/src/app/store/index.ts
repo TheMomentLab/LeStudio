@@ -172,6 +172,9 @@ const actions: LeStudioStoreActions = {
   setMobileSidebarOpen: (open) => {
     setState({ mobileSidebarOpen: open });
   },
+  setHfPopoverOpen: (open) => {
+    setState({ hfPopoverOpen: open });
+  },
   setHfUsername: (username) => {
     setState({ hfUsername: username });
   },
@@ -205,6 +208,7 @@ let storeState: LeStudioStoreState = {
   toasts: [],
   sidebarSignals: DEFAULT_SIDEBAR_SIGNALS,
   mobileSidebarOpen: false,
+  hfPopoverOpen: false,
   consoleHeight: 120,
   ...actions,
 };
@@ -241,6 +245,7 @@ export function resetLeStudioState(overrides?: Partial<LeStudioConfig>): void {
     toasts: [],
     sidebarSignals: DEFAULT_SIDEBAR_SIGNALS,
     mobileSidebarOpen: false,
+    hfPopoverOpen: false,
     consoleHeight: 120,
     ...actions,
   };

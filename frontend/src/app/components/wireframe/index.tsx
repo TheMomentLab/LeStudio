@@ -642,7 +642,7 @@ export function StepperNav({ currentPath }: { currentPath: string }) {
   const progress = 5 + (idx / (PIPELINE_STEPS.length - 1)) * 95;
 
   return (
-    <div className="border-b border-line bg-surface-chrome">
+    <div className="sticky top-0 z-10 border-b border-line bg-surface-chrome/95 backdrop-blur">
       <div className="grid grid-cols-[1fr_auto_1fr] items-center px-6 py-2 text-sm text-fg-muted">
         {prev ? (
           <Link to={prev.path} className="inline-flex items-center gap-1 hover:text-fg-heading transition-colors">

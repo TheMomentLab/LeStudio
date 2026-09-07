@@ -195,6 +195,8 @@ export type LeStudioStoreData = {
   toasts: ToastMessage[];
   sidebarSignals: SidebarSignals;
   mobileSidebarOpen: boolean;
+  /** Header "Hugging Face" popover — opened from the Status prerequisites too. */
+  hfPopoverOpen: boolean;
   consoleHeight: number;
 };
 
@@ -215,6 +217,7 @@ export type LeStudioStoreActions = {
   removeToast: (id: string) => void;
   setSidebarSignals: (signals: Partial<SidebarSignals>) => void;
   setMobileSidebarOpen: (open: boolean) => void;
+  setHfPopoverOpen: (open: boolean) => void;
   setHfUsername: (username: string | null) => void;
   setConsoleHeight: (height: number) => void;
   setDatasets: (datasets: DatasetListItem[]) => void;

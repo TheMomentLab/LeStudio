@@ -35,7 +35,8 @@ export function Header({
   const [hfTokenInput, setHfTokenInput] = useState("");
   const [savingHfToken, setSavingHfToken] = useState(false);
   const [deletingHfToken, setDeletingHfToken] = useState(false);
-  const [hfPopoverOpen, setHfPopoverOpen] = useState(false);
+  const hfPopoverOpen = useLeStudioStore((s) => s.hfPopoverOpen);
+  const setHfPopoverOpen = useLeStudioStore((s) => s.setHfPopoverOpen);
   const apiOrigin = useMemo(() => {
     const windowOrigin = typeof window === "undefined" ? "" : window.location.origin;
     return resolveApiOrigin(String(import.meta.env.VITE_API_BASE_URL ?? ""), windowOrigin);
