@@ -1,0 +1,6 @@
+import{c}from"./index-DwknEP5c.js";import{r as a}from"./vendor-charts-core-D4hYTj1r.js";/**
+ * @license lucide-react v0.487.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */const u=[["path",{d:"M5 12h14",key:"1ays0h"}],["path",{d:"m12 5 7 7-7 7",key:"xquz4c"}]],p=c("arrow-right",u),i=["chart-grid","chart-axis","chart-series-1","chart-series-2","ok-solid","warn-solid","danger-solid","fg-muted"],r={"chart-grid":"#e4e4e7","chart-axis":"#71717a","chart-series-1":"#3f3f46","chart-series-2":"#2563eb","ok-solid":"#10b981","warn-solid":"#f59e0b","danger-solid":"#ef4444","fg-muted":"#71717a"};function d(){if(typeof document>"u")return r;const e=getComputedStyle(document.documentElement),t={};for(const n of i)t[n]=e.getPropertyValue(`--${n}`).trim()||r[n];return t}function m(e){if(typeof MutationObserver>"u")return()=>{};const t=new MutationObserver(e);return t.observe(document.documentElement,{attributes:!0,attributeFilter:["class"]}),()=>t.disconnect()}function f(){return typeof document>"u"?"":document.documentElement.className}let o=null,s=r;function l(){const e=f();return e!==o&&(o=e,s=d()),s}function b(){return a.useSyncExternalStore(m,l,()=>r)}export{p as A,b as u};
