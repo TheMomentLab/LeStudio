@@ -316,6 +316,16 @@ export function Teleop() {
   useEffect(() => {
     modeRef.current = mode;
   }, [mode]);
+  // Same pattern for config and type defaults: the device refresh below is keyed
+  // on refreshKey only and must not re-run (and re-hit the API) on every config edit.
+  const configRecordRef = useRef(configRecord);
+  const singleDefaultsRef = useRef(singleDefaults);
+  const biDefaultsRef = useRef(biDefaults);
+  useEffect(() => {
+    configRecordRef.current = configRecord;
+    singleDefaultsRef.current = singleDefaults;
+    biDefaultsRef.current = biDefaults;
+  }, [configRecord, singleDefaults, biDefaults]);
 
   useEffect(() => {
     let cancelled = false;
@@ -518,12 +528,12 @@ export function Teleop() {
       const lists = buildMappedArmLists(devResult.arms ?? [], files);
       setArmLists(lists);
       const currentMode = modeRef.current as "Single Arm" | "Bi-Arm";
-      const modeDefaults = currentMode === "Bi-Arm" ? biDefaults : singleDefaults;
+      const modeDefaults = currentMode === "Bi-Arm" ? biDefaultsRef.current : singleDefaultsRef.current;
       const sel = defaultArmSelection(lists, currentMode);
       setArmSelection(sel);
       const resolved = resolveArmConfig(currentMode, sel, lists, files, {
-        robotType: getConfigString(configRecord, "robot_type", modeDefaults.robot_type),
-        teleopType: getConfigString(configRecord, "teleop_type", modeDefaults.teleop_type),
+        robotType: getConfigString(configRecordRef.current, "robot_type", modeDefaults.robot_type),
+        teleopType: getConfigString(configRecordRef.current, "teleop_type", modeDefaults.teleop_type),
       });
       handleArmSetConfigResolved(resolved);
 

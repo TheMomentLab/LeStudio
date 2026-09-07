@@ -116,6 +116,11 @@ export function Recording() {
   const [selectedFollowerId, setSelectedFollowerId] = useState("");
   const [selectedLeaderId, setSelectedLeaderId] = useState("");
   const lastResolvedConfigSignatureRef = useRef<string | null>(null);
+  // Read through a ref so device refresh does not re-run on every config edit.
+  const configRef = useRef(config);
+  useEffect(() => {
+    configRef.current = config;
+  }, [config]);
   const singleDefaults = useMemo(() => getDefaults("single", typeCatalog), [typeCatalog]);
   const biDefaults = useMemo(() => getDefaults("bi", typeCatalog), [typeCatalog]);
 
@@ -422,8 +427,8 @@ export function Recording() {
     const modeDefaults = mode === "Bi-Arm" ? biDefaults : singleDefaults;
     setArmSelection(sel);
     const resolved = resolveArmConfig(mode as "Single Arm" | "Bi-Arm", sel, lists, files, {
-      robotType: getConfigString(config, "robot_type", modeDefaults.robot_type),
-      teleopType: getConfigString(config, "teleop_type", modeDefaults.teleop_type),
+      robotType: getConfigString(configRef.current, "robot_type", modeDefaults.robot_type),
+      teleopType: getConfigString(configRef.current, "teleop_type", modeDefaults.teleop_type),
     });
     handleArmSetConfigResolved(resolved);
   }, [biDefaults, handleArmSetConfigResolved, mode, singleDefaults]);
