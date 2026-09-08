@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "LeStudio frontend — React GUI for Hugging Face LeRobot",
+  "description": "LeStudio frontend \u2014 React GUI for Hugging Face LeRobot",
   "author": "TheMomentLab",
   "license": "Apache-2.0",
   "repository": {
@@ -14,8 +14,10 @@
   "homepage": "https://github.com/TheMomentLab/lestudio#readme",
   "scripts": {
     "build": "npm run typecheck && vite build",
-    "dev": "vite",
+    "build:doctor": "npm run typecheck && VITE_APP_PROFILE=doctor vite build",
     "design:audit": "node scripts/design-audit.mjs",
+    "dev": "vite",
+    "dev:doctor": "VITE_APP_PROFILE=doctor vite",
     "lint": "eslint src/app vite.config.ts --max-warnings=0",
     "preview": "vite preview",
     "test": "vitest",

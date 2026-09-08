@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from ...capabilities import Capability, register
+from lerobot_doctor.capabilities import Capability, register
+
 from ...services import dataset_service
 from .._state import AppState
 from ..models import HfTokenRequest, HfWhoamiResponse

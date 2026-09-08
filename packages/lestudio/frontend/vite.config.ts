@@ -3,12 +3,19 @@ import path from 'path'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 
+const isDoctor = process.env.VITE_APP_PROFILE === 'doctor'
+
 export default defineConfig({
   plugins: [
     // The React and Tailwind plugins are both required for Make, even if
     // Tailwind is not being actively used – do not remove them
     react(),
     tailwindcss(),
+    {
+      // The doctor profile is the same SPA under its own name.
+      name: 'app-profile-title',
+      transformIndexHtml: (html) => (isDoctor ? html.replace('<title>LeStudio</title>', '<title>lerobot-doctor</title>') : html),
+    },
   ],
   resolve: {
     alias: {
@@ -21,7 +28,8 @@ export default defineConfig({
   assetsInclude: ['**/*.svg', '**/*.csv'],
 
   build: {
-    outDir: '../src/lestudio/static',
+    // The doctor profile builds the hardware-only bundle into the lerobot-doctor package.
+    outDir: isDoctor ? '../../lerobot-doctor/src/lerobot_doctor/static' : '../src/lestudio/static',
     emptyOutDir: true,
     rollupOptions: {
       output: {

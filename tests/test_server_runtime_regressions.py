@@ -40,8 +40,8 @@ def test_api_proc_stop_train_stops_train_and_installer(monkeypatch, tmp_path: Pa
     def fake_unlock():
         unlocked["called"] = True
 
-    monkeypatch.setattr("lestudio.process_manager.ProcessManager.stop", fake_stop)
-    monkeypatch.setattr("lestudio.routes.process.unlock_cameras", fake_unlock)
+    monkeypatch.setattr("lerobot_doctor.process_manager.ProcessManager.stop", fake_stop)
+    monkeypatch.setattr("lerobot_doctor.routes.process.unlock_cameras", fake_unlock)
 
     app = _make_app(tmp_path)
     endpoint = _find_endpoint(app, "/api/process/{name}/stop", "POST")
@@ -57,8 +57,8 @@ def test_api_record_start_stops_streamers_and_injects_camera_settings(monkeypatc
     captured: dict[str, object] = {}
     stop_calls = {"count": 0}
 
-    monkeypatch.setattr("lestudio.process_manager.ProcessManager.is_running", lambda self, name: False)
-    monkeypatch.setattr("lestudio.process_manager.ProcessManager.conflicting_processes", lambda self, name: [])
+    monkeypatch.setattr("lerobot_doctor.process_manager.ProcessManager.is_running", lambda self, name: False)
+    monkeypatch.setattr("lerobot_doctor.process_manager.ProcessManager.conflicting_processes", lambda self, name: [])
 
     def fake_start(self, name: str, args: list[str]) -> bool:
         captured["name"] = name
@@ -73,7 +73,7 @@ def test_api_record_start_stops_streamers_and_injects_camera_settings(monkeypatc
         captured["resume_enabled"] = resume_enabled
         return [python_exe, "-m", "fake_record"]
 
-    monkeypatch.setattr("lestudio.process_manager.ProcessManager.start", fake_start)
+    monkeypatch.setattr("lerobot_doctor.process_manager.ProcessManager.start", fake_start)
     monkeypatch.setattr("lestudio.services.process_service.stop_all_streamers_for_process", fake_stop_streamers)
     monkeypatch.setattr(
         "lestudio.services.process_service.command_builders.resolve_record_resume", lambda cfg: (False, False)
@@ -104,8 +104,8 @@ def test_api_record_start_stops_streamers_and_injects_camera_settings(monkeypatc
 def test_api_teleop_start_auto_copies_bimanual_calibration_from_single_arm_files(monkeypatch, tmp_path: Path):
     captured: dict[str, object] = {}
 
-    monkeypatch.setattr("lestudio.process_manager.ProcessManager.is_running", lambda self, name: False)
-    monkeypatch.setattr("lestudio.process_manager.ProcessManager.conflicting_processes", lambda self, name: [])
+    monkeypatch.setattr("lerobot_doctor.process_manager.ProcessManager.is_running", lambda self, name: False)
+    monkeypatch.setattr("lerobot_doctor.process_manager.ProcessManager.conflicting_processes", lambda self, name: [])
     monkeypatch.setattr("lestudio.services.process_service.stop_all_streamers_for_process", lambda: None)
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
 
@@ -114,7 +114,7 @@ def test_api_teleop_start_auto_copies_bimanual_calibration_from_single_arm_files
         captured["args"] = args
         return True
 
-    monkeypatch.setattr("lestudio.process_manager.ProcessManager.start", fake_start)
+    monkeypatch.setattr("lerobot_doctor.process_manager.ProcessManager.start", fake_start)
 
     robot_single_dir = tmp_path / ".cache" / "huggingface" / "lerobot" / "calibration" / "robots" / "so_follower"
     teleop_single_dir = tmp_path / ".cache" / "huggingface" / "lerobot" / "calibration" / "teleoperators" / "so_leader"
@@ -161,8 +161,8 @@ def test_api_teleop_start_auto_copies_bimanual_calibration_from_single_arm_files
 def test_api_teleop_start_auto_normalizes_bimanual_ids_without_suffixes(monkeypatch, tmp_path: Path):
     captured: dict[str, object] = {}
 
-    monkeypatch.setattr("lestudio.process_manager.ProcessManager.is_running", lambda self, name: False)
-    monkeypatch.setattr("lestudio.process_manager.ProcessManager.conflicting_processes", lambda self, name: [])
+    monkeypatch.setattr("lerobot_doctor.process_manager.ProcessManager.is_running", lambda self, name: False)
+    monkeypatch.setattr("lerobot_doctor.process_manager.ProcessManager.conflicting_processes", lambda self, name: [])
     monkeypatch.setattr("lestudio.services.process_service.stop_all_streamers_for_process", lambda: None)
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
 
@@ -171,7 +171,7 @@ def test_api_teleop_start_auto_normalizes_bimanual_ids_without_suffixes(monkeypa
         captured["args"] = args
         return True
 
-    monkeypatch.setattr("lestudio.process_manager.ProcessManager.start", fake_start)
+    monkeypatch.setattr("lerobot_doctor.process_manager.ProcessManager.start", fake_start)
 
     robot_single_dir = tmp_path / ".cache" / "huggingface" / "lerobot" / "calibration" / "robots" / "so_follower"
     teleop_single_dir = tmp_path / ".cache" / "huggingface" / "lerobot" / "calibration" / "teleoperators" / "so_leader"
@@ -216,10 +216,12 @@ def test_api_teleop_start_auto_normalizes_bimanual_ids_without_suffixes(monkeypa
 
 def test_api_preflight_uses_bimanual_defaults_for_non_single_mode(monkeypatch, tmp_path: Path):
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
-    monkeypatch.setattr(
-        "lestudio.services.process_service.validate_calibration_file",
-        lambda path, **kwargs: types.SimpleNamespace(errors=[], warnings=[]),
-    )
+    # Preflight validates single-arm files in lestudio and bimanual pairs through lerobot_doctor.
+    for module in ("lestudio.services.process_service", "lerobot_doctor.services.process_service"):
+        monkeypatch.setattr(
+            f"{module}.validate_calibration_file",
+            lambda path, **kwargs: types.SimpleNamespace(errors=[], warnings=[]),
+        )
 
     robot_single_dir = tmp_path / ".cache" / "huggingface" / "lerobot" / "calibration" / "robots" / "so_follower"
     teleop_single_dir = tmp_path / ".cache" / "huggingface" / "lerobot" / "calibration" / "teleoperators" / "so_leader"
@@ -408,8 +410,8 @@ def test_api_eval_start_blocks_missing_real_robot_calibration(monkeypatch, tmp_p
     streamer_calls = {"count": 0}
     unlock_calls = {"count": 0}
 
-    monkeypatch.setattr("lestudio.process_manager.ProcessManager.is_running", lambda self, name: False)
-    monkeypatch.setattr("lestudio.process_manager.ProcessManager.conflicting_processes", lambda self, name: [])
+    monkeypatch.setattr("lerobot_doctor.process_manager.ProcessManager.is_running", lambda self, name: False)
+    monkeypatch.setattr("lerobot_doctor.process_manager.ProcessManager.conflicting_processes", lambda self, name: [])
     monkeypatch.setattr("lestudio.routes.eval._check_train_python_deps", lambda python_exe: {"ok": True})
     monkeypatch.setattr("lestudio.routes.eval._check_torchcodec_compat", lambda python_exe: {"ok": True})
     monkeypatch.setattr("lestudio.routes.eval._check_cuda_runtime_compat", lambda python_exe: (True, ""))
@@ -430,7 +432,7 @@ def test_api_eval_start_blocks_missing_real_robot_calibration(monkeypatch, tmp_p
         started["called"] = True
         return True
 
-    monkeypatch.setattr("lestudio.process_manager.ProcessManager.start", fake_start)
+    monkeypatch.setattr("lerobot_doctor.process_manager.ProcessManager.start", fake_start)
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
 
     app = _make_app(tmp_path)
@@ -460,8 +462,8 @@ def test_api_eval_start_blocks_missing_real_robot_calibration(monkeypatch, tmp_p
 def test_api_eval_start_allows_omx_without_calibration_file(monkeypatch, tmp_path: Path):
     started = {"called": False}
 
-    monkeypatch.setattr("lestudio.process_manager.ProcessManager.is_running", lambda self, name: False)
-    monkeypatch.setattr("lestudio.process_manager.ProcessManager.conflicting_processes", lambda self, name: [])
+    monkeypatch.setattr("lerobot_doctor.process_manager.ProcessManager.is_running", lambda self, name: False)
+    monkeypatch.setattr("lerobot_doctor.process_manager.ProcessManager.conflicting_processes", lambda self, name: [])
     monkeypatch.setattr("lestudio.routes.eval._check_train_python_deps", lambda python_exe: {"ok": True})
     monkeypatch.setattr("lestudio.routes.eval._check_torchcodec_compat", lambda python_exe: {"ok": True})
     monkeypatch.setattr("lestudio.routes.eval._check_cuda_runtime_compat", lambda python_exe: (True, ""))
@@ -477,7 +479,7 @@ def test_api_eval_start_allows_omx_without_calibration_file(monkeypatch, tmp_pat
         started["called"] = True
         return True
 
-    monkeypatch.setattr("lestudio.process_manager.ProcessManager.start", fake_start)
+    monkeypatch.setattr("lerobot_doctor.process_manager.ProcessManager.start", fake_start)
 
     app = _make_app(tmp_path)
     endpoint = _find_endpoint(app, "/api/eval/start", "POST")
@@ -509,8 +511,8 @@ def test_api_eval_start_uses_type_policy_for_calibration_requirement(monkeypatch
             return False
 
     monkeypatch.setattr(eval_routes, "type_policy", FakeTypePolicy, raising=False)
-    monkeypatch.setattr("lestudio.process_manager.ProcessManager.is_running", lambda self, name: False)
-    monkeypatch.setattr("lestudio.process_manager.ProcessManager.conflicting_processes", lambda self, name: [])
+    monkeypatch.setattr("lerobot_doctor.process_manager.ProcessManager.is_running", lambda self, name: False)
+    monkeypatch.setattr("lerobot_doctor.process_manager.ProcessManager.conflicting_processes", lambda self, name: [])
     monkeypatch.setattr("lestudio.routes.eval._check_train_python_deps", lambda python_exe: {"ok": True})
     monkeypatch.setattr("lestudio.routes.eval._check_torchcodec_compat", lambda python_exe: {"ok": True})
     monkeypatch.setattr("lestudio.routes.eval._check_cuda_runtime_compat", lambda python_exe: (True, ""))
@@ -526,7 +528,7 @@ def test_api_eval_start_uses_type_policy_for_calibration_requirement(monkeypatch
         started["called"] = True
         return True
 
-    monkeypatch.setattr("lestudio.process_manager.ProcessManager.start", fake_start)
+    monkeypatch.setattr("lerobot_doctor.process_manager.ProcessManager.start", fake_start)
 
     app = _make_app(tmp_path)
     endpoint = _find_endpoint(app, "/api/eval/start", "POST")
@@ -549,8 +551,8 @@ def test_api_eval_start_uses_type_policy_for_calibration_requirement(monkeypatch
 
 
 def test_api_eval_start_rejects_invalid_bimanual_profile_ids(monkeypatch, tmp_path: Path):
-    monkeypatch.setattr("lestudio.process_manager.ProcessManager.is_running", lambda self, name: False)
-    monkeypatch.setattr("lestudio.process_manager.ProcessManager.conflicting_processes", lambda self, name: [])
+    monkeypatch.setattr("lerobot_doctor.process_manager.ProcessManager.is_running", lambda self, name: False)
+    monkeypatch.setattr("lerobot_doctor.process_manager.ProcessManager.conflicting_processes", lambda self, name: [])
     monkeypatch.setattr("lestudio.routes.eval._check_train_python_deps", lambda python_exe: {"ok": True})
     monkeypatch.setattr("lestudio.routes.eval._check_torchcodec_compat", lambda python_exe: {"ok": True})
     monkeypatch.setattr("lestudio.routes.eval._check_cuda_runtime_compat", lambda python_exe: (True, ""))
@@ -581,8 +583,8 @@ def test_api_eval_start_rejects_invalid_bimanual_profile_ids(monkeypatch, tmp_pa
 def test_api_eval_start_auto_copies_missing_bimanual_calibration(monkeypatch, tmp_path: Path):
     started = {"called": False}
 
-    monkeypatch.setattr("lestudio.process_manager.ProcessManager.is_running", lambda self, name: False)
-    monkeypatch.setattr("lestudio.process_manager.ProcessManager.conflicting_processes", lambda self, name: [])
+    monkeypatch.setattr("lerobot_doctor.process_manager.ProcessManager.is_running", lambda self, name: False)
+    monkeypatch.setattr("lerobot_doctor.process_manager.ProcessManager.conflicting_processes", lambda self, name: [])
     monkeypatch.setattr("lestudio.routes.eval._check_train_python_deps", lambda python_exe: {"ok": True})
     monkeypatch.setattr("lestudio.routes.eval._check_torchcodec_compat", lambda python_exe: {"ok": True})
     monkeypatch.setattr("lestudio.routes.eval._check_cuda_runtime_compat", lambda python_exe: (True, ""))
@@ -598,7 +600,7 @@ def test_api_eval_start_auto_copies_missing_bimanual_calibration(monkeypatch, tm
         started["called"] = True
         return True
 
-    monkeypatch.setattr("lestudio.process_manager.ProcessManager.start", fake_start)
+    monkeypatch.setattr("lerobot_doctor.process_manager.ProcessManager.start", fake_start)
 
     robot_single_dir = tmp_path / ".cache" / "huggingface" / "lerobot" / "calibration" / "robots" / "so_follower"
     teleop_single_dir = tmp_path / ".cache" / "huggingface" / "lerobot" / "calibration" / "teleoperators" / "so_leader"
@@ -644,8 +646,8 @@ def test_api_eval_start_auto_copies_missing_bimanual_calibration(monkeypatch, tm
 
 
 def test_api_teleop_start_rejects_invalid_bimanual_profile_id(monkeypatch, tmp_path: Path):
-    monkeypatch.setattr("lestudio.process_manager.ProcessManager.is_running", lambda self, name: False)
-    monkeypatch.setattr("lestudio.process_manager.ProcessManager.conflicting_processes", lambda self, name: [])
+    monkeypatch.setattr("lerobot_doctor.process_manager.ProcessManager.is_running", lambda self, name: False)
+    monkeypatch.setattr("lerobot_doctor.process_manager.ProcessManager.conflicting_processes", lambda self, name: [])
     monkeypatch.setattr("lestudio.services.process_service.stop_all_streamers_for_process", lambda: None)
 
     app = _make_app(tmp_path)
@@ -676,7 +678,7 @@ def test_api_teleop_start_rejects_invalid_bimanual_profile_id(monkeypatch, tmp_p
 def test_api_calibrate_file_supports_bimanual_shared_profile_id(monkeypatch, tmp_path: Path):
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
     monkeypatch.setattr(
-        "lestudio.services.process_service.validate_calibration_file",
+        "lerobot_doctor.services.process_service.validate_calibration_file",
         lambda path, **kwargs: types.SimpleNamespace(errors=[], warnings=[]),
     )
 
@@ -717,8 +719,8 @@ def test_api_calibrate_delete_supports_bimanual_shared_profile_id(monkeypatch, t
 
 
 def test_api_motor_setup_start_rejects_unsupported_type(monkeypatch, tmp_path: Path):
-    monkeypatch.setattr("lestudio.process_manager.ProcessManager.is_running", lambda self, name: False)
-    monkeypatch.setattr("lestudio.process_manager.ProcessManager.conflicting_processes", lambda self, name: [])
+    monkeypatch.setattr("lerobot_doctor.process_manager.ProcessManager.is_running", lambda self, name: False)
+    monkeypatch.setattr("lerobot_doctor.process_manager.ProcessManager.conflicting_processes", lambda self, name: [])
 
     app = _make_app(tmp_path)
     endpoint = _find_endpoint(app, "/api/motor_setup/start", "POST")
@@ -729,8 +731,8 @@ def test_api_motor_setup_start_rejects_unsupported_type(monkeypatch, tmp_path: P
 
 
 def test_snapshot_camera_returns_streamer_frame(monkeypatch, tmp_path: Path):
-    monkeypatch.setattr("lestudio.process_manager.ProcessManager.is_running", lambda self, name: False)
-    monkeypatch.setattr("lestudio.routes.streaming.snapshot_get_frame", lambda video_path, config_path: b"jpeg-bytes")
+    monkeypatch.setattr("lerobot_doctor.process_manager.ProcessManager.is_running", lambda self, name: False)
+    monkeypatch.setattr("lerobot_doctor.routes.streaming.snapshot_get_frame", lambda video_path, config_path: b"jpeg-bytes")
 
     app = _make_app(tmp_path)
     endpoint = _find_endpoint(app, "/api/camera/snapshot/{video_name}", "GET")
@@ -745,9 +747,9 @@ def test_snapshot_camera_returns_503_when_frame_unavailable(monkeypatch, tmp_pat
     async def _fast_sleep(_seconds: float):
         return None
 
-    monkeypatch.setattr("lestudio.process_manager.ProcessManager.is_running", lambda self, name: False)
-    monkeypatch.setattr("lestudio.routes.streaming.snapshot_get_frame", lambda video_path, config_path: None)
-    monkeypatch.setattr("lestudio.routes.streaming.asyncio.sleep", _fast_sleep)
+    monkeypatch.setattr("lerobot_doctor.process_manager.ProcessManager.is_running", lambda self, name: False)
+    monkeypatch.setattr("lerobot_doctor.routes.streaming.snapshot_get_frame", lambda video_path, config_path: None)
+    monkeypatch.setattr("lerobot_doctor.routes.streaming.asyncio.sleep", _fast_sleep)
 
     app = _make_app(tmp_path)
     endpoint = _find_endpoint(app, "/api/camera/snapshot/{video_name}", "GET")
@@ -761,8 +763,8 @@ def test_train_preflight_cache_is_used_and_invalidated(monkeypatch, tmp_path: Pa
     training_service._preflight_cache.clear()
     calls = {"cuda": 0}
 
-    monkeypatch.setattr("lestudio.process_manager.ProcessManager.is_running", lambda self, name: False)
-    monkeypatch.setattr("lestudio.process_manager.ProcessManager.start", lambda self, name, args: True)
+    monkeypatch.setattr("lerobot_doctor.process_manager.ProcessManager.is_running", lambda self, name: False)
+    monkeypatch.setattr("lerobot_doctor.process_manager.ProcessManager.start", lambda self, name, args: True)
     monkeypatch.setattr("lestudio.services.training_service._check_train_python_deps", lambda python_exe: {"ok": True})
 
     def fake_cuda_compat(_python_exe: str):

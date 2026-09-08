@@ -20,9 +20,16 @@ make dev
 ```
 LeStudio/
 ├── packages/
-│   ├── lerobot-doctor/                 # Hardware layer library (no server, no CLI yet)
+│   ├── lerobot-doctor/                 # Hardware layer: library, CLI and web UI
 │   │   └── src/lerobot_doctor/
-│   │       ├── cli.py                  # `lerobot-doctor` command line
+│   │       ├── cli.py                  # `lerobot-doctor` command line (ports/cameras/motors/calibration/udev/report/serve)
+│   │       ├── server.py               # FastAPI assembly: make_state + build_app (shared with LeStudio), create_app (doctor)
+│   │       ├── serve.py                # serve helpers (lerobot/config dir resolution, banner, uvicorn)
+│   │       ├── process_manager.py      # subprocess lifecycle management
+│   │       ├── command_builders.py     # calibrate / motor-setup command builders
+│   │       ├── routes/                 # devices, config, udev, motor, process (status/stop/input, calibrate, motor setup), streaming
+│   │       ├── services/               # process_service: calibration files, calibrate / motor-setup starters
+│   │       ├── static/                 # Built frontend, doctor profile (npm run build:doctor)
 │   │       ├── device_registry.py      # 3-Registry discovery (lerobot import boundary)
 │   │       ├── motor_monitor_bridge.py # FeetechMotorsBus REST (lerobot import boundary)
 │   │       ├── calibrate_bridge.py     # Calibration subprocess entry
@@ -45,11 +52,10 @@ LeStudio/
 │       │       └── mock-api/           # Mock transport handlers
 │       └── src/lestudio/               # Python FastAPI backend
 │           ├── cli.py                  # CLI entrypoint
-│           ├── server.py               # App factory + router assembly
-│           ├── routes/                 # API route modules
-│           ├── services/               # Dataset/process services
-│           ├── process_manager.py      # subprocess lifecycle management
-│           ├── command_builders.py     # CLI command builders
+│           ├── server.py               # LeStudio app = lerobot_doctor.server.build_app + workflow routers
+│           ├── routes/                 # operate (preflight, teleop, record), training, eval, dataset
+│           ├── services/               # dataset services, teleop / record / preflight starters
+│           ├── command_builders.py     # teleop / record / train / eval / derive builders
 │           ├── teleop_bridge.py        # LeRobot teleop wrapper (lerobot import boundary)
 │           ├── record_bridge.py        # LeRobot record wrapper (lerobot import boundary)
 │           ├── camera_patch.py         # OpenCVCamera SHM patch (lerobot import boundary)
@@ -116,7 +122,7 @@ make test-hw
 When wrapping a new `lerobot` capability:
 
 1. Update or add a command builder in `command_builders.py`
-2. Add or extend a route module under `packages/lestudio/src/lestudio/routes/`, then include it from `server.py`
+2. Add or extend a route module: hardware routes live under `packages/lerobot-doctor/src/lerobot_doctor/routes/` (included by `lerobot_doctor.server.hardware_routers`), workflow routes under `packages/lestudio/src/lestudio/routes/` (included from `lestudio/server.py`)
 3. Create or update the page component under `packages/lestudio/frontend/src/app/pages/`
 4. Add custom hooks in `packages/lestudio/frontend/src/app/hooks/` if needed
 5. Verify WebSocket log streaming works end-to-end

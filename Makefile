@@ -16,9 +16,9 @@ install:
 dev:
 	pip install -e packages/lerobot-doctor -e "packages/lestudio[dev]"
 
-## build-frontend: Build the React frontend
+## build-frontend: Build the React frontend for both packages (LeStudio + lerobot-doctor)
 build-frontend:
-	cd packages/lestudio/frontend && npm ci && npm run build
+	cd packages/lestudio/frontend && npm ci && npm run build && npm run build:doctor
 
 ## test: Run unit tests (no hardware required)
 test:

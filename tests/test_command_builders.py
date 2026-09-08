@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+import lerobot_doctor.command_builders as hw_cb
 from lestudio import command_builders as cb
 
 
@@ -360,8 +361,9 @@ def test_build_motor_setup_args_rejects_unsupported_type():
 
 
 def test_build_motor_setup_args_uses_type_policy_support_check(monkeypatch):
+    # The motor-setup builder lives in lerobot_doctor.command_builders; lestudio re-exports it.
     monkeypatch.setattr(
-        cb,
+        hw_cb,
         "type_policy",
         type("FakePolicy", (), {"supports_motor_setup": staticmethod(lambda robot_type: False)})(),
         raising=False,

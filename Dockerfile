@@ -9,8 +9,8 @@ COPY packages/lestudio/frontend/package*.json ./
 RUN npm ci
 
 COPY packages/lestudio/frontend/ ./
-RUN npm run build
-# The build output is placed in /app/src/lestudio/static (as per vite.config.ts)
+RUN npm run build && npm run build:doctor
+# Outputs: /app/src/lestudio/static (LeStudio) and /app/lerobot-doctor/src/lerobot_doctor/static (doctor)
 
 # ---------------------------------------------------------
 # Stage 2: Build Python Backend
@@ -54,6 +54,7 @@ COPY . .
 
 # Copy built frontend assets from stage 1
 COPY --from=frontend-builder /app/src/lestudio/static /app/packages/lestudio/src/lestudio/static
+COPY --from=frontend-builder /app/lerobot-doctor/src/lerobot_doctor/static /app/packages/lerobot-doctor/src/lerobot_doctor/static
 
 # Install LeStudio
 RUN pip install -e packages/lerobot-doctor -e packages/lestudio

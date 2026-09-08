@@ -15,6 +15,7 @@ import {
   type UiResourcesData,
 } from "../services/contracts";
 import { useHfAuth } from "../hf-auth-context";
+import { IS_DOCTOR } from "../profile";
 import { useLeStudioStore } from "../store";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -122,20 +123,22 @@ export function SystemStatus() {
           {/* Prerequisites — HF token + udev rules */}
           <Card title="Prerequisites" icon={<Shield size={13} />} className="overflow-hidden" bodyClassName="p-0">
             <div className="divide-y divide-line-subtle border-b border-line-subtle">
-              {/* HF Token — opens the header popover where the token is entered */}
-              <button
-                type="button"
-                onClick={() => setHfPopoverOpen(true)}
-                className="w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-surface-hover transition-colors cursor-pointer"
-              >
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm text-fg-body">Hugging Face Token</div>
-                  <div className="text-xs text-fg-muted">
-                    {hfAuth === "ready" ? "Authenticated — push/pull enabled" : "Required for dataset upload and model download"}
+              {/* HF Token — opens the header popover where the token is entered (LeStudio only) */}
+              {!IS_DOCTOR && (
+                <button
+                  type="button"
+                  onClick={() => setHfPopoverOpen(true)}
+                  className="w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-surface-hover transition-colors cursor-pointer"
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm text-fg-body">Hugging Face Token</div>
+                    <div className="text-xs text-fg-muted">
+                      {hfAuth === "ready" ? "Authenticated — push/pull enabled" : "Required for dataset upload and model download"}
+                    </div>
                   </div>
-                </div>
-                <PrerequisiteAction ok={hfAuth === "ready"} label="Set token" />
-              </button>
+                  <PrerequisiteAction ok={hfAuth === "ready"} label="Set token" />
+                </button>
+              )}
               {/* udev Rules — go where the mapping is made */}
               <Link
                 to="/motor-setup"

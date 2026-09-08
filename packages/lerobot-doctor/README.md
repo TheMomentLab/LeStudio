@@ -12,12 +12,21 @@ About a third of LeRobot's open issues are hardware setup: a port that changes n
 pip install lerobot-doctor            # once published; today: pip install -e packages/lerobot-doctor
 ```
 
-The CLI has no dependencies beyond the standard library. The motor check needs `lerobot` with the Feetech SDK (`pip install "lerobot[feetech]"`); the other commands work without it.
+The diagnostics commands use only the standard library; the web UI pulls FastAPI, uvicorn, OpenCV and psutil. The motor check and the Motor Setup / Calibration pages need `lerobot` with the Feetech SDK (`pip install "lerobot[feetech]"`); everything else works without it.
+
+## Web UI
+
+```bash
+lerobot-doctor            # same as: lerobot-doctor serve
+```
+
+Opens `http://localhost:7861` with three pages: **Status** (devices, udev mapping, system resources), **Motor Setup** (device mapping with stable symlinks, Identify Arm, the motor-ID wizard, a live motor monitor, calibration runs and validation) and **Camera Setup** (discovery, live preview, USB bandwidth). `--host 0.0.0.0` exposes it on the LAN behind a session token printed at startup; `--browser` opens a browser on desktop sessions. Configuration lives in `~/.config/lestudio`, shared with LeStudio.
 
 ## Commands
 
 | Command | Answers |
 |---|---|
+| `lerobot-doctor serve` | The web UI (see above); the default when no subcommand is given |
 | `lerobot-doctor report` | Everything below as one Markdown report: OS, Python, lerobot version, user groups, ports, cameras, udev symlinks, calibration files |
 | `lerobot-doctor ports` | Which serial ports look like arms (`/dev/ttyACM*`, `/dev/ttyUSB*`), their USB serial and bus position, and any stable symlink |
 | `lerobot-doctor cameras` | Which V4L2 cameras exist, their model, and the USB bus and speed each one shares |
@@ -55,7 +64,7 @@ $ lerobot-doctor report
 
 ## Library
 
-The same package is the hardware layer of the [LeStudio](https://github.com/TheMomentLab/LeStudio) workbench, which imports it for its Status, Motor Setup and Camera Setup pages:
+The same package is the hardware layer of the [LeStudio](https://github.com/TheMomentLab/LeStudio) workbench: LeStudio composes `lerobot_doctor.server.build_app` with its own workflow routes, and its Status, Motor Setup and Camera Setup pages are the doctor pages.
 
 - `device_registry`, `device_helpers`: robot / teleoperator / camera catalogs from the installed `lerobot`, with a fallback catalog when it is absent; USB port and camera discovery.
 - `udev_helpers`: generate, apply and remove udev rules for stable `/dev` symlinks.
@@ -63,10 +72,11 @@ The same package is the hardware layer of the [LeStudio](https://github.com/TheM
 - `motor_setup_bridge`, `calibrate_bridge`: subprocess entry points around `lerobot-setup-motors` and `lerobot-calibrate` that stream structured events.
 - `calibration_validator`: range, drive-mode and leader/follower checks for calibration files.
 - `type_policy`, `path_policy`: per-robot-family policy (Feetech SO-100 / SO-101 first, Dynamixel OMX second) and LeRobot cache paths.
+- `server`, `process_manager`, `routes/`, `services/`: the FastAPI assembly, the subprocess manager and the hardware API used by both the doctor web UI and LeStudio.
 
 ## Scope
 
-Feetech (SO-100 / SO-101) first, Dynamixel (OMX) second. Linux only (udev, V4L2). A standalone web UI for the same checks is planned; see `docs_public/direction.md` in the repository.
+Feetech (SO-100 / SO-101) first, Dynamixel (OMX) second. Linux only (udev, V4L2). See `docs_public/direction.md` in the repository for the plan.
 
 ## License
 

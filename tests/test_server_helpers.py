@@ -6,9 +6,9 @@ import pytest
 
 import lerobot_doctor.device_helpers as _device_mod
 import lerobot_doctor.udev_helpers as _udev_mod
+from lerobot_doctor._cors import _parse_cors_origins
 from lerobot_doctor.device_helpers import get_usb_bus_for_camera
 from lerobot_doctor.udev_helpers import _build_rules, _manual_udev_install_commands, _parse_udev_rules
-from lestudio._cors import _parse_cors_origins
 from lestudio._train_helpers import (
     _cuda_tag_to_toolkit_version,
     _ensure_non_interactive_conda_args,

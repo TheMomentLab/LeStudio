@@ -7,13 +7,11 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from lestudio._auth import (
+from lerobot_doctor._auth import (
     _is_localhost,
     _needs_auth,
     generate_token,
 )
-from lestudio.routes import config as _config_routes
-from lestudio.routes import process as _process_routes
 from lestudio.server import create_app
 
 # ─── Helper ────────────────────────────────────────────────────────────────────

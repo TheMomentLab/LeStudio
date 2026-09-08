@@ -9,6 +9,7 @@ Every subcommand answers one hardware-setup question and can print JSON
     lerobot-doctor calibration [FILE..]  validate calibration files
     lerobot-doctor udev status|install   stable /dev symlinks
     lerobot-doctor report                everything above, as Markdown
+    lerobot-doctor serve                 the web UI (also the default with no arguments)
 
 Exit status: 0 when nothing is wrong, 1 when a check found a problem,
 2 for usage errors.
@@ -39,6 +40,7 @@ DEFAULT_RULES_PATH = Path("/etc/udev/rules.d/99-lerobot.rules")
 REQUIRED_GROUPS = ("dialout", "video")
 DEFAULT_MOTOR_IDS = "1-6"
 DEFAULT_MOTOR_MODEL = "sts3215"
+DEFAULT_SERVE_PORT = 7861
 
 # ─── Collectors (pure data, used by both the text and JSON renderers) ─────────
 
@@ -523,6 +525,42 @@ def cmd_udev_install(args: argparse.Namespace) -> int:
     return install_udev_rules(source, args.rules_path, dry_run=args.dry_run)
 
 
+def cmd_serve(args: argparse.Namespace) -> int:
+    from lerobot_doctor import serve as srv
+    from lerobot_doctor._auth import generate_token
+    from lerobot_doctor.server import create_app
+
+    lerobot_src = srv.resolve_lerobot_src(args.lerobot_path)
+    config_dir = srv.resolve_config_dir(args.config_dir)
+    token = generate_token()
+    app = create_app(lerobot_src=lerobot_src, config_dir=config_dir, rules_path=args.rules_path, session_token=token)
+    srv.print_banner(
+        "lerobot-doctor",
+        __version__,
+        lerobot_src=lerobot_src,
+        config_dir=config_dir,
+        host=args.host,
+        port=args.port,
+        token=token,
+    )
+    srv.maybe_open_browser(args.browser, args.port)
+    srv.run_uvicorn(
+        app,
+        host=args.host,
+        port=args.port,
+        reload=args.reload,
+        reload_factory="lerobot_doctor.server:create_app_from_env",
+        reload_env={
+            "_LEROBOT_DOCTOR_LEROBOT_SRC": str(lerobot_src),
+            "_LEROBOT_DOCTOR_CONFIG_DIR": str(config_dir),
+            "_LEROBOT_DOCTOR_RULES_PATH": str(args.rules_path),
+            "_LEROBOT_DOCTOR_TOKEN": token,
+        },
+        reload_dirs=[str(Path(__file__).parent)],
+    )
+    return 0
+
+
 def cmd_report(args: argparse.Namespace) -> int:
     report = collect_report(args.rules_path)
     _emit(report, render_report(report), args.json)
@@ -588,6 +626,28 @@ def build_parser() -> argparse.ArgumentParser:
     i.set_defaults(handler=cmd_udev_install)
     p.set_defaults(handler=None, help_parser=p)
 
+    p = sub.add_parser("serve", help="Run the web UI (default when no subcommand is given)")
+    p.add_argument("--port", type=int, default=DEFAULT_SERVE_PORT, help=f"Server port (default: {DEFAULT_SERVE_PORT})")
+    p.add_argument("--host", default="127.0.0.1", help="Server host (default: 127.0.0.1)")
+    p.add_argument(
+        "--config-dir",
+        type=Path,
+        default=None,
+        help="Config directory (default: ~/.config/lestudio, shared with LeStudio)",
+    )
+    p.add_argument(
+        "--rules-path", type=Path, default=DEFAULT_RULES_PATH, help=f"udev rules file (default: {DEFAULT_RULES_PATH})"
+    )
+    p.add_argument(
+        "--lerobot-path",
+        type=Path,
+        default=None,
+        help="Path to a lerobot source checkout (default: the installed package)",
+    )
+    p.add_argument("--browser", action="store_true", help="Open a browser automatically on startup")
+    p.add_argument("--reload", action="store_true", help="Auto-reload on Python file changes (dev mode)")
+    p.set_defaults(handler=cmd_serve)
+
     p = sub.add_parser("report", help="Everything above as one Markdown report to paste into an issue")
     p.add_argument(
         "--rules-path", type=Path, default=DEFAULT_RULES_PATH, help=f"Rules file (default: {DEFAULT_RULES_PATH})"
@@ -600,7 +660,10 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
-    args = parser.parse_args(sys.argv[1:] if argv is None else argv)
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if not argv:
+        argv = ["serve"]
+    args = parser.parse_args(argv)
     handler = getattr(args, "handler", None)
     if handler is None:
         help_parser = getattr(args, "help_parser", parser)

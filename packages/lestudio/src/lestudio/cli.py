@@ -1,115 +1,31 @@
 import argparse
-import importlib.util
 import logging
-import os
-import socket
 import sys
-import threading
-import time
-import webbrowser
 from pathlib import Path
-from typing import cast
 
-from lerobot_doctor import path_policy
-
-# The udev installer lives in lerobot_doctor.cli; the private names stay importable here.
+# The udev installer and the serve helpers live in lerobot_doctor; the names
+# stay importable from here for existing callers and tests.
 from lerobot_doctor.cli import _extract_symlink_names, _manual_commands, install_udev_rules  # noqa: F401
+from lerobot_doctor.serve import (  # noqa: F401
+    DEFAULT_RULES_PATH,
+    find_lerobot_src,
+    get_local_ip,
+    maybe_open_browser,
+    open_browser,
+    print_banner,
+    resolve_config_dir,
+    resolve_lerobot_src,
+    run_uvicorn,
+)
 
 logger = logging.getLogger(__name__)
-
-
-DEFAULT_RULES_PATH = Path("/etc/udev/rules.d/99-lerobot.rules")
-
-
-def find_lerobot_src() -> Path | None:
-    """Locate the directory that contains the installed ``lerobot`` package.
-
-    ``lerobot`` is a normal pip dependency, so the installed package wins. A
-    source checkout can still be forced with ``--lerobot-path``.
-    """
-    try:
-        spec = importlib.util.find_spec("lerobot")
-        if spec is None:
-            return None
-
-        if spec.submodule_search_locations:
-            pkg_dir = Path(cast(str, next(iter(spec.submodule_search_locations))))
-            return pkg_dir.parent
-
-        if spec.origin:
-            return Path(spec.origin).parent.parent
-    except (AttributeError, ImportError, OSError, ValueError):
-        pass
-
-    return None
-
-
-def get_local_ip() -> str:
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(("8.8.8.8", 80))
-        ip = s.getsockname()[0]
-        s.close()
-        return str(ip)
-    except OSError:
-        return "127.0.0.1"
-
-
-def open_browser(port: int):
-    time.sleep(1.5)
-    webbrowser.open(f"http://localhost:{port}")
-
-
-def resolve_config_dir(config_dir_arg: Path | None) -> Path:
-    if config_dir_arg is not None:
-        config_dir = config_dir_arg
-    else:
-        new_default = path_policy.config_dir_default()
-        # Migration: auto-rename old config dirs to new name
-        old_default, old_moment, moment_default, legacy_default = path_policy.config_dir_legacy_candidates()
-        if old_default.exists() and not new_default.exists():
-            old_default.rename(new_default)
-        if old_moment.exists() and not moment_default.exists():
-            old_moment.rename(moment_default)
-        if new_default.exists():
-            config_dir = new_default
-        elif moment_default.exists():
-            config_dir = moment_default
-        elif legacy_default.exists():
-            config_dir = legacy_default
-        else:
-            config_dir = new_default
-    config_dir.mkdir(parents=True, exist_ok=True)
-    return config_dir
-
-
-def resolve_lerobot_src(lerobot_path_arg: Path | None) -> Path:
-    lerobot_src = lerobot_path_arg
-    if lerobot_src is None:
-        lerobot_src = find_lerobot_src()
-    if lerobot_src is None:
-        print("ERROR: Cannot find lerobot source.", file=sys.stderr)
-        print("Install lerobot (`pip install lerobot`) or pass --lerobot-path", file=sys.stderr)
-        sys.exit(1)
-
-    lerobot_src = lerobot_src.resolve()
-    if not lerobot_src.is_dir():
-        print(f"ERROR: --lerobot-path does not exist: {lerobot_src}", file=sys.stderr)
-        sys.exit(1)
-    # If user passed the repo root (e.g. .../lerobot), resolve to src/ automatically
-    src_candidate = lerobot_src / "src"
-    if (src_candidate / "lerobot").is_dir():
-        lerobot_src = src_candidate
-    return lerobot_src
 
 
 def command_serve(args):
     lerobot_src = resolve_lerobot_src(args.lerobot_path)
     config_dir = resolve_config_dir(args.config_dir)
 
-    import uvicorn
-
-    from lestudio._auth import generate_token
+    from lerobot_doctor._auth import generate_token
     from lestudio.server import create_app
 
     token = generate_token()
@@ -120,38 +36,30 @@ def command_serve(args):
         session_token=token,
     )
 
-    print(f"LeStudio v{_version()}")
-    print(f"    lerobot: {lerobot_src}")
-    print(f"    config:  {config_dir}")
-    print(f"    Open (Local):   http://localhost:{args.port}")
-    if args.host == "0.0.0.0":
-        local_ip = get_local_ip()
-        print(f"    Open (Network): http://{local_ip}:{args.port}")
-        print(f"    Token (Network auth): {token}")
-    print("\n")
-
-    if args.browser and not args.headless:
-        is_ssh = "SSH_CLIENT" in os.environ or "SSH_TTY" in os.environ
-        has_display = "DISPLAY" in os.environ or os.name == "nt"
-        if not is_ssh and has_display:
-            threading.Thread(target=open_browser, args=(args.port,), daemon=True).start()
-
-    if getattr(args, "reload", False):
-        os.environ.setdefault("_LESTUDIO_LEROBOT_SRC", str(lerobot_src))
-        os.environ.setdefault("_LESTUDIO_CONFIG_DIR", str(config_dir))
-        os.environ.setdefault("_LESTUDIO_RULES_PATH", str(args.rules_path))
-        os.environ.setdefault("_LESTUDIO_TOKEN", token)
-        uvicorn.run(
-            "lestudio.server:create_app_from_env",
-            factory=True,
-            host=args.host,
-            port=args.port,
-            log_level="warning",
-            reload=True,
-            reload_dirs=["src/lestudio"],
-        )
-    else:
-        uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
+    print_banner(
+        "LeStudio",
+        _version(),
+        lerobot_src=lerobot_src,
+        config_dir=config_dir,
+        host=args.host,
+        port=args.port,
+        token=token,
+    )
+    maybe_open_browser(args.browser and not args.headless, args.port)
+    run_uvicorn(
+        app,
+        host=args.host,
+        port=args.port,
+        reload=getattr(args, "reload", False),
+        reload_factory="lestudio.server:create_app_from_env",
+        reload_env={
+            "_LESTUDIO_LEROBOT_SRC": str(lerobot_src),
+            "_LESTUDIO_CONFIG_DIR": str(config_dir),
+            "_LESTUDIO_RULES_PATH": str(args.rules_path),
+            "_LESTUDIO_TOKEN": token,
+        },
+        reload_dirs=[str(Path(__file__).parent)],
+    )
 
 
 def command_install_udev(args):

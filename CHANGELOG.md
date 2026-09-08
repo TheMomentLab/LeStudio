@@ -14,6 +14,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   `docs_public/direction.md`. Steps 1 and 2 of the plan are done (below).
 
 ### Added
+- `lerobot-doctor serve` (also the default with no arguments): the standalone
+  hardware web UI — Status, Motor Setup and Camera Setup — on port 7861. It is
+  the same frontend built with `npm run build:doctor` (hardware pages only,
+  no Hub / training probes) served by `lerobot_doctor.server`.
 - `lerobot-doctor` CLI: `ports`, `cameras`, `motors --port`, `calibration
   [--pair]`, `udev status|install` and `report` (Markdown, or `--json` on any
   command) so hardware state can be pasted into issues. Exit status 1 flags a
@@ -47,6 +51,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   pinned fork submodule. CI runs the backend on Python 3.10 (lerobot 0.4.x)
   and 3.12 (latest 0.6.x). The record and teleop bridges handle the
   keyboard-listener and visualization helper renames in lerobot 0.5+.
+- The server assembly and the hardware routes moved into `lerobot_doctor`:
+  auth / CORS / logging middlewares, `ProcessManager`, camera streaming, the
+  device watcher, `AppState`, and the devices / config / udev / motor /
+  process / streaming route modules. `lestudio.server` composes
+  `lerobot_doctor.server.build_app` with its workflow routers (operate,
+  training, eval, dataset). Public API paths are unchanged.
 - Eval launches through `lestudio.eval_bridge`, which registers the
   bimanual and OMX robot / teleoperator families before delegating to
   upstream `lerobot_eval` (the fork used to patch this into the script).

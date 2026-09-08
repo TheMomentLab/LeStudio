@@ -196,8 +196,13 @@ def test_udev_status_and_help(tmp_path: Path, capsys):
     assert "not installed" in capsys.readouterr().out
     assert cli.main(["udev"]) == 2
     assert "status" in capsys.readouterr().out
-    assert cli.main([]) == 2
-    assert "report" in capsys.readouterr().out
+
+
+def test_no_arguments_means_serve(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(cli, "cmd_serve", lambda args: (seen.setdefault("port", args.port), 0)[1])
+    assert cli.main([]) == 0
+    assert seen["port"] == cli.DEFAULT_SERVE_PORT
 
 
 def test_udev_install_dry_run(tmp_path: Path, capsys):

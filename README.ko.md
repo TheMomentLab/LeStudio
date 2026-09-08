@@ -151,6 +151,7 @@ lestudio serve:
 하드웨어 계층은 별도 패키지로 나뉘어 있고, LeStudio와 함께 설치되는 CLI가 있습니다:
 
 ```bash
+lerobot-doctor                                     # 하드웨어 전용 웹 UI (Status, Motor Setup, Camera Setup), 포트 7861
 lerobot-doctor report                              # 이슈에 붙여넣을 Markdown 요약
 lerobot-doctor ports                               # 암으로 보이는 시리얼 포트
 lerobot-doctor cameras                             # 카메라와 각각이 공유하는 USB 버스

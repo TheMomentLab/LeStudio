@@ -4,8 +4,9 @@ import importlib
 
 from fastapi import APIRouter
 
-from ..capabilities import Capability, register
-from ..services.process_service import _guard_process_start
+from lerobot_doctor.capabilities import Capability, register
+from lerobot_doctor.services.process_service import _guard_process_start
+
 from ._state import AppState
 from .models import DepsStatusResponse, TrainPreflightResponse
 

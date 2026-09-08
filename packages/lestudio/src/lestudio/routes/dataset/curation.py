@@ -5,7 +5,8 @@ from typing import Any
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
-from ...capabilities import Capability, register
+from lerobot_doctor.capabilities import Capability, register
+
 from ...services import dataset_service
 from .._state import AppState
 

@@ -7,9 +7,9 @@ Use this page when you want the shortest accurate picture of how the product is 
 ## Core structure
 
 - `packages/lestudio/frontend/` contains the React + TypeScript UI.
-- `packages/lestudio/src/lestudio/server.py` assembles the FastAPI app and serves the built frontend from `packages/lestudio/src/lestudio/static/`.
-- `packages/lestudio/src/lestudio/routes/` contains route modules for devices, config, udev, process control, training, eval, dataset workflows (listing, curation, hub), streaming, and motor monitoring.
-- `packages/lestudio/src/lestudio/process_manager.py` owns subprocess lifecycle, output parsing, orphan recovery, and hardware conflict checks.
+- `packages/lerobot-doctor/src/lerobot_doctor/server.py` assembles the FastAPI app (middlewares, hardware routers, SPA static files). `lerobot-doctor serve` uses it as-is with `packages/lerobot-doctor/src/lerobot_doctor/static/`; `packages/lestudio/src/lestudio/server.py` builds LeStudio on the same assembly, adding the workflow routers and serving `packages/lestudio/src/lestudio/static/`.
+- `packages/lerobot-doctor/src/lerobot_doctor/routes/` contains the hardware route modules: devices, config, udev, process control (status / stop / input, calibrate, motor setup), streaming, and motor monitoring. `packages/lestudio/src/lestudio/routes/` adds the workflow modules: operate (preflight, teleop, record), training, eval, and dataset (listing, curation, hub).
+- `packages/lerobot-doctor/src/lerobot_doctor/process_manager.py` owns subprocess lifecycle, output parsing, orphan recovery, and hardware conflict checks.
 - `packages/lerobot-doctor/src/lerobot_doctor/` is the hardware layer library (device discovery, udev/type/path policy, motor and calibration bridges). `lestudio` depends on it; nothing points back.
 - LeRobot-specific imports stay isolated to the adapter boundary: `teleop_bridge.py`, `record_bridge.py`, `camera_patch.py` (in `lestudio`) and `device_registry.py`, `motor_monitor_bridge.py` (in `lerobot_doctor`).
 

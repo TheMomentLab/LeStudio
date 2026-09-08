@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lestudio.process_manager import ProcessManager, _extract_train_metric, _parse_compact_int, _translate_error_line
+from lerobot_doctor.process_manager import (
+    ProcessManager,
+    _extract_train_metric,
+    _parse_compact_int,
+    _translate_error_line,
+)
 
 
 def test_translate_error_line_known_patterns():

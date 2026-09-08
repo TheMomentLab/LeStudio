@@ -1,59 +1,24 @@
 #!/usr/bin/env python3
-"""LeStudio — Web GUI server (packaged version)."""
+"""LeStudio — Web GUI server.
+
+The hardware layer (middlewares, device / udev / motor / process / streaming
+routes) comes from lerobot_doctor.server; this module adds the workflow routes.
+"""
 
 import importlib.util
 import logging
 import os
 import shutil
-import sys
-from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from starlette.exceptions import HTTPException as StarletteHTTPException
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import Response
-from starlette.types import Scope
 
-from lerobot_doctor import device_registry
-from lestudio._auth import TokenAuthMiddleware, generate_token
-from lestudio._cors import _resolve_cors_settings
-from lestudio._device_watcher import DeviceWatcher
-from lestudio._logging import configure_logging
-from lestudio._streaming import unlock_cameras
-from lestudio.process_manager import ProcessManager
+from lerobot_doctor._auth import generate_token
+from lerobot_doctor._logging import configure_logging
+from lerobot_doctor.server import build_app, make_state
 
 logger = logging.getLogger(__name__)
 configure_logging()
-
-
-class SPAStaticFiles(StaticFiles):
-    async def get_response(self, path: str, scope: Scope):
-        try:
-            response = await super().get_response(path, scope)
-        except StarletteHTTPException as exc:
-            if exc.status_code != 404:
-                raise
-            response = None
-
-        if response is not None and response.status_code != 404:
-            return response
-
-        normalized = path.lstrip("/")
-        top_level = normalized.split("/", 1)[0]
-        if top_level in {"api", "ws"}:
-            if response is not None:
-                return response
-            raise StarletteHTTPException(status_code=404)
-
-        if Path(normalized).suffix:
-            if response is not None:
-                return response
-            raise StarletteHTTPException(status_code=404)
-
-        return await super().get_response("index.html", scope)
 
 
 # ─── nvidia pip 패키지의 .so를 LD_LIBRARY_PATH에 자동 추가 ─────────────────
@@ -119,119 +84,34 @@ def _patch_nvidia_lib_path():
 
 _patch_nvidia_lib_path()
 
-# ─── Module-level constants ────────────────────────────────────────────────────
-ROBOT_TYPES = device_registry.get_robot_types()
-
 
 # ─── App Factory ───────────────────────────────────────────────────────────────
+STATIC_DIR = Path(__file__).parent / "static"
+
+
 def create_app(
     lerobot_src: Path,
     config_dir: Path,
     rules_path: Path,
     session_token: str | None = None,
 ) -> FastAPI:
-    from lestudio.routes import (
-        config,
-        dataset,
-        devices,
-        motor,
-        process,
-        streaming,
-        training,
-        udev,
-    )
-    from lestudio.routes import (
-        eval as eval_routes,
-    )
+    from lestudio.routes import dataset, operate, training
+    from lestudio.routes import eval as eval_routes
     from lestudio.routes._state import AppState
 
-    STATIC_DIR = Path(__file__).parent / "static"
-    CONFIG_PATH = config_dir / "config.json"
-    FALLBACK_RULES_PATH = config_dir / "99-lerobot.rules"
-    HISTORY_PATH = config_dir / "history.json"
-    HISTORY_MAX = 200
-    PYTHON = sys.executable
-
-    configure_logging(log_dir=config_dir / "logs")
-
-    cors_origins, cors_origin_regex = _resolve_cors_settings()
-    token = session_token if session_token is not None else generate_token()
-
-    state: AppState | None = None
-
-    def _on_process_exit(name: str):
-        if name in {"record", "teleop"}:
-            unlock_cameras()
-        if state is not None:
-            state.append_history(f"{name}_end")
-
-    proc_mgr = ProcessManager(lerobot_src, on_process_exit=_on_process_exit, state_dir=config_dir)
-
-    state = AppState(
-        proc_mgr=proc_mgr,
-        config_path=CONFIG_PATH,
-        config_dir=config_dir,
-        rules_path=rules_path,
-        fallback_rules_path=FALLBACK_RULES_PATH,
-        history_path=HISTORY_PATH,
-        history_max=HISTORY_MAX,
-        python_exe=PYTHON,
+    state = make_state(config_dir, rules_path, lerobot_src=lerobot_src, state_cls=AppState)
+    return build_app(
+        state,
+        title="LeStudio",
+        static_dir=STATIC_DIR,
+        session_token=session_token,
+        extra_routers=[
+            operate.create_router(state),
+            training.create_router(state),
+            eval_routes.create_router(state),
+            dataset.create_router(state),
+        ],
     )
-
-    state.proc_mgr.recover_orphans()
-    state.device_watcher = DeviceWatcher()
-    state.device_watcher.start()
-
-    @asynccontextmanager
-    async def _lifespan(_: FastAPI):
-        try:
-            yield
-        finally:
-            watcher = state.device_watcher
-            if isinstance(watcher, DeviceWatcher):
-                watcher.stop()
-
-    app = FastAPI(title="LeStudio", lifespan=_lifespan)
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=cors_origins,
-        allow_origin_regex=cors_origin_regex,
-        allow_methods=["*"],
-        allow_headers=["*", "X-LeStudio-Token"],
-    )
-    app.add_middleware(TokenAuthMiddleware, token=token)
-    app.state.session_token = token
-
-    class NoCacheStaticMiddleware(BaseHTTPMiddleware):
-        async def dispatch(self, request, call_next):
-            response: Response = await call_next(request)
-            path = request.url.path
-            if path.startswith("/api") or path.startswith("/ws"):
-                return response
-
-            is_asset = path.startswith("/assets/") or path in {"/favicon.ico", "/logo.svg"}
-            is_spa_route = path == "/" or (not Path(path).suffix and path != "")
-            if is_asset or is_spa_route:
-                response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-            return response
-
-    app.add_middleware(NoCacheStaticMiddleware)
-
-    # ─── Include routers ───────────────────────────────────────────────────────
-    app.include_router(devices.create_router(state))
-    app.include_router(config.create_router(state))
-    app.include_router(udev.create_router(state))
-    app.include_router(process.create_router(state))
-    app.include_router(training.create_router(state))
-    app.include_router(eval_routes.create_router(state))
-    app.include_router(dataset.create_router(state))
-    app.include_router(streaming.create_router(state))
-    app.include_router(motor.create_router(state))
-
-    # ─── Static + Root ─────────────────────────────────────────────────────────
-    # Vite builds assets to STATIC_DIR with root-relative paths (/assets/...)
-    app.mount("/", SPAStaticFiles(directory=str(STATIC_DIR), html=True), name="static")
-    return app
 
 
 def create_app_from_env() -> FastAPI:

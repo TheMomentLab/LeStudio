@@ -151,6 +151,7 @@ Flags can be passed without explicitly typing `serve` — `lestudio --port 8080`
 The hardware layer ships as its own package with a command line, installed together with LeStudio:
 
 ```bash
+lerobot-doctor                                     # hardware-only web UI (Status, Motor Setup, Camera Setup) on :7861
 lerobot-doctor report                              # Markdown summary to paste into an issue
 lerobot-doctor ports                               # serial ports that look like arms
 lerobot-doctor cameras                             # cameras and the USB bus each one shares

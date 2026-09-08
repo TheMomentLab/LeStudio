@@ -49,7 +49,7 @@ def test_forward_stdin_stops_cleanly_without_input(monkeypatch: MonkeyPatch):
     read_file = os.fdopen(read_fd, "rb", buffering=0)
 
     class FakeProc:
-        stdin: "FakeProc"
+        stdin: FakeProc
 
         def __init__(self) -> None:
             self.stdin = self
@@ -85,7 +85,7 @@ def test_forward_stdin_forwards_bytes(monkeypatch: MonkeyPatch):
     read_file = os.fdopen(read_fd, "rb", buffering=0)
 
     class FakeProc:
-        stdin: "FakeProc"
+        stdin: FakeProc
 
         def __init__(self) -> None:
             self.stdin = self

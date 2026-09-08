@@ -115,6 +115,10 @@ jobs:
         working-directory: packages/lestudio/frontend
         run: npm run test:e2e
 
-      - name: Build frontend
+      - name: Build frontend (LeStudio profile)
         working-directory: packages/lestudio/frontend
         run: npm run build
+
+      - name: Build frontend (lerobot-doctor profile)
+        working-directory: packages/lestudio/frontend
+        run: npm run build:doctor

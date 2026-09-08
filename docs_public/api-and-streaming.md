@@ -69,7 +69,7 @@ This keeps camera delivery independent from process log delivery.
 
 ## 3. Backend API Surface
 
-The backend is split by route module under `packages/lestudio/src/lestudio/routes/`.
+The backend is split by route module: hardware modules under `packages/lerobot-doctor/src/lerobot_doctor/routes/`, workflow modules under `packages/lestudio/src/lestudio/routes/`. The standalone `lerobot-doctor serve` app exposes the hardware modules only.
 
 ### 3.1 Bootstrap and configuration APIs
 
@@ -115,7 +115,7 @@ Important current-state detail:
 
 ### 3.3 Process control APIs
 
-`routes/process.py` is the main control surface for interactive robot operations.
+`routes/process.py` (lerobot_doctor: status / stop / input, calibrate, motor setup) and `routes/operate.py` (lestudio: preflight, teleop, record) are the control surface for interactive robot operations.
 
 Core managed-process endpoints:
 
@@ -405,13 +405,14 @@ When adding a new feature, the transport choice should follow current project pa
 
 ## 9. Related Files
 
-- `packages/lestudio/src/lestudio/routes/process.py`
-- `packages/lestudio/src/lestudio/routes/streaming.py`
+- `packages/lerobot-doctor/src/lerobot_doctor/routes/process.py`
+- `packages/lestudio/src/lestudio/routes/operate.py`
+- `packages/lerobot-doctor/src/lerobot_doctor/routes/streaming.py`
 - `packages/lestudio/src/lestudio/routes/training.py`
 - `packages/lestudio/src/lestudio/routes/eval.py`
-- `packages/lestudio/src/lestudio/routes/devices.py`
+- `packages/lerobot-doctor/src/lerobot_doctor/routes/devices.py`
 - `packages/lestudio/src/lestudio/routes/dataset/`
-- `packages/lestudio/src/lestudio/routes/motor.py`
-- `packages/lestudio/src/lestudio/process_manager.py`
+- `packages/lerobot-doctor/src/lerobot_doctor/routes/motor.py`
+- `packages/lerobot-doctor/src/lerobot_doctor/process_manager.py`
 - `packages/lestudio/frontend/src/app/services/apiClient.ts`
 - `packages/lestudio/frontend/src/app/services/bootstrap.ts`

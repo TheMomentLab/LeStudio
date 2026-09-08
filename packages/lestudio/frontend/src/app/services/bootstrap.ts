@@ -1,4 +1,5 @@
 import { apiGet } from "./apiClient";
+import { IS_DOCTOR } from "../profile";
 import {
   DEFAULT_SIDEBAR_SIGNALS,
   DEFAULT_TYPE_CATALOG_RESPONSE,
@@ -190,9 +191,10 @@ export async function runBootstrap(): Promise<BootstrapResult> {
     apiGet<LeStudioConfig>("/api/config"),
     apiGet<DevicesResponse>("/api/devices"),
     apiGet<TypePolicyCatalogResponse>("/api/policy/type-catalog"),
-    apiGet<DepsStatusResponse>("/api/deps/status"),
-    apiGet<HfWhoamiResponse>("/api/hf/whoami"),
-    apiGet<TrainPreflightResponse>("/api/train/preflight?device=cuda"),
+    // The doctor server has no Hub or training routes; resolve those probes as "unknown".
+    IS_DOCTOR ? Promise.resolve(null) : apiGet<DepsStatusResponse>("/api/deps/status"),
+    IS_DOCTOR ? Promise.resolve(null) : apiGet<HfWhoamiResponse>("/api/hf/whoami"),
+    IS_DOCTOR ? Promise.resolve(null) : apiGet<TrainPreflightResponse>("/api/train/preflight?device=cuda"),
   ]);
 
   if (configResult.status === "rejected") {
@@ -226,7 +228,7 @@ export async function runBootstrap(): Promise<BootstrapResult> {
   const hfWhoami = whoamiResult.status === "fulfilled" ? whoamiResult.value : null;
   const hfUsername = extractHfUsername(hfWhoami);
   const trainPreflightOk =
-    preflightResult.status === "fulfilled" ? (preflightResult.value.ok ?? null) : null;
+    preflightResult.status === "fulfilled" ? (preflightResult.value?.ok ?? null) : null;
 
   const prefillPatch = buildRepoPrefillPatch(config, hfUsername);
   const sidebarSignals = deriveSidebarSignals(depsStatus, devices, trainPreflightOk);

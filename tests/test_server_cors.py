@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from lestudio._cors import _DEFAULT_CORS_ORIGIN_REGEX, _resolve_cors_settings
+from lerobot_doctor._cors import _DEFAULT_CORS_ORIGIN_REGEX, _resolve_cors_settings
 
 
 def test_resolve_cors_settings_defaults_to_localhost_regex(monkeypatch):

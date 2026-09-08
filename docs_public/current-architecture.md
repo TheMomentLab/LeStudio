@@ -46,9 +46,9 @@ Browser UI
   -> WebSocket (`/ws`) for process output, metrics, status
   -> HTTP streaming (`/stream/*`, `/api/camera/snapshot/*`) for camera frames
 
-FastAPI app (`packages/lestudio/src/lestudio/server.py`)
+FastAPI app (`packages/lerobot-doctor/src/lerobot_doctor/server.py`, composed by `packages/lestudio/src/lestudio/server.py`)
   -> shared AppState
-  -> route modules under `packages/lestudio/src/lestudio/routes/`
+  -> hardware route modules under `packages/lerobot-doctor/src/lerobot_doctor/routes/`, workflow route modules under `packages/lestudio/src/lestudio/routes/`
   -> ProcessManager for subprocess lifecycle
   -> static frontend serving from `packages/lestudio/src/lestudio/static/`
 
@@ -64,7 +64,7 @@ LeRobot boundary
 
 ### 4.1 App Factory and Route Assembly
 
-`packages/lestudio/src/lestudio/server.py` is the backend entry point.
+`packages/lerobot-doctor/src/lerobot_doctor/server.py` is the shared app assembly (`make_state`, `build_app`); `packages/lestudio/src/lestudio/server.py` is the LeStudio entry point that composes it with the workflow routers.
 
 Key responsibilities:
 
@@ -79,11 +79,11 @@ Key responsibilities:
 
 Important implementation detail:
 
-- `server.py` computes `ROBOT_TYPES` via `device_registry.get_robot_types()`, so backend startup already depends on the dynamic registry layer.
+- `device_registry` loads the lerobot registry at import time, so backend startup already depends on the dynamic registry.
 
 ### 4.2 Shared AppState
 
-`packages/lestudio/src/lestudio/routes/_state.py` defines `AppState`, which is passed into each route factory.
+`packages/lerobot-doctor/src/lerobot_doctor/routes/_state.py` defines `AppState`, which is passed into each route factory; `packages/lestudio/src/lestudio/routes/_state.py` subclasses it to add the dataset job tables.
 
 It centralizes:
 
@@ -98,12 +98,13 @@ This is the main in-memory coordination object for the backend.
 
 ### 4.3 Route Module Responsibilities
 
-Current route split from `server.py`:
+Current route split (hardware modules in `lerobot_doctor.routes`, workflow modules in `lestudio.routes`):
 
 - `routes/devices.py` - hardware and device discovery
 - `routes/config.py` - persisted UI/runtime configuration
 - `routes/udev.py` - udev rule workflows
-- `routes/process.py` - teleop/record/calibrate/motor setup start-stop-input flows and preflight checks
+- `routes/process.py` (doctor) - process status / stop / input, calibrate and motor setup starts
+- `routes/operate.py` (lestudio) - preflight checks, teleop / record starts, console commands
 - `routes/training.py` - training orchestration and CUDA-related checks
 - `routes/eval.py` - evaluation orchestration and checkpoint-driven execution
 - `routes/dataset/*` - dataset listing, curation, Hub integration
@@ -118,7 +119,7 @@ The backend is organized around route factories instead of one monolithic app mo
 
 ### 5.1 ProcessManager Role
 
-`packages/lestudio/src/lestudio/process_manager.py` is the runtime core for long-running work.
+`packages/lerobot-doctor/src/lerobot_doctor/process_manager.py` is the runtime core for long-running work.
 
 Its responsibilities go beyond simply calling `subprocess.Popen`:
 
@@ -163,7 +164,7 @@ That split is important: LeStudio is already architecturally preparing for gener
 
 ### 5.3 Process Route Flow
 
-`packages/lestudio/src/lestudio/routes/process.py` is the main control surface for long-running operations.
+`packages/lerobot-doctor/src/lerobot_doctor/routes/process.py` (generic process control, calibrate, motor setup) and `packages/lestudio/src/lestudio/routes/operate.py` (preflight, teleop, record) are the control surface for long-running operations.
 
 Important behaviors:
 
@@ -182,7 +183,7 @@ This route layer is where UI intent becomes operational subprocess work.
 
 ### 6.1 WebSocket Channel
 
-`packages/lestudio/src/lestudio/routes/streaming.py` exposes `/ws`.
+`packages/lerobot-doctor/src/lerobot_doctor/routes/streaming.py` exposes `/ws`.
 
 Today the WebSocket sends:
 

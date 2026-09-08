@@ -7,7 +7,7 @@ from pathlib import Path
 
 from _routing import find_endpoint as _find_endpoint
 
-from lestudio.routes.models import CameraSettingsRequest
+from lerobot_doctor.routes.models import CameraSettingsRequest
 from lestudio.server import create_app
 
 
@@ -76,7 +76,7 @@ def test_api_config_save_and_reload(tmp_path: Path):
 
 def test_api_camera_settings_save_and_get(tmp_path: Path, monkeypatch):
     """POST /api/camera_settings should persist settings; GET should read them back."""
-    monkeypatch.setattr("lestudio._streaming.restart_all_streamers", lambda config_path: None)
+    monkeypatch.setattr("lerobot_doctor._streaming.restart_all_streamers", lambda config_path: None)
 
     app = _make_app(tmp_path)
     save_endpoint = _find_endpoint(app, "/api/camera_settings", "POST")

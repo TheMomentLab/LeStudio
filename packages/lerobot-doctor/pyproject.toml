@@ -23,7 +23,12 @@ classifiers = [
 ]
 # Runs against whatever `lerobot` is installed; the motor bridges import it
 # lazily and degrade to a fallback robot catalog when it is absent.
-dependencies = []
+dependencies = [
+    "fastapi>=0.100.0,<1.0.0",
+    "uvicorn[standard]>=0.20.0,<1.0.0",
+    "opencv-python-headless>=4.8.0,<5.0.0",
+    "psutil>=5.9.0,<8.0.0",
+]
 
 [project.optional-dependencies]
 lerobot = ["lerobot>=0.4.4,<0.7"]
@@ -45,3 +50,6 @@ version = {attr = "lerobot_doctor.__version__"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+lerobot_doctor = ["static/**"]

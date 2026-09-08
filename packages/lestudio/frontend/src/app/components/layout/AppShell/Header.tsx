@@ -15,6 +15,7 @@ import {
   resolveApiOrigin,
   writeStoredSessionToken,
 } from "../../../services/sessionToken";
+import { APP_NAME, IS_DOCTOR } from "../../../profile";
 import { useLeStudioStore } from "../../../store";
 import { Popover, PopoverTrigger, PopoverContent } from "../../ui/popover";
 
@@ -117,7 +118,7 @@ export function Header({
           <circle cx="50" cy="50" r="34" mask="url(#planet-mask)" />
           <ellipse cx="50" cy="50" rx="48" ry="16" transform="rotate(-15 50 50)" />
         </svg>
-        <span className="text-sm text-fg-heading">LeStudio</span>
+        <span className="text-sm text-fg-heading">{APP_NAME}</span>
         <span className="text-3xs font-bold tracking-wide uppercase leading-none px-1.5 py-0.5 rounded-full border border-warn-line bg-warn-bg text-warn">ALPHA</span>
       </NavLink>
 
@@ -221,85 +222,112 @@ export function Header({
           </Popover>
         )}
 
-        <Popover open={hfPopoverOpen} onOpenChange={setHfPopoverOpen}>
-          <PopoverTrigger asChild>
-            <button
-              className={cn(
-                "flex items-center gap-1.5 px-2.5 py-1 rounded border text-sm cursor-pointer transition-colors",
-                hfAuth === "ready"
-                  ? "border-line-control text-fg-muted"
-                  : hfAuth === "missing_token"
-                    ? "border-warn-line text-warn bg-warn-bg"
-                    : hfAuth === "expired_token"
+        {!IS_DOCTOR && (
+          <Popover open={hfPopoverOpen} onOpenChange={setHfPopoverOpen}>
+            <PopoverTrigger asChild>
+              <button
+                className={cn(
+                  "flex items-center gap-1.5 px-2.5 py-1 rounded border text-sm cursor-pointer transition-colors",
+                  hfAuth === "ready"
+                    ? "border-line-control text-fg-muted"
+                    : hfAuth === "missing_token"
                       ? "border-warn-line text-warn bg-warn-bg"
-                    : "border-danger-line text-danger bg-danger-bg"
-              )}
-              title={hfTitle}
-              aria-label={`Hugging Face status: ${hfLabel}`}
-            >
-              <span aria-hidden="true">🤗</span>
-              <span>{hfLabel}</span>
-            </button>
-          </PopoverTrigger>
-          <PopoverContent align="end" className="w-72 bg-surface border-line-control p-0">
-            <div className="px-3 py-2.5 border-b border-line-subtle">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-sm font-medium text-fg-body">Hugging Face</span>
-                {hfAuth !== "ready" && (
-                  <a
-                    href="https://huggingface.co/settings/tokens"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-xs text-fg-muted hover:text-fg-body transition-colors whitespace-nowrap flex-none"
-                  >
-                    Get Token →
-                  </a>
+                      : hfAuth === "expired_token"
+                        ? "border-warn-line text-warn bg-warn-bg"
+                      : "border-danger-line text-danger bg-danger-bg"
                 )}
+                title={hfTitle}
+                aria-label={`Hugging Face status: ${hfLabel}`}
+              >
+                <span aria-hidden="true">🤗</span>
+                <span>{hfLabel}</span>
+              </button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-72 bg-surface border-line-control p-0">
+              <div className="px-3 py-2.5 border-b border-line-subtle">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-medium text-fg-body">Hugging Face</span>
+                  {hfAuth !== "ready" && (
+                    <a
+                      href="https://huggingface.co/settings/tokens"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-fg-muted hover:text-fg-body transition-colors whitespace-nowrap flex-none"
+                    >
+                      Get Token →
+                    </a>
+                  )}
+                </div>
+                <p className="text-xs text-fg-muted mt-0.5">{hfTitle}</p>
               </div>
-              <p className="text-xs text-fg-muted mt-0.5">{hfTitle}</p>
-            </div>
-            <div className="p-3 flex flex-col gap-2">
-              {hfAuth === "ready" ? (
-                <>
-                  <div className="flex items-center gap-2">
-                    <span className="size-2 rounded-full bg-ok-solid flex-none" />
-                    <span className="text-sm text-fg-body">{hfUsername ?? "Connected"}</span>
-                  </div>
-                  <button
-                    onClick={async () => {
-                      setDeletingHfToken(true);
-                      try {
-                        await apiDelete<{ ok?: boolean }>("/api/hf/token");
-                        await refreshHfAuth();
-                        addToast("HF token deleted.", "success");
-                      } catch {
-                        addToast("Failed to delete HF token.", "error");
-                      } finally {
-                        setDeletingHfToken(false);
-                      }
-                    }}
-                    disabled={deletingHfToken}
-                    className={buttonStyles({
-                      variant: "secondary",
-                      tone: "danger",
-                      className: "w-full h-auto px-3 py-1.5 justify-center",
-                    })}
-                  >
-                    {deletingHfToken ? "Deleting..." : "Delete Token"}
-                  </button>
-                </>
-              ) : (
-                <>
-                  <input
-                    type="password"
-                    value={hfTokenInput}
-                    onChange={(e) => setHfTokenInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && hfTokenInput.trim()) {
-                        e.preventDefault();
+              <div className="p-3 flex flex-col gap-2">
+                {hfAuth === "ready" ? (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="size-2 rounded-full bg-ok-solid flex-none" />
+                      <span className="text-sm text-fg-body">{hfUsername ?? "Connected"}</span>
+                    </div>
+                    <button
+                      onClick={async () => {
+                        setDeletingHfToken(true);
+                        try {
+                          await apiDelete<{ ok?: boolean }>("/api/hf/token");
+                          await refreshHfAuth();
+                          addToast("HF token deleted.", "success");
+                        } catch {
+                          addToast("Failed to delete HF token.", "error");
+                        } finally {
+                          setDeletingHfToken(false);
+                        }
+                      }}
+                      disabled={deletingHfToken}
+                      className={buttonStyles({
+                        variant: "secondary",
+                        tone: "danger",
+                        className: "w-full h-auto px-3 py-1.5 justify-center",
+                      })}
+                    >
+                      {deletingHfToken ? "Deleting..." : "Delete Token"}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <input
+                      type="password"
+                      value={hfTokenInput}
+                      onChange={(e) => setHfTokenInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && hfTokenInput.trim()) {
+                          e.preventDefault();
+                          const token = hfTokenInput.trim();
+                          setSavingHfToken(true);
+                          void apiPost<{ ok?: boolean; error?: string }>("/api/hf/token", { token }).then(async (result) => {
+                            if (result?.ok) {
+                              setHfTokenInput("");
+                              await refreshHfAuth();
+                              addToast("HF token saved.", "success");
+                              setHfPopoverOpen(false);
+                            } else {
+                              addToast(result?.error ?? "Failed to save HF token.", "error");
+                            }
+                          }).catch(() => {
+                            addToast("Failed to save HF token.", "error");
+                          }).finally(() => {
+                            setSavingHfToken(false);
+                          });
+                        }
+                      }}
+                      placeholder="hf_..."
+                      aria-label="Hugging Face access token"
+                      className={cn(inputClassName, "h-auto px-2.5 py-1.5 rounded")}
+                    />
+                    <button
+                      onClick={async () => {
                         const token = hfTokenInput.trim();
+                        if (!token) { addToast("Enter HF token.", "error"); return; }
                         setSavingHfToken(true);
-                        void apiPost<{ ok?: boolean; error?: string }>("/api/hf/token", { token }).then(async (result) => {
+                        try {
+                          const result = await apiPost<{ ok?: boolean; error?: string }>("/api/hf/token", { token });
                           if (result?.ok) {
                             setHfTokenInput("");
                             await refreshHfAuth();
@@ -308,52 +336,27 @@ export function Header({
                           } else {
                             addToast(result?.error ?? "Failed to save HF token.", "error");
                           }
-                        }).catch(() => {
+                        } catch {
                           addToast("Failed to save HF token.", "error");
-                        }).finally(() => {
+                        } finally {
                           setSavingHfToken(false);
-                        });
-                      }
-                    }}
-                    placeholder="hf_..."
-                    aria-label="Hugging Face access token"
-                    className={cn(inputClassName, "h-auto px-2.5 py-1.5 rounded")}
-                  />
-                  <button
-                    onClick={async () => {
-                      const token = hfTokenInput.trim();
-                      if (!token) { addToast("Enter HF token.", "error"); return; }
-                      setSavingHfToken(true);
-                      try {
-                        const result = await apiPost<{ ok?: boolean; error?: string }>("/api/hf/token", { token });
-                        if (result?.ok) {
-                          setHfTokenInput("");
-                          await refreshHfAuth();
-                          addToast("HF token saved.", "success");
-                          setHfPopoverOpen(false);
-                        } else {
-                          addToast(result?.error ?? "Failed to save HF token.", "error");
                         }
-                      } catch {
-                        addToast("Failed to save HF token.", "error");
-                      } finally {
-                        setSavingHfToken(false);
-                      }
-                    }}
-                    disabled={savingHfToken || !hfTokenInput.trim()}
-                    className={buttonStyles({
-                      variant: "primary",
-                      tone: "neutral",
-                      className: "w-full h-auto px-3 py-1.5 justify-center",
-                    })}
-                  >
-                    {savingHfToken ? "Saving..." : "Save Token"}
-                  </button>
-                </>
-              )}
-            </div>
-          </PopoverContent>
-        </Popover>
+                      }}
+                      disabled={savingHfToken || !hfTokenInput.trim()}
+                      className={buttonStyles({
+                        variant: "primary",
+                        tone: "neutral",
+                        className: "w-full h-auto px-3 py-1.5 justify-center",
+                      })}
+                    >
+                      {savingHfToken ? "Saving..." : "Save Token"}
+                    </button>
+                  </>
+                )}
+              </div>
+            </PopoverContent>
+          </Popover>
+        )}
 
         <div className="flex items-center gap-1.5 px-2.5 py-1 rounded border border-line-control" title={`WebSocket: ${wsStatus}`}>
           <span className={cn("size-2 rounded-full", wsColor)} />

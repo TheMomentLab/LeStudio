@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from lerobot_doctor import serve
 from lestudio import cli
 
 
@@ -68,7 +69,7 @@ def test_resolve_lerobot_src_accepts_repo_root(tmp_path: Path):
 
 
 def test_resolve_lerobot_src_errors_when_missing(monkeypatch):
-    monkeypatch.setattr(cli, "find_lerobot_src", lambda: None)
+    monkeypatch.setattr(serve, "find_lerobot_src", lambda: None)
     with pytest.raises(SystemExit):
         cli.resolve_lerobot_src(None)
 

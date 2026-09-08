@@ -12,17 +12,17 @@ from typing import Any
 from fastapi import APIRouter
 
 from lerobot_doctor import type_policy
+from lerobot_doctor._streaming import stop_all_streamers_for_process, unlock_cameras
+from lerobot_doctor.capabilities import Capability, register
 from lerobot_doctor.device_helpers import ensure_bimanual_calibration_files, get_calibration_file_path
+from lerobot_doctor.services.process_service import _guard_process_start
 
-from .._streaming import stop_all_streamers_for_process, unlock_cameras
 from .._train_helpers import (
     _check_cuda_runtime_compat,
     _check_torchcodec_compat,
     _check_train_python_deps,
 )
-from ..capabilities import Capability, register
 from ..command_builders import build_eval_args
-from ..services.process_service import _guard_process_start
 from ._state import AppState
 
 training_service = importlib.import_module("lestudio.services.training_service")
