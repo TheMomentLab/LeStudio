@@ -1,7 +1,7 @@
 """LeStudio-only process routes: preflight, teleop / record start, console commands.
 
 Generic process control (status / stop / input), calibration and motor setup
-live in lerobot_doctor.routes.process.
+live in lerobot_checkup.routes.process.
 """
 
 from __future__ import annotations
@@ -10,9 +10,9 @@ import logging
 
 from fastapi import APIRouter
 
-from lerobot_doctor.capabilities import Capability, register
-from lerobot_doctor.process_manager import PROCESS_NAMES
-from lerobot_doctor.routes.models import ProcessCommandRequest
+from lerobot_checkup.capabilities import Capability, register
+from lerobot_checkup.process_manager import PROCESS_NAMES
+from lerobot_checkup.routes.models import ProcessCommandRequest
 
 from .._train_helpers import _normalize_console_command
 from ..services.process_service import run_preflight, start_record, start_teleop

@@ -24,7 +24,7 @@ Hardware setup and diagnostics for [Hugging Face LeRobot](https://github.com/hug
 | Live plots during teleop / eval | Foxglove (built into LeRobot 0.6.0) |
 | Episode quality scoring at scale | LeRobot dataset visualizer, `score_lerobot_episodes` |
 
-The hardware layer is being split into a standalone package (working name `lerobot-doctor`) that the workbench will depend on. Read [Direction](docs_public/direction.md) for the reasoning, the plan and what stays.
+The hardware layer is a standalone package, [`lerobot-checkup`](packages/lerobot-checkup/README.md), that the workbench depends on. Read [Direction](docs_public/direction.md) for the reasoning, the plan and what stays.
 
 ## Screenshots
 
@@ -110,7 +110,7 @@ conda activate lerobot
 make install
 ```
 
-`make install` installs `lerobot-doctor` and `lestudio` in editable mode and pulls `lerobot` with the dataset, training and Feetech / Dynamixel motor extras. If you need a specific torch build (CUDA version, CPU-only), install torch first and pip keeps it.
+`make install` installs `lerobot-checkup` and `lestudio` in editable mode and pulls `lerobot` with the dataset, training and Feetech / Dynamixel motor extras. If you need a specific torch build (CUDA version, CPU-only), install torch first and pip keeps it.
 
 > Upgrading from the submodule-based checkout: delete the old `lerobot/` directory and re-run `make install`. The fork is no longer used.
 
@@ -146,21 +146,21 @@ lestudio serve:
 
 Flags can be passed without explicitly typing `serve` — `lestudio --port 8080` works the same as `lestudio serve --port 8080`.
 
-### lerobot-doctor CLI
+### lerobot-checkup CLI
 
 The hardware layer ships as its own package with a command line, installed together with LeStudio:
 
 ```bash
-lerobot-doctor                                     # hardware-only web UI (Status, Motor Setup, Camera Setup) on :7861
-lerobot-doctor report                              # Markdown summary to paste into an issue
-lerobot-doctor ports                               # serial ports that look like arms
-lerobot-doctor cameras                             # cameras and the USB bus each one shares
-lerobot-doctor motors --port /dev/ttyACM0 --ids 1-6
-lerobot-doctor calibration                         # validate every calibration file in the LeRobot cache
-lerobot-doctor udev status                         # are the stable /dev symlinks in place?
+lerobot-checkup                                     # hardware-only web UI (Status, Motor Setup, Camera Setup) on :7861
+lerobot-checkup report                              # Markdown summary to paste into an issue
+lerobot-checkup ports                               # serial ports that look like arms
+lerobot-checkup cameras                             # cameras and the USB bus each one shares
+lerobot-checkup motors --port /dev/ttyACM0 --ids 1-6
+lerobot-checkup calibration                         # validate every calibration file in the LeRobot cache
+lerobot-checkup udev status                         # are the stable /dev symlinks in place?
 ```
 
-Add `--json` to any command for machine-readable output. Details: [packages/lerobot-doctor/README.md](packages/lerobot-doctor/README.md).
+Add `--json` to any command for machine-readable output. Details: [packages/lerobot-checkup/README.md](packages/lerobot-checkup/README.md).
 
 ### Network & CORS
 
@@ -187,12 +187,12 @@ For development compatibility only, `LESTUDIO_CORS_ORIGINS="*"` is supported but
 
 ```
 packages/
-├── lerobot-doctor/   # Hardware layer library: device discovery, udev/type/path policy, motor & calibration bridges
+├── lerobot-checkup/   # Hardware layer library: device discovery, udev/type/path policy, motor & calibration bridges
 └── lestudio/         # Workbench: FastAPI backend (src/lestudio) + React frontend (frontend/)
 tests/                # Backend tests for both packages
 ```
 
-`lestudio` depends on `lerobot-doctor`; the dependency never points the other way. See [docs_public/direction.md](docs_public/direction.md) for why the repository is split this way.
+`lestudio` depends on `lerobot-checkup`; the dependency never points the other way. See [docs_public/direction.md](docs_public/direction.md) for why the repository is split this way.
 
 ```bash
 conda activate lerobot
@@ -214,8 +214,8 @@ Backend checks:
 
 ```bash
 python -m ruff check packages
-python -m mypy packages/lerobot-doctor/src/lerobot_doctor packages/lestudio/src/lestudio --ignore-missing-imports
-python -m compileall -q packages/lerobot-doctor/src/lerobot_doctor packages/lestudio/src/lestudio
+python -m mypy packages/lerobot-checkup/src/lerobot_checkup packages/lestudio/src/lestudio --ignore-missing-imports
+python -m compileall -q packages/lerobot-checkup/src/lerobot_checkup packages/lestudio/src/lestudio
 make test
 ```
 

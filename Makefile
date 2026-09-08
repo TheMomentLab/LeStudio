@@ -8,17 +8,17 @@ SHELL := /bin/bash
 
 .PHONY: install dev test test-hw build-frontend clean help
 
-## install: Install lerobot-doctor and lestudio (editable); pulls upstream lerobot
+## install: Install lerobot-checkup and lestudio (editable); pulls upstream lerobot
 install:
-	pip install -e packages/lerobot-doctor -e packages/lestudio
+	pip install -e packages/lerobot-checkup -e packages/lestudio
 
 ## dev: Same as install plus the dev toolchain used by CI (ruff, mypy, pytest helpers)
 dev:
-	pip install -e packages/lerobot-doctor -e "packages/lestudio[dev]"
+	pip install -e packages/lerobot-checkup -e "packages/lestudio[dev]"
 
-## build-frontend: Build the React frontend for both packages (LeStudio + lerobot-doctor)
+## build-frontend: Build the React frontend for both packages (LeStudio + lerobot-checkup)
 build-frontend:
-	cd packages/lestudio/frontend && npm ci && npm run build && npm run build:doctor
+	cd packages/lestudio/frontend && npm ci && npm run build && npm run build:checkup
 
 ## test: Run unit tests (no hardware required)
 test:

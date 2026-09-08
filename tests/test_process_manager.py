@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lerobot_doctor.process_manager import (
+from lerobot_checkup.process_manager import (
     ProcessManager,
     _extract_train_metric,
     _parse_compact_int,

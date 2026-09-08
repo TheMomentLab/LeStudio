@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "lestudio"
 version = "0.1.0"
-description = "LeStudio: web workbench for Hugging Face LeRobot — hardware setup and diagnostics (via lerobot-doctor) plus teleop, record, dataset, train and eval"
+description = "LeStudio: web workbench for Hugging Face LeRobot — hardware setup and diagnostics (via lerobot-checkup) plus teleop, record, dataset, train and eval"
 readme = "README.md"
 license = {text = "Apache-2.0"}
 requires-python = ">=3.10"
@@ -25,7 +25,7 @@ classifiers = [
     "Topic :: Scientific/Engineering",
 ]
 dependencies = [
-    "lerobot-doctor>=0.1.0",
+    "lerobot-checkup>=0.1.0",
     # Upstream LeRobot. 0.4.x is the last line that supports Python 3.10/3.11;
     # 0.5+ requires Python 3.12. CI runs both ends of the range.
     # Extras: dataset/training for record + train, hardware for the keyboard

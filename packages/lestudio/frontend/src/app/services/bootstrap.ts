@@ -1,5 +1,5 @@
 import { apiGet } from "./apiClient";
-import { IS_DOCTOR } from "../profile";
+import { IS_CHECKUP } from "../profile";
 import {
   DEFAULT_SIDEBAR_SIGNALS,
   DEFAULT_TYPE_CATALOG_RESPONSE,
@@ -191,10 +191,10 @@ export async function runBootstrap(): Promise<BootstrapResult> {
     apiGet<LeStudioConfig>("/api/config"),
     apiGet<DevicesResponse>("/api/devices"),
     apiGet<TypePolicyCatalogResponse>("/api/policy/type-catalog"),
-    // The doctor server has no Hub or training routes; resolve those probes as "unknown".
-    IS_DOCTOR ? Promise.resolve(null) : apiGet<DepsStatusResponse>("/api/deps/status"),
-    IS_DOCTOR ? Promise.resolve(null) : apiGet<HfWhoamiResponse>("/api/hf/whoami"),
-    IS_DOCTOR ? Promise.resolve(null) : apiGet<TrainPreflightResponse>("/api/train/preflight?device=cuda"),
+    // The checkup server has no Hub or training routes; resolve those probes as "unknown".
+    IS_CHECKUP ? Promise.resolve(null) : apiGet<DepsStatusResponse>("/api/deps/status"),
+    IS_CHECKUP ? Promise.resolve(null) : apiGet<HfWhoamiResponse>("/api/hf/whoami"),
+    IS_CHECKUP ? Promise.resolve(null) : apiGet<TrainPreflightResponse>("/api/train/preflight?device=cuda"),
   ]);
 
   if (configResult.status === "rejected") {

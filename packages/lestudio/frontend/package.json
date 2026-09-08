@@ -14,10 +14,10 @@
   "homepage": "https://github.com/TheMomentLab/lestudio#readme",
   "scripts": {
     "build": "npm run typecheck && vite build",
-    "build:doctor": "npm run typecheck && VITE_APP_PROFILE=doctor vite build",
+    "build:checkup": "npm run typecheck && VITE_APP_PROFILE=checkup vite build",
     "design:audit": "node scripts/design-audit.mjs",
     "dev": "vite",
-    "dev:doctor": "VITE_APP_PROFILE=doctor vite",
+    "dev:checkup": "VITE_APP_PROFILE=checkup vite",
     "lint": "eslint src/app vite.config.ts --max-warnings=0",
     "preview": "vite preview",
     "test": "vitest",

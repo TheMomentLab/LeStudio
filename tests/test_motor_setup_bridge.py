@@ -9,7 +9,7 @@ import time
 
 from pytest import MonkeyPatch
 
-from lerobot_doctor import motor_setup_bridge as bridge
+from lerobot_checkup import motor_setup_bridge as bridge
 
 
 def test_maybe_emit_event_parses_prompt_motor_without_trailing_quote(monkeypatch: MonkeyPatch):

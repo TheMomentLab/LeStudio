@@ -1,6 +1,6 @@
 """Pydantic models for the LeStudio-only routes (Hub, training).
 
-Hardware models live in lerobot_doctor.routes.models.
+Hardware models live in lerobot_checkup.routes.models.
 """
 
 from __future__ import annotations

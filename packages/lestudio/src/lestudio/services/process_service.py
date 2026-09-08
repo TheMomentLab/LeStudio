@@ -1,6 +1,6 @@
 """Process starters for the LeStudio-only workflows (preflight, teleop, record).
 
-Calibration, motor setup and the shared guards live in lerobot_doctor.services.process_service.
+Calibration, motor setup and the shared guards live in lerobot_checkup.services.process_service.
 """
 
 from __future__ import annotations
@@ -11,18 +11,18 @@ from pathlib import Path
 
 import cv2
 
-from lerobot_doctor import type_policy
-from lerobot_doctor._streaming import (
+from lerobot_checkup import type_policy
+from lerobot_checkup._streaming import (
     _get_cam_settings,
     _preview_streamers,
     _streamers,
     _streamers_lock,
     stop_all_streamers_for_process,
 )
-from lerobot_doctor.calibration_validator import validate_calibration_file
-from lerobot_doctor.device_helpers import ensure_bimanual_calibration_files, get_calibration_file_path
-from lerobot_doctor.motor_monitor_bridge import get_bridge as _get_motor_bridge
-from lerobot_doctor.services.process_service import (  # noqa: F401  (hardware starters re-exported)
+from lerobot_checkup.calibration_validator import validate_calibration_file
+from lerobot_checkup.device_helpers import ensure_bimanual_calibration_files, get_calibration_file_path
+from lerobot_checkup.motor_monitor_bridge import get_bridge as _get_motor_bridge
+from lerobot_checkup.services.process_service import (  # noqa: F401  (hardware starters re-exported)
     _guard_process_start,
     _is_bimanual_mode,
     calibrate_delete,

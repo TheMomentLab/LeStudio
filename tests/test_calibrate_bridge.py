@@ -5,7 +5,7 @@ from __future__ import annotations
 import builtins
 import io
 
-from lerobot_doctor import calibrate_bridge
+from lerobot_checkup import calibrate_bridge
 
 
 def test_install_input_prompt_passthrough_emits_prompt_line_immediately(monkeypatch):

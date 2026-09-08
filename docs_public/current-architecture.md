@@ -46,9 +46,9 @@ Browser UI
   -> WebSocket (`/ws`) for process output, metrics, status
   -> HTTP streaming (`/stream/*`, `/api/camera/snapshot/*`) for camera frames
 
-FastAPI app (`packages/lerobot-doctor/src/lerobot_doctor/server.py`, composed by `packages/lestudio/src/lestudio/server.py`)
+FastAPI app (`packages/lerobot-checkup/src/lerobot_checkup/server.py`, composed by `packages/lestudio/src/lestudio/server.py`)
   -> shared AppState
-  -> hardware route modules under `packages/lerobot-doctor/src/lerobot_doctor/routes/`, workflow route modules under `packages/lestudio/src/lestudio/routes/`
+  -> hardware route modules under `packages/lerobot-checkup/src/lerobot_checkup/routes/`, workflow route modules under `packages/lestudio/src/lestudio/routes/`
   -> ProcessManager for subprocess lifecycle
   -> static frontend serving from `packages/lestudio/src/lestudio/static/`
 
@@ -64,7 +64,7 @@ LeRobot boundary
 
 ### 4.1 App Factory and Route Assembly
 
-`packages/lerobot-doctor/src/lerobot_doctor/server.py` is the shared app assembly (`make_state`, `build_app`); `packages/lestudio/src/lestudio/server.py` is the LeStudio entry point that composes it with the workflow routers.
+`packages/lerobot-checkup/src/lerobot_checkup/server.py` is the shared app assembly (`make_state`, `build_app`); `packages/lestudio/src/lestudio/server.py` is the LeStudio entry point that composes it with the workflow routers.
 
 Key responsibilities:
 
@@ -83,7 +83,7 @@ Important implementation detail:
 
 ### 4.2 Shared AppState
 
-`packages/lerobot-doctor/src/lerobot_doctor/routes/_state.py` defines `AppState`, which is passed into each route factory; `packages/lestudio/src/lestudio/routes/_state.py` subclasses it to add the dataset job tables.
+`packages/lerobot-checkup/src/lerobot_checkup/routes/_state.py` defines `AppState`, which is passed into each route factory; `packages/lestudio/src/lestudio/routes/_state.py` subclasses it to add the dataset job tables.
 
 It centralizes:
 
@@ -98,12 +98,12 @@ This is the main in-memory coordination object for the backend.
 
 ### 4.3 Route Module Responsibilities
 
-Current route split (hardware modules in `lerobot_doctor.routes`, workflow modules in `lestudio.routes`):
+Current route split (hardware modules in `lerobot_checkup.routes`, workflow modules in `lestudio.routes`):
 
 - `routes/devices.py` - hardware and device discovery
 - `routes/config.py` - persisted UI/runtime configuration
 - `routes/udev.py` - udev rule workflows
-- `routes/process.py` (doctor) - process status / stop / input, calibrate and motor setup starts
+- `routes/process.py` (checkup) - process status / stop / input, calibrate and motor setup starts
 - `routes/operate.py` (lestudio) - preflight checks, teleop / record starts, console commands
 - `routes/training.py` - training orchestration and CUDA-related checks
 - `routes/eval.py` - evaluation orchestration and checkpoint-driven execution
@@ -119,7 +119,7 @@ The backend is organized around route factories instead of one monolithic app mo
 
 ### 5.1 ProcessManager Role
 
-`packages/lerobot-doctor/src/lerobot_doctor/process_manager.py` is the runtime core for long-running work.
+`packages/lerobot-checkup/src/lerobot_checkup/process_manager.py` is the runtime core for long-running work.
 
 Its responsibilities go beyond simply calling `subprocess.Popen`:
 
@@ -164,7 +164,7 @@ That split is important: LeStudio is already architecturally preparing for gener
 
 ### 5.3 Process Route Flow
 
-`packages/lerobot-doctor/src/lerobot_doctor/routes/process.py` (generic process control, calibrate, motor setup) and `packages/lestudio/src/lestudio/routes/operate.py` (preflight, teleop, record) are the control surface for long-running operations.
+`packages/lerobot-checkup/src/lerobot_checkup/routes/process.py` (generic process control, calibrate, motor setup) and `packages/lestudio/src/lestudio/routes/operate.py` (preflight, teleop, record) are the control surface for long-running operations.
 
 Important behaviors:
 
@@ -183,7 +183,7 @@ This route layer is where UI intent becomes operational subprocess work.
 
 ### 6.1 WebSocket Channel
 
-`packages/lerobot-doctor/src/lerobot_doctor/routes/streaming.py` exposes `/ws`.
+`packages/lerobot-checkup/src/lerobot_checkup/routes/streaming.py` exposes `/ws`.
 
 Today the WebSocket sends:
 
@@ -355,8 +355,8 @@ Current project guidance treats the LeRobot coupling boundary as isolated to the
 - `packages/lestudio/src/lestudio/teleop_bridge.py`
 - `packages/lestudio/src/lestudio/record_bridge.py`
 - `packages/lestudio/src/lestudio/camera_patch.py`
-- `packages/lerobot-doctor/src/lerobot_doctor/device_registry.py`
-- `packages/lerobot-doctor/src/lerobot_doctor/motor_monitor_bridge.py`
+- `packages/lerobot-checkup/src/lerobot_checkup/device_registry.py`
+- `packages/lerobot-checkup/src/lerobot_checkup/motor_monitor_bridge.py`
 
 Design intent:
 
@@ -399,7 +399,7 @@ This is important context when reading `docs/ecosystem-integration-plan.md`: tha
 
 ### 10.6 Planned Package Boundary
 
-The hardware layer — `device_registry.py`, `routes/udev.py`, `routes/devices.py`, `motor_setup_bridge.py`, `motor_monitor_bridge.py`, `routes/motor.py`, `calibrate_bridge.py`, `calibration_validator.py`, the camera stats / snapshot routes, and the Status / Motor Setup / Camera Setup pages — is being split into a standalone package (working name `lerobot-doctor`) that the workbench depends on. The route-factory pattern in §4.1 and the `components/wireframe` primitives are what make that split mechanical rather than a rewrite. Nothing in this document changes until the split ships; see `direction.md` for the plan.
+The hardware layer — `device_registry.py`, `routes/udev.py`, `routes/devices.py`, `motor_setup_bridge.py`, `motor_monitor_bridge.py`, `routes/motor.py`, `calibrate_bridge.py`, `calibration_validator.py`, the camera stats / snapshot routes, and the Status / Motor Setup / Camera Setup pages — is being split into a standalone package (working name `lerobot-checkup`) that the workbench depends on. The route-factory pattern in §4.1 and the `components/wireframe` primitives are what make that split mechanical rather than a rewrite. Nothing in this document changes until the split ships; see `direction.md` for the plan.
 
 ---
 

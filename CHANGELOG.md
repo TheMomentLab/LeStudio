@@ -10,20 +10,22 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ### Direction
 - LeLab became the official LeRobot GUI (April–June 2026). LeStudio is being
   reorganised around hardware setup and diagnostics as a standalone package
-  (working name `lerobot-doctor`) with the workbench kept on top. See
+  (`lerobot-checkup`) with the workbench kept on top. See
   `docs_public/direction.md`. Steps 1 and 2 of the plan are done (below).
 
 ### Added
-- `lerobot-doctor serve` (also the default with no arguments): the standalone
+- `lerobot-checkup serve` (also the default with no arguments): the standalone
   hardware web UI — Status, Motor Setup and Camera Setup — on port 7861. It is
-  the same frontend built with `npm run build:doctor` (hardware pages only,
-  no Hub / training probes) served by `lerobot_doctor.server`.
-- `lerobot-doctor` CLI: `ports`, `cameras`, `motors --port`, `calibration
+  the same frontend built with `npm run build:checkup` (hardware pages only,
+  no Hub / training probes) served by `lerobot_checkup.server`.
+- `lerobot-checkup` CLI: `ports`, `cameras`, `motors --port`, `calibration
   [--pair]`, `udev status|install` and `report` (Markdown, or `--json` on any
   command) so hardware state can be pasted into issues. Exit status 1 flags a
   problem. `lestudio install-udev` delegates to it. The package builds as an
-  sdist/wheel (`python -m build packages/lerobot-doctor`) and a tag-triggered
-  workflow (`lerobot-doctor-v*`) publishes it through PyPI trusted publishing.
+  sdist/wheel (`python -m build packages/lerobot-checkup`) and a tag-triggered
+  workflow (`lerobot-checkup-v*`) publishes it through PyPI trusted publishing.
+- The package is named `lerobot-checkup` (import `lerobot_checkup`); the
+  working name `lerobot-doctor` collides with an unrelated PyPI project.
 - OMX (OpenManipulator-X) support, a robot-family policy catalog and
   centralized calibration-source resolution (merged from `dev`).
 - Semantic design tokens for both themes (`frontend/src/styles/theme.css`),
@@ -42,20 +44,20 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - `tests/_routing.py` helper for route introspection across FastAPI versions.
 
 ### Changed
-- Repository re-laid out as a monorepo: `packages/lerobot-doctor` (hardware
+- Repository re-laid out as a monorepo: `packages/lerobot-checkup` (hardware
   layer library: device registry, udev / type / path policy, motor and
   calibration bridges) and `packages/lestudio` (FastAPI backend + React
-  frontend, depends on `lerobot-doctor`). Shared tool config lives in the
+  frontend, depends on `lerobot-checkup`). Shared tool config lives in the
   root `pyproject.toml`. Behaviour unchanged.
 - Upstream `lerobot` is now a pip dependency (`>=0.4.4,<0.7`) instead of a
   pinned fork submodule. CI runs the backend on Python 3.10 (lerobot 0.4.x)
   and 3.12 (latest 0.6.x). The record and teleop bridges handle the
   keyboard-listener and visualization helper renames in lerobot 0.5+.
-- The server assembly and the hardware routes moved into `lerobot_doctor`:
+- The server assembly and the hardware routes moved into `lerobot_checkup`:
   auth / CORS / logging middlewares, `ProcessManager`, camera streaming, the
   device watcher, `AppState`, and the devices / config / udev / motor /
   process / streaming route modules. `lestudio.server` composes
-  `lerobot_doctor.server.build_app` with its workflow routers (operate,
+  `lerobot_checkup.server.build_app` with its workflow routers (operate,
   training, eval, dataset). Public API paths are unchanged.
 - Eval launches through `lestudio.eval_bridge`, which registers the
   bimanual and OMX robot / teleoperator families before delegating to

@@ -31,12 +31,12 @@ The full survey with repository metrics and sources lives in the project notes (
 
 **Keep LeStudio. Add a second, narrower product. One repository, two packages.**
 
-- **`lerobot-doctor`** *(working name — not final)*: the hardware setup and diagnostics layer as a standalone tool. `pip install`, one command opens the web UI, and a CLI for the same checks so answers can be pasted into issues. Depends on upstream `lerobot` by version range, not on a fork.
-- **LeStudio Workbench**: the existing full-loop UI, which depends on `lerobot-doctor` for its Status / Motor Setup / Camera Setup pages.
+- **`lerobot-checkup`** *(named 2026-09-08; `lerobot-doctor` was the working name, but that PyPI name belongs to an unrelated project)*: the hardware setup and diagnostics layer as a standalone tool. `pip install`, one command opens the web UI, and a CLI for the same checks so answers can be pasted into issues. Depends on upstream `lerobot` by version range, not on a fork.
+- **LeStudio Workbench**: the existing full-loop UI, which depends on `lerobot-checkup` for its Status / Motor Setup / Camera Setup pages.
 
 Why not pivot LeStudio itself: the workbench is finished work and shows the full stack; turning it into a diagnostics tool throws that away. Why not a second repository: a solo maintainer would fix every LeRobot API change twice. The 2026-09-07 CI failure was exactly that kind of drift.
 
-What moves into `lerobot-doctor` (all of it exists today):
+What moves into `lerobot-checkup` (all of it exists today):
 
 | Area | Backend | Frontend |
 |---|---|---|
@@ -52,9 +52,9 @@ Shared between both packages: the design tokens and `components/wireframe` primi
 
 Order matters: the first three steps add no features. They draw the boundary and ship.
 
-1. **Re-layout as a monorepo** — `packages/lerobot-doctor` and `packages/lestudio`, shared frontend primitives. Behaviour unchanged. *Done 2026-09-08 for the Python side: the hardware layer (device registry, udev/type/path policy, motor and calibration bridges) now lives in `lerobot-doctor` as a library, and `lestudio` depends on it. The frontend is not split yet and `lerobot-doctor` has no server or CLI; those come with step 3.*
+1. **Re-layout as a monorepo** — `packages/lerobot-checkup` and `packages/lestudio`, shared frontend primitives. Behaviour unchanged. *Done 2026-09-08 for the Python side: the hardware layer (device registry, udev/type/path policy, motor and calibration bridges) now lives in `lerobot-checkup` as a library, and `lestudio` depends on it. The frontend is not split yet and `lerobot-checkup` has no server or CLI; those come with step 3.*
 2. **Drop the lerobot fork submodule** — depend on upstream `lerobot` by version range; run CI against the latest release so drift shows up immediately. *Done 2026-09-08: `lestudio` depends on `lerobot>=0.4.4,<0.7`; CI runs Python 3.10 (0.4.x floor) and 3.12 (latest 0.6.x). The fork's extras (Lepton camera, depth recording, one-hot record labels, MJPG-first camera probe, real-robot eval registration) are not carried over.*
-3. **Publish `lerobot-doctor`** — `pip install`, `lerobot-doctor` (web) and `lerobot-doctor ports | motors | cameras | calibration` (CLI). First public release. *Done 2026-09-08 except the name: the CLI (`ports`, `cameras`, `motors`, `calibration`, `udev`, `report`), the web UI (`lerobot-doctor serve`: the same frontend built with the doctor profile on top of the hardware routes, which now live in the package), the sdist/wheel build and a tag-triggered PyPI release workflow (`lerobot-doctor-v*`). The PyPI name `lerobot-doctor` is taken by an unrelated dataset-quality tool (released 2026-04), so the distribution needs its final name before the first upload.*`) are done. Two things remain before the first upload: the PyPI name `lerobot-doctor` is taken by an unrelated dataset-quality tool (released 2026-04), so the distribution needs its final name; and the standalone web UI still needs the process manager, streaming and a frontend build split moved into the package.*
+3. **Publish `lerobot-checkup`** — `pip install`, `lerobot-checkup` (web) and `lerobot-checkup ports | motors | cameras | calibration` (CLI). First public release. *Done 2026-09-08: the CLI (`ports`, `cameras`, `motors`, `calibration`, `udev`, `report`), the web UI (`lerobot-checkup serve`: the same frontend built with the checkup profile on top of the hardware routes, which now live in the package), the sdist/wheel build and a tag-triggered PyPI release workflow (`lerobot-checkup-v*`). Remaining: register the PyPI trusted publisher and push the `lerobot-checkup-v0.1.0` tag.*`) are done. Two things remain before the first upload: the PyPI name `lerobot-checkup` is taken by an unrelated dataset-quality tool (released 2026-04), so the distribution needs its final name; and the standalone web UI still needs the process manager, streaming and a frontend build split moved into the package.*
 4. **Answer where the pain is** — point LeRobot port / motor / camera issues at the tool.
 5. **Then the workbench** — reposition LeStudio as "diagnostics plus the full loop", and decide page by page what to keep versus hand to LeLab.
 
@@ -75,4 +75,4 @@ Feetech (SO-100 / SO-101) first; Dynamixel (OMX) second. Mobile widths are out o
 
 ## 7. Reading the rest of the docs
 
-Everything else under `docs_public/` describes the workbench as it runs today. Where a page says "LeStudio does X", X is either workbench-only or destined for `lerobot-doctor` per the table above; the split has not shipped yet.
+Everything else under `docs_public/` describes the workbench as it runs today. Where a page says "LeStudio does X", X is either workbench-only or destined for `lerobot-checkup` per the table above; the split has not shipped yet.

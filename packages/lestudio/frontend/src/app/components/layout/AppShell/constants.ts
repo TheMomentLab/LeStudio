@@ -8,7 +8,7 @@ import {
   FlaskConical,
   Play,
 } from "lucide-react";
-import { IS_DOCTOR } from "../../../profile";
+import { IS_CHECKUP } from "../../../profile";
 import type { RuntimeProcessName } from "./types";
 
 const ALL_NAV_GROUPS = [
@@ -46,15 +46,15 @@ const ALL_NAV_GROUPS = [
   },
 ];
 
-// lerobot-doctor ships the Hardware group only.
-export const NAV_GROUPS = IS_DOCTOR ? ALL_NAV_GROUPS.filter((group) => group.id === "hardware") : ALL_NAV_GROUPS;
+// lerobot-checkup ships the Hardware group only.
+export const NAV_GROUPS = IS_CHECKUP ? ALL_NAV_GROUPS.filter((group) => group.id === "hardware") : ALL_NAV_GROUPS;
 
 export const MIN_CONSOLE_HEIGHT = 32;
 
 const ALL_PROCESS_NAMES: readonly RuntimeProcessName[] = ["teleop", "record", "calibrate", "motor_setup", "train", "eval"];
-const DOCTOR_PROCESS_NAMES: readonly RuntimeProcessName[] = ["calibrate", "motor_setup"];
+const CHECKUP_PROCESS_NAMES: readonly RuntimeProcessName[] = ["calibrate", "motor_setup"];
 
-export const PROCESS_NAMES: readonly RuntimeProcessName[] = IS_DOCTOR ? DOCTOR_PROCESS_NAMES : ALL_PROCESS_NAMES;
+export const PROCESS_NAMES: readonly RuntimeProcessName[] = IS_CHECKUP ? CHECKUP_PROCESS_NAMES : ALL_PROCESS_NAMES;
 
 export const PROCESS_LABELS: Record<RuntimeProcessName, string> = {
   teleop: "Teleop",

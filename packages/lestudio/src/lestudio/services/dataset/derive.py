@@ -8,7 +8,7 @@ import time
 import uuid
 from typing import Any
 
-from lerobot_doctor import path_policy
+from lerobot_checkup import path_policy
 
 from ...command_builders import build_derive_args
 from ...lib.async_job_manager import TERMINAL_JOB_STATUS, _cleanup_finished_jobs

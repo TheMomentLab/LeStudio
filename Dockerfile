@@ -9,8 +9,8 @@ COPY packages/lestudio/frontend/package*.json ./
 RUN npm ci
 
 COPY packages/lestudio/frontend/ ./
-RUN npm run build && npm run build:doctor
-# Outputs: /app/src/lestudio/static (LeStudio) and /app/lerobot-doctor/src/lerobot_doctor/static (doctor)
+RUN npm run build && npm run build:checkup
+# Outputs: /app/src/lestudio/static (LeStudio) and /app/lerobot-checkup/src/lerobot_checkup/static (checkup)
 
 # ---------------------------------------------------------
 # Stage 2: Build Python Backend
@@ -41,7 +41,7 @@ RUN groupadd -r lerobot_group && useradd -m -r -g lerobot_group lerobot_user \
     && usermod -a -G tty lerobot_user
 
 # Copy dependency metadata for pip install cache
-COPY packages/lerobot-doctor packages/lerobot-doctor
+COPY packages/lerobot-checkup packages/lerobot-checkup
 COPY packages/lestudio/pyproject.toml packages/lestudio/README.md packages/lestudio/
 COPY packages/lestudio/src/lestudio/__init__.py packages/lestudio/src/lestudio/__init__.py
 
@@ -54,10 +54,10 @@ COPY . .
 
 # Copy built frontend assets from stage 1
 COPY --from=frontend-builder /app/src/lestudio/static /app/packages/lestudio/src/lestudio/static
-COPY --from=frontend-builder /app/lerobot-doctor/src/lerobot_doctor/static /app/packages/lerobot-doctor/src/lerobot_doctor/static
+COPY --from=frontend-builder /app/lerobot-checkup/src/lerobot_checkup/static /app/packages/lerobot-checkup/src/lerobot_checkup/static
 
 # Install LeStudio
-RUN pip install -e packages/lerobot-doctor -e packages/lestudio
+RUN pip install -e packages/lerobot-checkup -e packages/lestudio
 
 # Give the non-root user ownership
 RUN chown -R lerobot_user:lerobot_group /app

@@ -6,7 +6,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from starlette.responses import Response
 
-from lerobot_doctor.capabilities import Capability, register
+from lerobot_checkup.capabilities import Capability, register
 
 from ...services import dataset_service
 from .._state import AppState

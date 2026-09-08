@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-import lerobot_doctor.command_builders as hw_cb
+import lerobot_checkup.command_builders as hw_cb
 from lestudio import command_builders as cb
 
 
@@ -294,12 +294,12 @@ def test_build_teleop_args_bi_mode_auto_normalizes_ids_without_suffixes():
 
 def test_build_calibrate_args_single_robot_and_leader():
     robot_args = cb.build_calibrate_args("/py", {"robot_type": "so101_follower", "robot_id": "rid", "port": "/dev/f"})
-    assert robot_args[:3] == ["/py", "-m", "lerobot_doctor.calibrate_bridge"]
+    assert robot_args[:3] == ["/py", "-m", "lerobot_checkup.calibrate_bridge"]
     assert "--robot.type=so101_follower" in robot_args
     assert "--robot.id=rid" in robot_args
 
     leader_args = cb.build_calibrate_args("/py", {"robot_type": "so101_leader", "robot_id": "lid", "port": "/dev/l"})
-    assert leader_args[:3] == ["/py", "-m", "lerobot_doctor.calibrate_bridge"]
+    assert leader_args[:3] == ["/py", "-m", "lerobot_checkup.calibrate_bridge"]
     assert "--teleop.type=so101_leader" in leader_args
     assert "--teleop.id=lid" in leader_args
 
@@ -315,7 +315,7 @@ def test_build_calibrate_args_bi_leader_uses_teleop_namespace():
             "right_port": "/dev/l2",
         },
     )
-    assert args[:3] == ["/py", "-m", "lerobot_doctor.calibrate_bridge"]
+    assert args[:3] == ["/py", "-m", "lerobot_checkup.calibrate_bridge"]
     assert "--teleop.type=bi_so_leader" in args
     assert any(a.startswith("--teleop.calibration_dir=") for a in args)
     assert "--teleop.left_arm_config.port=/dev/l1" in args
@@ -333,7 +333,7 @@ def test_build_calibrate_args_bi_follower_uses_robot_calibration_dir():
             "right_port": "/dev/f2",
         },
     )
-    assert args[:3] == ["/py", "-m", "lerobot_doctor.calibrate_bridge"]
+    assert args[:3] == ["/py", "-m", "lerobot_checkup.calibrate_bridge"]
     assert "--robot.type=bi_so_follower" in args
     assert any(a.startswith("--robot.calibration_dir=") for a in args)
     assert "--robot.left_arm_config.port=/dev/f1" in args
@@ -361,7 +361,7 @@ def test_build_motor_setup_args_rejects_unsupported_type():
 
 
 def test_build_motor_setup_args_uses_type_policy_support_check(monkeypatch):
-    # The motor-setup builder lives in lerobot_doctor.command_builders; lestudio re-exports it.
+    # The motor-setup builder lives in lerobot_checkup.command_builders; lestudio re-exports it.
     monkeypatch.setattr(
         hw_cb,
         "type_policy",

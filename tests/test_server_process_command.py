@@ -6,7 +6,7 @@ from pathlib import Path
 
 from _routing import find_endpoint as _find_endpoint
 
-from lerobot_doctor.routes.models import ProcessCommandRequest
+from lerobot_checkup.routes.models import ProcessCommandRequest
 from lestudio.server import create_app
 
 
@@ -40,8 +40,8 @@ def test_api_proc_command_allows_known_process_and_normalizes_pip(monkeypatch, t
         captured["args"] = args
         return True
 
-    monkeypatch.setattr("lerobot_doctor.process_manager.ProcessManager.is_running", fake_is_running)
-    monkeypatch.setattr("lerobot_doctor.process_manager.ProcessManager.start", fake_start)
+    monkeypatch.setattr("lerobot_checkup.process_manager.ProcessManager.is_running", fake_is_running)
+    monkeypatch.setattr("lerobot_checkup.process_manager.ProcessManager.start", fake_start)
 
     app = _make_app(tmp_path)
     endpoint = _find_endpoint(app, "/api/process/{name}/command", "POST")

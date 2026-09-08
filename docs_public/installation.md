@@ -66,7 +66,7 @@ conda activate lerobot
 make install
 ```
 
-`make install` installs `lerobot-doctor` and `lestudio` in editable mode. `lestudio` declares upstream `lerobot` as a dependency, so pip pulls it (with the dataset, training and Feetech / Dynamixel extras) for your Python version. If you need a specific torch build (CUDA version, CPU-only), install torch first; pip keeps a compatible torch that is already present.
+`make install` installs `lerobot-checkup` and `lestudio` in editable mode. `lestudio` declares upstream `lerobot` as a dependency, so pip pulls it (with the dataset, training and Feetech / Dynamixel extras) for your Python version. If you need a specific torch build (CUDA version, CPU-only), install torch first; pip keeps a compatible torch that is already present.
 
 Upgrading from an older checkout that used the `lerobot` git submodule: delete the `lerobot/` directory and run `make install` again. The fork is no longer used.
 

@@ -6,15 +6,15 @@ import shutil
 from json import JSONDecodeError
 from pathlib import Path
 
-from lerobot_doctor import path_policy, type_policy
-from lerobot_doctor.command_builders import (  # noqa: F401  (re-exported for callers and tests)
+from lerobot_checkup import path_policy, type_policy
+from lerobot_checkup.command_builders import (  # noqa: F401  (re-exported for callers and tests)
     MOTOR_SETUP_COMPATIBLE_TYPES,
     _calibration_dir_arg,
     _is_bimanual_mode,
     build_calibrate_args,
     build_motor_setup_args,
 )
-from lerobot_doctor.device_helpers import derive_bi_calibration_profile_id
+from lerobot_checkup.device_helpers import derive_bi_calibration_profile_id
 
 logger = logging.getLogger(__name__)
 

@@ -1,5 +1,5 @@
 # Repository-wide tool configuration. The installable packages live in
-# packages/lerobot-doctor and packages/lestudio; each has its own pyproject.
+# packages/lerobot-checkup and packages/lestudio; each has its own pyproject.
 
 [tool.pytest.ini_options]
 addopts = "-p no:launch_testing -p no:launch_ros"
@@ -19,7 +19,7 @@ select = ["E", "F", "I", "W", "UP", "B"]
 ignore = ["E501"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["lestudio", "lerobot_doctor"]
+known-first-party = ["lestudio", "lerobot_checkup"]
 
 [tool.ruff.format]
 quote-style = "double"

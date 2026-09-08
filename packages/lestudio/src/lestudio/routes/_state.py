@@ -6,7 +6,7 @@ import threading
 from dataclasses import dataclass, field
 from typing import Any
 
-from lerobot_doctor.routes._state import AppState as HardwareAppState
+from lerobot_checkup.routes._state import AppState as HardwareAppState
 
 
 @dataclass

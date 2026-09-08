@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useCallback, useEffect } from "react";
 import { apiGet } from "./services/apiClient";
-import { IS_DOCTOR } from "./profile";
+import { IS_CHECKUP } from "./profile";
 import { useLeStudioStore } from "./store";
 
 export type HfAuthState = "ready" | "missing_token" | "expired_token" | "invalid_token";
@@ -29,7 +29,7 @@ export function HfAuthProvider({ children }: { children: React.ReactNode }) {
   const [hfAuth, setHfAuth] = useState<HfAuthState>(hfUsername ? "ready" : "missing_token");
 
   const refreshHfAuth = useCallback(async () => {
-    if (IS_DOCTOR) return;
+    if (IS_CHECKUP) return;
     const [whoamiResult, tokenResult] = await Promise.allSettled([
       apiGet<HfWhoamiResponse>("/api/hf/whoami"),
       apiGet<HfTokenStatusResponse>("/api/hf/token/status"),

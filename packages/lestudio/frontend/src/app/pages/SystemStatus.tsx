@@ -15,7 +15,7 @@ import {
   type UiResourcesData,
 } from "../services/contracts";
 import { useHfAuth } from "../hf-auth-context";
-import { IS_DOCTOR } from "../profile";
+import { IS_CHECKUP } from "../profile";
 import { useLeStudioStore } from "../store";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -124,7 +124,7 @@ export function SystemStatus() {
           <Card title="Prerequisites" icon={<Shield size={13} />} className="overflow-hidden" bodyClassName="p-0">
             <div className="divide-y divide-line-subtle border-b border-line-subtle">
               {/* HF Token — opens the header popover where the token is entered (LeStudio only) */}
-              {!IS_DOCTOR && (
+              {!IS_CHECKUP && (
                 <button
                   type="button"
                   onClick={() => setHfPopoverOpen(true)}

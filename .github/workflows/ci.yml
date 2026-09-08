@@ -34,22 +34,22 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install --extra-index-url https://download.pytorch.org/whl/cpu \
-            -e packages/lerobot-doctor -e "packages/lestudio[dev]"
+            -e packages/lerobot-checkup -e "packages/lestudio[dev]"
           python -c "import lerobot, torch; print('lerobot', lerobot.__version__, '| torch', torch.__version__)"
 
       - name: Lint with ruff
         run: python -m ruff check packages
 
       - name: Type check with mypy
-        run: python -m mypy packages/lerobot-doctor/src/lerobot_doctor packages/lestudio/src/lestudio --ignore-missing-imports
+        run: python -m mypy packages/lerobot-checkup/src/lerobot_checkup packages/lestudio/src/lestudio --ignore-missing-imports
 
       - name: Compile backend
-        run: python -m compileall -q packages/lerobot-doctor/src packages/lestudio/src
+        run: python -m compileall -q packages/lerobot-checkup/src packages/lestudio/src
 
       - name: Enforce LeRobot import boundary
         run: |
-          violations="$(rg -n '\b(from|import)\s+lerobot(\.|\b)' packages/lestudio/src packages/lerobot-doctor/src \
-            | grep -vE '(lestudio/(teleop_bridge|record_bridge|camera_patch)|lerobot_doctor/(device_registry|motor_monitor_bridge))\.py:' || true)"
+          violations="$(rg -n '\b(from|import)\s+lerobot(\.|\b)' packages/lestudio/src packages/lerobot-checkup/src \
+            | grep -vE '(lestudio/(teleop_bridge|record_bridge|camera_patch)|lerobot_checkup/(device_registry|motor_monitor_bridge))\.py:' || true)"
           if [ -n "$violations" ]; then
             echo "Found forbidden lerobot imports:"
             echo "$violations"
@@ -57,22 +57,22 @@ jobs:
           fi
 
       - name: Run tests
-        run: python -m pytest -q -m "not smoke_hw" -p pytest_cov.plugin --cov=lestudio --cov=lerobot_doctor --cov-report=term-missing --cov-report=xml tests
+        run: python -m pytest -q -m "not smoke_hw" -p pytest_cov.plugin --cov=lestudio --cov=lerobot_checkup --cov-report=term-missing --cov-report=xml tests
 
-      - name: Smoke-test the lerobot-doctor CLI
+      - name: Smoke-test the lerobot-checkup CLI
         # The runner has no arms or cameras; this checks the entry point,
         # the collectors and the JSON shape on a machine without hardware.
         run: |
-          lerobot-doctor --version
-          lerobot-doctor ports
-          lerobot-doctor cameras
-          lerobot-doctor report --json | python -c "import json, sys; d = json.load(sys.stdin); print(sorted(d))"
+          lerobot-checkup --version
+          lerobot-checkup ports
+          lerobot-checkup cameras
+          lerobot-checkup report --json | python -c "import json, sys; d = json.load(sys.stdin); print(sorted(d))"
 
-      - name: Build the lerobot-doctor distribution
+      - name: Build the lerobot-checkup distribution
         run: |
           python -m pip install build twine
-          python -m build packages/lerobot-doctor
-          python -m twine check packages/lerobot-doctor/dist/*
+          python -m build packages/lerobot-checkup
+          python -m twine check packages/lerobot-checkup/dist/*
 
   frontend:
     runs-on: ubuntu-latest
@@ -119,6 +119,6 @@ jobs:
         working-directory: packages/lestudio/frontend
         run: npm run build
 
-      - name: Build frontend (lerobot-doctor profile)
+      - name: Build frontend (lerobot-checkup profile)
         working-directory: packages/lestudio/frontend
-        run: npm run build:doctor
+        run: npm run build:checkup

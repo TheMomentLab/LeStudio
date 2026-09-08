@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from lerobot_doctor import serve
+from lerobot_checkup import serve
 from lestudio import cli
 
 

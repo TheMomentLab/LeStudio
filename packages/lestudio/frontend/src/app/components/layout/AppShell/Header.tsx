@@ -15,7 +15,7 @@ import {
   resolveApiOrigin,
   writeStoredSessionToken,
 } from "../../../services/sessionToken";
-import { APP_NAME, IS_DOCTOR } from "../../../profile";
+import { APP_NAME, IS_CHECKUP } from "../../../profile";
 import { useLeStudioStore } from "../../../store";
 import { Popover, PopoverTrigger, PopoverContent } from "../../ui/popover";
 
@@ -222,7 +222,7 @@ export function Header({
           </Popover>
         )}
 
-        {!IS_DOCTOR && (
+        {!IS_CHECKUP && (
           <Popover open={hfPopoverOpen} onOpenChange={setHfPopoverOpen}>
             <PopoverTrigger asChild>
               <button

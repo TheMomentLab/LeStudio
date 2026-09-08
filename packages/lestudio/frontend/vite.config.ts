@@ -3,7 +3,7 @@ import path from 'path'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 
-const isDoctor = process.env.VITE_APP_PROFILE === 'doctor'
+const isCheckup = process.env.VITE_APP_PROFILE === 'checkup'
 
 export default defineConfig({
   plugins: [
@@ -12,9 +12,9 @@ export default defineConfig({
     react(),
     tailwindcss(),
     {
-      // The doctor profile is the same SPA under its own name.
+      // The checkup profile is the same SPA under its own name.
       name: 'app-profile-title',
-      transformIndexHtml: (html) => (isDoctor ? html.replace('<title>LeStudio</title>', '<title>lerobot-doctor</title>') : html),
+      transformIndexHtml: (html) => (isCheckup ? html.replace('<title>LeStudio</title>', '<title>lerobot-checkup</title>') : html),
     },
   ],
   resolve: {
@@ -28,8 +28,8 @@ export default defineConfig({
   assetsInclude: ['**/*.svg', '**/*.csv'],
 
   build: {
-    // The doctor profile builds the hardware-only bundle into the lerobot-doctor package.
-    outDir: isDoctor ? '../../lerobot-doctor/src/lerobot_doctor/static' : '../src/lestudio/static',
+    // The checkup profile builds the hardware-only bundle into the lerobot-checkup package.
+    outDir: isCheckup ? '../../lerobot-checkup/src/lerobot_checkup/static' : '../src/lestudio/static',
     emptyOutDir: true,
     rollupOptions: {
       output: {

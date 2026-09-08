@@ -24,7 +24,7 @@
 | 텔레옵·평가 중 실시간 플롯 | Foxglove (LeRobot 0.6.0 내장) |
 | 대규모 에피소드 품질 점수 | LeRobot dataset visualizer, `score_lerobot_episodes` |
 
-하드웨어 층은 워크벤치가 의존하는 독립 패키지(가칭 `lerobot-doctor`)로 분리할 예정입니다. 이유와 계획, 남는 것은 [방향](docs_public/direction.md) 문서에 있습니다.
+하드웨어 층은 워크벤치가 의존하는 독립 패키지(가칭 `lerobot-checkup`)로 분리할 예정입니다. 이유와 계획, 남는 것은 [방향](docs_public/direction.md) 문서에 있습니다.
 
 ## 스크린샷
 
@@ -110,7 +110,7 @@ conda activate lerobot
 make install
 ```
 
-`make install`은 `lerobot-doctor`와 `lestudio`를 편집 가능 모드로 설치하고, `lerobot`을 dataset / training / Feetech·Dynamixel 모터 extras와 함께 가져옵니다. 특정 torch 빌드(CUDA 버전, CPU 전용)가 필요하면 torch를 먼저 설치하세요. pip이 그대로 유지합니다.
+`make install`은 `lerobot-checkup`와 `lestudio`를 편집 가능 모드로 설치하고, `lerobot`을 dataset / training / Feetech·Dynamixel 모터 extras와 함께 가져옵니다. 특정 torch 빌드(CUDA 버전, CPU 전용)가 필요하면 torch를 먼저 설치하세요. pip이 그대로 유지합니다.
 
 > 서브모듈 기반 체크아웃에서 올라오는 경우: 옛 `lerobot/` 디렉터리를 지우고 `make install`을 다시 실행하세요. 포크는 더 이상 사용하지 않습니다.
 
@@ -146,21 +146,21 @@ lestudio serve:
 
 `serve`를 명시하지 않고도 플래그를 전달할 수 있습니다 — `lestudio --port 8080`은 `lestudio serve --port 8080`과 동일합니다.
 
-### lerobot-doctor CLI
+### lerobot-checkup CLI
 
 하드웨어 계층은 별도 패키지로 나뉘어 있고, LeStudio와 함께 설치되는 CLI가 있습니다:
 
 ```bash
-lerobot-doctor                                     # 하드웨어 전용 웹 UI (Status, Motor Setup, Camera Setup), 포트 7861
-lerobot-doctor report                              # 이슈에 붙여넣을 Markdown 요약
-lerobot-doctor ports                               # 암으로 보이는 시리얼 포트
-lerobot-doctor cameras                             # 카메라와 각각이 공유하는 USB 버스
-lerobot-doctor motors --port /dev/ttyACM0 --ids 1-6
-lerobot-doctor calibration                         # LeRobot 캐시의 캘리브레이션 파일 전부 검증
-lerobot-doctor udev status                         # 안정 /dev 심링크가 살아 있는지
+lerobot-checkup                                     # 하드웨어 전용 웹 UI (Status, Motor Setup, Camera Setup), 포트 7861
+lerobot-checkup report                              # 이슈에 붙여넣을 Markdown 요약
+lerobot-checkup ports                               # 암으로 보이는 시리얼 포트
+lerobot-checkup cameras                             # 카메라와 각각이 공유하는 USB 버스
+lerobot-checkup motors --port /dev/ttyACM0 --ids 1-6
+lerobot-checkup calibration                         # LeRobot 캐시의 캘리브레이션 파일 전부 검증
+lerobot-checkup udev status                         # 안정 /dev 심링크가 살아 있는지
 ```
 
-어느 명령이든 `--json`을 붙이면 기계가 읽을 수 있는 출력이 나옵니다. 자세한 내용: [packages/lerobot-doctor/README.md](packages/lerobot-doctor/README.md).
+어느 명령이든 `--json`을 붙이면 기계가 읽을 수 있는 출력이 나옵니다. 자세한 내용: [packages/lerobot-checkup/README.md](packages/lerobot-checkup/README.md).
 
 ### 네트워크 & CORS
 
@@ -187,12 +187,12 @@ export LESTUDIO_CORS_ORIGIN_REGEX='^https://(localhost|127\.0\.0\.1)(:\d+)?$'
 
 ```
 packages/
-├── lerobot-doctor/   # 하드웨어 계층 라이브러리: 디바이스 탐색, udev/type/path 정책, 모터·캘리브레이션 브리지
+├── lerobot-checkup/   # 하드웨어 계층 라이브러리: 디바이스 탐색, udev/type/path 정책, 모터·캘리브레이션 브리지
 └── lestudio/         # 워크벤치: FastAPI 백엔드(src/lestudio) + React 프론트엔드(frontend/)
 tests/                # 두 패키지를 함께 검증하는 백엔드 테스트
 ```
 
-`lestudio`가 `lerobot-doctor`에 의존하며, 반대 방향 의존은 없습니다. 이렇게 나눈 이유는 [docs_public/direction.md](docs_public/direction.md)를 참조하세요.
+`lestudio`가 `lerobot-checkup`에 의존하며, 반대 방향 의존은 없습니다. 이렇게 나눈 이유는 [docs_public/direction.md](docs_public/direction.md)를 참조하세요.
 
 ```bash
 conda activate lerobot
@@ -214,8 +214,8 @@ lestudio serve --reload
 
 ```bash
 python -m ruff check packages
-python -m mypy packages/lerobot-doctor/src/lerobot_doctor packages/lestudio/src/lestudio --ignore-missing-imports
-python -m compileall -q packages/lerobot-doctor/src/lerobot_doctor packages/lestudio/src/lestudio
+python -m mypy packages/lerobot-checkup/src/lerobot_checkup packages/lestudio/src/lestudio --ignore-missing-imports
+python -m compileall -q packages/lerobot-checkup/src/lerobot_checkup packages/lestudio/src/lestudio
 make test
 ```
 

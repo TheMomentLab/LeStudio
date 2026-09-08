@@ -6,7 +6,7 @@ import shutil
 from pathlib import Path
 from typing import Any, cast
 
-from lerobot_doctor import path_policy
+from lerobot_checkup import path_policy
 
 
 def discover_parquet_files(source_path: Path) -> list[Path]:

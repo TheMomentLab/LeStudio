@@ -7,12 +7,12 @@ from pathlib import Path
 
 from _routing import iter_routes
 
-import lerobot_doctor.routes.process as process_routes
+import lerobot_checkup.routes.process as process_routes
 import lestudio.routes.training as training_routes
 import lestudio.services.dataset_service as dataset_service
 import lestudio.services.process_service as process_service
 import lestudio.services.training_service as training_service
-from lerobot_doctor.capabilities import get_capability
+from lerobot_checkup.capabilities import get_capability
 from lestudio.server import create_app
 
 

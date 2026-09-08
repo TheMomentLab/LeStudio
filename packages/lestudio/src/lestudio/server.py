@@ -2,7 +2,7 @@
 """LeStudio — Web GUI server.
 
 The hardware layer (middlewares, device / udev / motor / process / streaming
-routes) comes from lerobot_doctor.server; this module adds the workflow routes.
+routes) comes from lerobot_checkup.server; this module adds the workflow routes.
 """
 
 import importlib.util
@@ -13,9 +13,9 @@ from pathlib import Path
 
 from fastapi import FastAPI
 
-from lerobot_doctor._auth import generate_token
-from lerobot_doctor._logging import configure_logging
-from lerobot_doctor.server import build_app, make_state
+from lerobot_checkup._auth import generate_token
+from lerobot_checkup._logging import configure_logging
+from lerobot_checkup.server import build_app, make_state
 
 logger = logging.getLogger(__name__)
 configure_logging()

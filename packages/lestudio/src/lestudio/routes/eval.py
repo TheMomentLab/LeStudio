@@ -11,11 +11,11 @@ from typing import Any
 
 from fastapi import APIRouter
 
-from lerobot_doctor import type_policy
-from lerobot_doctor._streaming import stop_all_streamers_for_process, unlock_cameras
-from lerobot_doctor.capabilities import Capability, register
-from lerobot_doctor.device_helpers import ensure_bimanual_calibration_files, get_calibration_file_path
-from lerobot_doctor.services.process_service import _guard_process_start
+from lerobot_checkup import type_policy
+from lerobot_checkup._streaming import stop_all_streamers_for_process, unlock_cameras
+from lerobot_checkup.capabilities import Capability, register
+from lerobot_checkup.device_helpers import ensure_bimanual_calibration_files, get_calibration_file_path
+from lerobot_checkup.services.process_service import _guard_process_start
 
 from .._train_helpers import (
     _check_cuda_runtime_compat,

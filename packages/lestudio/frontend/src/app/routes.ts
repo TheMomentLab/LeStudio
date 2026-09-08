@@ -2,7 +2,7 @@ import { createElement } from "react";
 import { createBrowserRouter } from "react-router";
 import { AppShell } from "./components/layout/AppShell";
 import { RouteErrorBoundary } from "./components/layout/RouteErrorBoundary";
-import { IS_DOCTOR } from "./profile";
+import { IS_CHECKUP } from "./profile";
 
 function lazyRoute<TModule extends Record<string, unknown>, TKey extends keyof TModule & string>(
   loader: () => Promise<TModule>,
@@ -31,7 +31,7 @@ export const router = createBrowserRouter([
         path: "motor-setup",
         lazy: lazyRoute(() => import("./pages/MotorSetup"), "MotorSetup"),
       },
-      ...(IS_DOCTOR
+      ...(IS_CHECKUP
         ? []
         : [
           {

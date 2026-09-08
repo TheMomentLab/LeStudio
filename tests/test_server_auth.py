@@ -7,7 +7,7 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from lerobot_doctor._auth import (
+from lerobot_checkup._auth import (
     _is_localhost,
     _needs_auth,
     generate_token,

@@ -3,10 +3,10 @@ import logging
 import sys
 from pathlib import Path
 
-# The udev installer and the serve helpers live in lerobot_doctor; the names
+# The udev installer and the serve helpers live in lerobot_checkup; the names
 # stay importable from here for existing callers and tests.
-from lerobot_doctor.cli import _extract_symlink_names, _manual_commands, install_udev_rules  # noqa: F401
-from lerobot_doctor.serve import (  # noqa: F401
+from lerobot_checkup.cli import _extract_symlink_names, _manual_commands, install_udev_rules  # noqa: F401
+from lerobot_checkup.serve import (  # noqa: F401
     DEFAULT_RULES_PATH,
     find_lerobot_src,
     get_local_ip,
@@ -25,7 +25,7 @@ def command_serve(args):
     lerobot_src = resolve_lerobot_src(args.lerobot_path)
     config_dir = resolve_config_dir(args.config_dir)
 
-    from lerobot_doctor._auth import generate_token
+    from lerobot_checkup._auth import generate_token
     from lestudio.server import create_app
 
     token = generate_token()
