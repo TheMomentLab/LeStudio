@@ -146,6 +146,21 @@ lestudio serve:
 
 Flags can be passed without explicitly typing `serve` — `lestudio --port 8080` works the same as `lestudio serve --port 8080`.
 
+### lerobot-doctor CLI
+
+The hardware layer ships as its own package with a command line, installed together with LeStudio:
+
+```bash
+lerobot-doctor report                              # Markdown summary to paste into an issue
+lerobot-doctor ports                               # serial ports that look like arms
+lerobot-doctor cameras                             # cameras and the USB bus each one shares
+lerobot-doctor motors --port /dev/ttyACM0 --ids 1-6
+lerobot-doctor calibration                         # validate every calibration file in the LeRobot cache
+lerobot-doctor udev status                         # are the stable /dev symlinks in place?
+```
+
+Add `--json` to any command for machine-readable output. Details: [packages/lerobot-doctor/README.md](packages/lerobot-doctor/README.md).
+
 ### Network & CORS
 
 - Default bind is local-only: `127.0.0.1`.

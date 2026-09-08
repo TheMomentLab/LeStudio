@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lerobot-doctor"
-version = "0.1.0"
-description = "Hardware setup and diagnostics for Hugging Face LeRobot: stable USB port mapping, motor-ID setup, live motor monitor, calibration validation"
+dynamic = ["version"]
+description = "Hardware setup and diagnostics for Hugging Face LeRobot arms and cameras: port and camera discovery, udev symlinks, motor checks, calibration validation, pasteable reports"
 readme = "README.md"
 license = {text = "Apache-2.0"}
 requires-python = ">=3.10"
@@ -28,10 +28,20 @@ dependencies = []
 [project.optional-dependencies]
 lerobot = ["lerobot>=0.4.4,<0.7"]
 
+[project.scripts]
+lerobot-doctor = "lerobot_doctor.cli:main"
+
 [project.urls]
-Homepage = "https://github.com/TheMomentLab/lestudio"
-Repository = "https://github.com/TheMomentLab/lestudio"
-Issues = "https://github.com/TheMomentLab/lestudio/issues"
+Homepage = "https://github.com/TheMomentLab/LeStudio/tree/main/packages/lerobot-doctor"
+Repository = "https://github.com/TheMomentLab/LeStudio"
+Issues = "https://github.com/TheMomentLab/LeStudio/issues"
+Changelog = "https://github.com/TheMomentLab/LeStudio/blob/main/CHANGELOG.md"
+
+[tool.setuptools]
+license-files = ["LICENSE"]
+
+[tool.setuptools.dynamic]
+version = {attr = "lerobot_doctor.__version__"}
 
 [tool.setuptools.packages.find]
 where = ["src"]

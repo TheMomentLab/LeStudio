@@ -1,0 +1,82 @@
+name: Release lerobot-doctor
+
+# Builds packages/lerobot-doctor on every run; publishes to PyPI and creates a
+# GitHub release only for tags shaped like `lerobot-doctor-v0.1.0`.
+#
+# One-time setup before the first tag: register a "trusted publisher" for this
+# repository and workflow on PyPI (project settings → Publishing), and create a
+# GitHub environment named `pypi`. No API token is stored in the repository.
+
+on:
+  push:
+    tags: ["lerobot-doctor-v*"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build sdist and wheel
+        run: |
+          python -m pip install --upgrade pip build twine
+          python -m build packages/lerobot-doctor
+          python -m twine check packages/lerobot-doctor/dist/*
+
+      - name: Check that the tag matches the package version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          version="$(python - <<'EOF'
+          import pathlib, re
+          text = pathlib.Path("packages/lerobot-doctor/src/lerobot_doctor/__init__.py").read_text()
+          print(re.search(r'__version__ = "([^"]+)"', text).group(1))
+          EOF
+          )"
+          echo "package version: $version / tag: $GITHUB_REF_NAME"
+          test "lerobot-doctor-v$version" = "$GITHUB_REF_NAME"
+
+      - name: Smoke-test the wheel
+        run: |
+          python -m venv /tmp/wheel-venv
+          /tmp/wheel-venv/bin/pip install packages/lerobot-doctor/dist/*.whl
+          /tmp/wheel-venv/bin/lerobot-doctor --version
+          /tmp/wheel-venv/bin/lerobot-doctor report --json > /dev/null || test $? -eq 1
+
+      - name: Upload distribution
+        uses: actions/upload-artifact@v4
+        with:
+          name: lerobot-doctor-dist
+          path: packages/lerobot-doctor/dist/
+
+  publish:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+      contents: write
+    steps:
+      - name: Download distribution
+        uses: actions/download-artifact@v4
+        with:
+          name: lerobot-doctor-dist
+          path: dist/
+
+      - name: Publish to PyPI (trusted publishing)
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true

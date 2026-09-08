@@ -61,6 +61,9 @@ Homepage = "https://github.com/TheMomentLab/lestudio"
 Repository = "https://github.com/TheMomentLab/lestudio"
 Issues = "https://github.com/TheMomentLab/lestudio/issues"
 
+[tool.setuptools]
+license-files = ["LICENSE"]
+
 [tool.setuptools.packages.find]
 where = ["src"]
 

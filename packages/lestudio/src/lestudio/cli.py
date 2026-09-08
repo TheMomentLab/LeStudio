@@ -2,9 +2,7 @@ import argparse
 import importlib.util
 import logging
 import os
-import re
 import socket
-import subprocess
 import sys
 import threading
 import time
@@ -13,6 +11,9 @@ from pathlib import Path
 from typing import cast
 
 from lerobot_doctor import path_policy
+
+# The udev installer lives in lerobot_doctor.cli; the private names stay importable here.
+from lerobot_doctor.cli import _extract_symlink_names, _manual_commands, install_udev_rules  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
@@ -102,39 +103,6 @@ def resolve_lerobot_src(lerobot_path_arg: Path | None) -> Path:
     return lerobot_src
 
 
-def _manual_commands(source_rules: Path, target_rules: Path) -> list[str]:
-    source_q = str(source_rules)
-    target_q = str(target_rules)
-    return [
-        f"sudo cp {source_q} {target_q}",
-        "sudo udevadm control --reload-rules",
-        "sudo udevadm trigger --subsystem-match=video4linux",
-        "sudo udevadm trigger --subsystem-match=tty",
-    ]
-
-
-def _extract_symlink_names(rules_content: str) -> list[str]:
-    matches = re.findall(r'SYMLINK\+="([^"]+)"', rules_content)
-    return sorted(set(matches))
-
-
-def _print_verify_symlinks(symlinks: list[str]):
-    if not symlinks:
-        print("- Verify: no SYMLINK entries found in rules file")
-        return
-    print("- Verify symlinks:")
-    for link in symlinks:
-        path = Path("/dev") / link
-        if not path.exists() and not path.is_symlink():
-            print(f"  [MISSING] {path}")
-            continue
-        try:
-            target = path.resolve()
-            print(f"  [OK] {path} -> {target}")
-        except (OSError, RuntimeError) as exc:
-            print(f"  [WARN] {path} exists but resolve failed: {exc}")
-
-
 def command_serve(args):
     lerobot_src = resolve_lerobot_src(args.lerobot_path)
     config_dir = resolve_config_dir(args.config_dir)
@@ -189,54 +157,9 @@ def command_serve(args):
 def command_install_udev(args):
     config_dir = resolve_config_dir(args.config_dir)
     source_rules = args.source_rules if args.source_rules is not None else (config_dir / "99-lerobot.rules")
-    target_rules = args.rules_path
-
-    print(f"Source rules: {source_rules}")
-    print(f"Target rules: {target_rules}")
-
-    if not source_rules.exists():
-        print("ERROR: source rules file does not exist.", file=sys.stderr)
-        print("Generate/save mapping rules from the UI first, or pass --source-rules.", file=sys.stderr)
-        print(f"Expected file: {source_rules}", file=sys.stderr)
-        sys.exit(1)
-
-    cmds = _manual_commands(source_rules, target_rules)
-    print("\nCommands to run:")
-    for cmd in cmds:
-        print(f"  {cmd}")
-
-    if args.dry_run:
-        print("\nDry-run complete. No system changes were made.")
-        return
-
-    copy_res = subprocess.run(["sudo", "cp", str(source_rules), str(target_rules)], capture_output=True, text=True)
-    if copy_res.returncode != 0:
-        err = (copy_res.stderr or "").strip() or "Failed to copy rules file"
-        print(f"ERROR: {err}", file=sys.stderr)
-        sys.exit(copy_res.returncode)
-
-    reload_res = subprocess.run(["sudo", "udevadm", "control", "--reload-rules"], capture_output=True, text=True)
-    if reload_res.returncode != 0:
-        err = (reload_res.stderr or "").strip() or "udevadm reload failed"
-        print(f"ERROR: {err}", file=sys.stderr)
-        sys.exit(reload_res.returncode)
-
-    trig_video = subprocess.run(
-        ["sudo", "udevadm", "trigger", "--subsystem-match=video4linux"], capture_output=True, text=True
-    )
-    if trig_video.returncode != 0:
-        err = (trig_video.stderr or "").strip() or "udevadm trigger video4linux failed"
-        print(f"WARN: {err}")
-
-    trig_tty = subprocess.run(["sudo", "udevadm", "trigger", "--subsystem-match=tty"], capture_output=True, text=True)
-    if trig_tty.returncode != 0:
-        err = (trig_tty.stderr or "").strip() or "udevadm trigger tty failed"
-        print(f"WARN: {err}")
-
-    content = source_rules.read_text()
-    symlinks = _extract_symlink_names(content)
-    print("\nInstall complete.")
-    _print_verify_symlinks(symlinks)
+    code = install_udev_rules(source_rules, args.rules_path, dry_run=args.dry_run)
+    if code != 0:
+        sys.exit(code)
 
 
 def build_parser() -> argparse.ArgumentParser:

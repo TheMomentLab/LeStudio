@@ -14,6 +14,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   `docs_public/direction.md`. Steps 1 and 2 of the plan are done (below).
 
 ### Added
+- `lerobot-doctor` CLI: `ports`, `cameras`, `motors --port`, `calibration
+  [--pair]`, `udev status|install` and `report` (Markdown, or `--json` on any
+  command) so hardware state can be pasted into issues. Exit status 1 flags a
+  problem. `lestudio install-udev` delegates to it. The package builds as an
+  sdist/wheel (`python -m build packages/lerobot-doctor`) and a tag-triggered
+  workflow (`lerobot-doctor-v*`) publishes it through PyPI trusted publishing.
 - OMX (OpenManipulator-X) support, a robot-family policy catalog and
   centralized calibration-source resolution (merged from `dev`).
 - Semantic design tokens for both themes (`frontend/src/styles/theme.css`),

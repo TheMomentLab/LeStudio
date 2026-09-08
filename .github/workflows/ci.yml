@@ -59,6 +59,21 @@ jobs:
       - name: Run tests
         run: python -m pytest -q -m "not smoke_hw" -p pytest_cov.plugin --cov=lestudio --cov=lerobot_doctor --cov-report=term-missing --cov-report=xml tests
 
+      - name: Smoke-test the lerobot-doctor CLI
+        # The runner has no arms or cameras; this checks the entry point,
+        # the collectors and the JSON shape on a machine without hardware.
+        run: |
+          lerobot-doctor --version
+          lerobot-doctor ports
+          lerobot-doctor cameras
+          lerobot-doctor report --json | python -c "import json, sys; d = json.load(sys.stdin); print(sorted(d))"
+
+      - name: Build the lerobot-doctor distribution
+        run: |
+          python -m pip install build twine
+          python -m build packages/lerobot-doctor
+          python -m twine check packages/lerobot-doctor/dist/*
+
   frontend:
     runs-on: ubuntu-latest
     steps:

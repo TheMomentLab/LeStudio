@@ -146,6 +146,21 @@ lestudio serve:
 
 `serve`를 명시하지 않고도 플래그를 전달할 수 있습니다 — `lestudio --port 8080`은 `lestudio serve --port 8080`과 동일합니다.
 
+### lerobot-doctor CLI
+
+하드웨어 계층은 별도 패키지로 나뉘어 있고, LeStudio와 함께 설치되는 CLI가 있습니다:
+
+```bash
+lerobot-doctor report                              # 이슈에 붙여넣을 Markdown 요약
+lerobot-doctor ports                               # 암으로 보이는 시리얼 포트
+lerobot-doctor cameras                             # 카메라와 각각이 공유하는 USB 버스
+lerobot-doctor motors --port /dev/ttyACM0 --ids 1-6
+lerobot-doctor calibration                         # LeRobot 캐시의 캘리브레이션 파일 전부 검증
+lerobot-doctor udev status                         # 안정 /dev 심링크가 살아 있는지
+```
+
+어느 명령이든 `--json`을 붙이면 기계가 읽을 수 있는 출력이 나옵니다. 자세한 내용: [packages/lerobot-doctor/README.md](packages/lerobot-doctor/README.md).
+
 ### 네트워크 & CORS
 
 - 기본 바인딩은 로컬 전용: `127.0.0.1`.

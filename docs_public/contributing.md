@@ -22,6 +22,7 @@ LeStudio/
 ├── packages/
 │   ├── lerobot-doctor/                 # Hardware layer library (no server, no CLI yet)
 │   │   └── src/lerobot_doctor/
+│   │       ├── cli.py                  # `lerobot-doctor` command line
 │   │       ├── device_registry.py      # 3-Registry discovery (lerobot import boundary)
 │   │       ├── motor_monitor_bridge.py # FeetechMotorsBus REST (lerobot import boundary)
 │   │       ├── calibrate_bridge.py     # Calibration subprocess entry
