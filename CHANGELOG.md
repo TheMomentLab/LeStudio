@@ -14,6 +14,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   `docs_public/direction.md`. Steps 1 and 2 of the plan are done (below).
 
 ### Added
+- Troubleshooting guide, package README and the bug-report template map
+  LeRobot's own hardware error strings to the `lerobot-checkup` command that
+  answers each one; the bug report asks for `lerobot-checkup report` output.
 - `lerobot-checkup serve` (also the default with no arguments): the standalone
   hardware web UI — Status, Motor Setup and Camera Setup — on port 7861. It is
   the same frontend built with `npm run build:checkup` (hardware pages only,

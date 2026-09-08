@@ -7,7 +7,7 @@ body:
     attributes:
       value: |
         Thanks for taking the time to fill out this bug report!
-        Please review the [Troubleshooting Guide](https://github.com/TheMomentLab/lestudio/blob/main/docs/troubleshooting.md) first to see if your issue (especially camera/udev permissions) is already covered.
+        Please review the [Troubleshooting Guide](https://github.com/TheMomentLab/LeStudio/blob/main/docs_public/troubleshooting.md) first to see if your issue (especially camera/udev permissions) is already covered.
 
   - type: input
     id: version
@@ -79,8 +79,8 @@ body:
       render: shell
 
   - type: textarea
-    id: udev_output
+    id: checkup_report
     attributes:
-      label: Device & Udev Status (Optional)
-      description: If this is a hardware/camera mapping issue, please run `ls -l /dev | grep video` or provide your applied udev rules.
-      render: shell
+      label: lerobot-checkup report (hardware issues)
+      description: For port, motor, camera, udev or calibration problems, run `lerobot-checkup report` and paste the output here. It lists your OS, Python and lerobot versions, group membership, ports, cameras with their USB bus, udev symlinks and calibration files.
+      render: markdown

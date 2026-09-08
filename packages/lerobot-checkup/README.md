@@ -60,6 +60,20 @@ $ lerobot-checkup report
 ...
 ```
 
+## Reporting a hardware problem
+
+Run `lerobot-checkup report` and paste the output into the issue. It is Markdown, so it renders as-is on GitHub, and it carries the facts a maintainer asks for first: OS, Python and lerobot versions, group membership, which ports and cameras exist and on which USB bus, whether the stable symlinks resolve, and whether the calibration files parse.
+
+The commands map onto the errors LeRobot prints:
+
+| LeRobot says | Run |
+|---|---|
+| `Motor '...' (model 'sts3215') was not found`, `COMM_RX_TIMEOUT`, `Failed to sync read 'Present_Position' on ids=[...]`, `There is no status packet` | `lerobot-checkup motors --port PORT --ids 1-6` |
+| `Read failed due to communication error on port /dev/ttyACM0`, `No such file or directory: '/dev/ttyACM1'` | `lerobot-checkup ports`, `lerobot-checkup udev status` |
+| `Permission denied: '/dev/ttyACM0'`, `could not open port` | `lerobot-checkup report` (group membership) |
+| camera fails to open, index changed, two cameras will not run together, `dmesg`: `No space left on device` | `lerobot-checkup cameras` |
+| gripper opens fully at teleop start, arm jumps on connect, joint rotates after reconnection | `lerobot-checkup calibration`, `lerobot-checkup calibration --pair LEADER FOLLOWER` |
+
 ## Library
 
 The same package is the hardware layer of the [LeStudio](https://github.com/TheMomentLab/LeStudio) workbench: LeStudio composes `lerobot_checkup.server.build_app` with its own workflow routes, and its Status, Motor Setup and Camera Setup pages are the checkup pages.

@@ -3,6 +3,37 @@
 Robotics is hard. Dealing with hardware permissions and USB streams on Linux is often the trickiest part of setting up LeStudio.
 This document covers the most common issues you might encounter and how to fix them.
 
+## 0. Start with `lerobot-checkup`
+
+Most hardware problems are one of five things: the port is not the port you think it is, a motor is not answering, a camera shares a saturated USB bus, your user is not in `dialout` / `video`, or a calibration file has a bad range. `lerobot-checkup` (installed with LeStudio, or on its own with `pip install lerobot-checkup`) answers each of those from the terminal:
+
+```bash
+lerobot-checkup report                     # everything below as one Markdown page — paste it into your issue
+lerobot-checkup ports                      # serial ports that look like arms, with USB serial and stable symlink
+lerobot-checkup cameras                    # cameras, their model, and the USB bus each one shares
+lerobot-checkup motors --port /dev/ttyACM0 # which motor IDs answer, with position / load / current
+lerobot-checkup calibration                # validate every calibration file in ~/.cache/huggingface/lerobot
+lerobot-checkup udev status                # are the stable /dev symlinks in place?
+```
+
+### LeRobot error → what to run
+
+These are the error strings LeRobot itself prints. They apply whether you launch through LeStudio or run `lerobot-teleoperate` / `lerobot-record` / `lerobot-setup-motors` directly.
+
+| You see | Usually means | Run |
+|---|---|---|
+| `Motor 'gripper' (model 'sts3215') was not found. Make sure it is connected.` or `COMM_RX_TIMEOUT` from `lerobot-setup-motors` | The bus is open but no motor answers at that ID. Power off, wrong baud rate, a broken daisy-chain cable, or the ID was never set. | `lerobot-checkup motors --port /dev/ttyACM0 --ids 1-6`. If no ID answers: check the 12 V supply and the cable into the first motor. If IDs 1–3 answer and 4–6 do not: the chain is broken after motor 3. |
+| `Failed to sync read 'Present_Position' on ids=[2,3,4,6] ... [TxRxResult] There is no status packet` | Some motors dropped off the bus, or two motors share an ID. | `lerobot-checkup motors --port ... --ids 1-6` lists exactly which IDs respond. Duplicate IDs show up as one responder for two physical motors. |
+| `ConnectionError: Read failed due to communication error on port /dev/ttyACM0` | The port exists but is not the arm (it moved after a re-plug), or the arm is powered off. | `lerobot-checkup ports` to see which port carries which USB serial, then `lerobot-checkup udev status` if you use symlinks. |
+| `could not open port /dev/ttyACM0` or `PermissionError: [Errno 13] Permission denied: '/dev/ttyACM0'` | Your user is not in `dialout`. | `lerobot-checkup report` prints your group membership and the `usermod` line to fix it. Log out and back in afterwards. |
+| `FileNotFoundError: [Errno 2] No such file or directory: '/dev/ttyACM1'` after a reboot | USB enumeration order changed. | Map the arms to stable names in Motor Setup (or `lerobot-checkup udev install`), then use `/dev/follower_arm_1` in your config. |
+| `OpenCVCamera(...)` fails to connect, `Can't open camera by index`, or the camera index changed | Index-based camera paths are not stable, or the camera is busy in another process. | `lerobot-checkup cameras` shows device, model and symlink. Use `/dev/video*` paths or udev symlinks instead of indexes. |
+| Two cameras work alone but not together, or fps collapses; `dmesg` shows `No space left on device` | USB bandwidth. Uncompressed YUYV at 640×480@30 is about 147 Mbit/s per camera; two of them saturate a USB 2.0 bus. | `lerobot-checkup cameras` prints the USB bus and speed for every camera. Move one to another controller, or set `fourcc=MJPG` in the camera config. |
+| The gripper opens fully at teleop start, the arm jumps on connect, or a joint rotates by itself after reconnection | A calibration range or homing offset is wrong, or the leader and follower were calibrated differently. | `lerobot-checkup calibration` (per-file ranges and drive modes), then `lerobot-checkup calibration --pair LEADER FOLLOWER` for the cross-check. Re-run `lerobot-calibrate` for the flagged arm. |
+| `lerobot-find-cameras` prints nothing | Not in the `video` group, or no camera is index 0 of its device. | `lerobot-checkup report` (groups) and `lerobot-checkup cameras`. |
+
+Every command takes `--json` and exits with status 1 when it found a problem, so they can gate a startup script.
+
 ## 1. udev Rules & Symlink Issues
 
 LeStudio generates udev rules (like `99-lerobot.rules`) to bind unpredictable USB paths (e.g., `/dev/video2`) to stable symlinks (`top_cam_1`, `follower_arm_1`).
