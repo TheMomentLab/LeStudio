@@ -50,7 +50,7 @@ jobs:
           /tmp/wheel-venv/bin/lerobot-checkup report --json > /dev/null || test $? -eq 1
 
       - name: Upload distribution
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: lerobot-checkup-dist
           path: packages/lerobot-checkup/dist/
